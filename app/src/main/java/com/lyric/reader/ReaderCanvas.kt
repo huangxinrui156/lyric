@@ -16,6 +16,8 @@ import kotlinx.coroutines.*
 class ReaderCanvas(context: Context) : View(context) {
     var onLocator: (Locator) -> Unit = {}
     var onMenu: () -> Unit = {}
+    var onEndReached: () -> Unit = {}
+    var onReadingActivity: () -> Unit = {}
     var onPageInfo: (String) -> Unit = {}
     private var book: Book? = null
     private var locator = Locator()
@@ -30,6 +32,7 @@ class ReaderCanvas(context: Context) : View(context) {
     private var chapter = -1
     private var page = 0
     private var scroll = 0f
+    private var reportedScroll = 0f
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
     private var pendingKey: Any? = null
@@ -55,11 +58,14 @@ class ReaderCanvas(context: Context) : View(context) {
     private var downY = 0f
     private var lastY = 0f
     private var moved = false
+    private var checkCompletionAfterNavigation = false
     private var velocity: VelocityTracker? = null
 
     init {
         isClickable = true
         isFocusable = true
+        isFocusableInTouchMode = true
+        requestFocus()
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
         contentDescription = "正文，轻点中央显示菜单，轻点左右翻页，上下滑动滚动正文"
     }
@@ -171,6 +177,13 @@ class ReaderCanvas(context: Context) : View(context) {
                 .getLineTop(set.layout.getLineForOffset(local))
                 .toFloat()
                 .coerceIn(0f, maxScroll())
+        reportedScroll = scroll
+        if (checkCompletionAfterNavigation) {
+            val b = book
+            if (b != null && chapter == b.chapters.lastIndex &&
+                set.sourceEnd == b.chapters[chapter].text.length && page == set.pages.lastIndex) onEndReached()
+            checkCompletionAfterNavigation = false
+        }
         pageInfo()
     }
 
@@ -238,11 +251,16 @@ class ReaderCanvas(context: Context) : View(context) {
 
     private fun emitScroll() {
         val set = typeset ?: return
+        if (reportedScroll != scroll) onReadingActivity()
+        reportedScroll = scroll
         val offset =
             set.layout.getLineStart(set.layout.getLineForVertical(scroll.toInt())) + set.sourceStart
         locator = locator.copy(charOffset = offset)
         page = set.pages.indexOfLast { it.start <= offset - set.sourceStart }.coerceAtLeast(0)
         onLocator(locator)
+        val b = book
+        if (b != null && chapter == b.chapters.lastIndex && set.sourceEnd == b.chapters[chapter].text.length &&
+            scroll >= maxScroll() && maxScroll() > 0) onEndReached()
         pageInfo()
     }
 
@@ -268,6 +286,7 @@ class ReaderCanvas(context: Context) : View(context) {
         val next =
             target(step)
                 ?: run {
+                    if (step > 0) onEndReached()
                     performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     return
                 }
@@ -303,7 +322,13 @@ class ReaderCanvas(context: Context) : View(context) {
                 }
         }
         performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        checkCompletionAfterNavigation = true
         onLocator(next)
+        val set = typeset
+        val b = book
+        if (b != null && set != null && chapter == b.chapters.lastIndex &&
+            next.chapterIndex == chapter && set.sourceEnd == b.chapters[chapter].text.length &&
+            next.charOffset >= set.sourceStart + set.pages.last().start) onEndReached()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -364,7 +389,10 @@ class ReaderCanvas(context: Context) : View(context) {
                                                 else b.chapters[it].text.lastIndex.coerceAtLeast(0),
                                             )
                                         }
-                            next?.let(onLocator)
+                            if (next != null) {
+                                checkCompletionAfterNavigation = true
+                                onLocator(next)
+                            } else if (step > 0) onEndReached()
                         }
                     } else {
                         velocity?.computeCurrentVelocity(1000)
@@ -406,8 +434,10 @@ class ReaderCanvas(context: Context) : View(context) {
         return true
     }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean =
-        when (keyCode) {
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (!prefs.volumeKeys && keyCode in listOf(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP))
+            return super.onKeyDown(keyCode, event)
+        return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_RIGHT,
             KeyEvent.KEYCODE_PAGE_DOWN,
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
@@ -422,6 +452,7 @@ class ReaderCanvas(context: Context) : View(context) {
             }
             else -> super.onKeyDown(keyCode, event)
         }
+    }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()

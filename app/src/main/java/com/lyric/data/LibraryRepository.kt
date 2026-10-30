@@ -204,7 +204,7 @@ class LibraryRepository(
                     encoding = parsed.encoding,
                     excerpt = parsed.chapters.first().text.take(80),
                 )
-            writeCache(row, parsed)
+            parseLock.withLock { writeCache(row, parsed) }
             dao.insert(row)
             return true
         } finally {
@@ -354,6 +354,7 @@ class LibraryRepository(
             db.withTransaction {
                 if (dao.book(id) != null) {
                     dao.saveProgress(ProgressRow(id, loc.chapterIndex, loc.charOffset, loc.page))
+                    if (book.percent(loc) >= .99f) dao.finish(FinishedBook(id, book.title, System.currentTimeMillis()))
                     dao.reading(
                         id,
                         System.currentTimeMillis(),
@@ -376,6 +377,23 @@ class LibraryRepository(
                     memory.remove(it.name)
                 }
         }
+
+    @OptIn(coil.annotation.ExperimentalCoilApi::class)
+    suspend fun clearCaches() = withContext(Dispatchers.IO) {
+        parseLock.withLock {
+            val protected = CacheFiles.protectedPaths(dao.all())
+            cache.listFiles()?.forEach { CacheFiles.clear(it, protected) }
+            CacheFiles.temporary(context).forEach { CacheFiles.clear(it, protected) }
+            memory.clear()
+            val images = coil.Coil.imageLoader(context)
+            images.memoryCache?.clear()
+            images.diskCache?.let { disk ->
+                val directory = disk.directory.toFile()
+                if (protected.none { it.startsWith(directory.canonicalPath + File.separator) }) disk.clear()
+                else directory.listFiles()?.forEach { CacheFiles.clear(it, protected) }
+            }
+        }
+    }
 
     fun search(book: Book, query: String): Flow<SearchHit> =
         flow {

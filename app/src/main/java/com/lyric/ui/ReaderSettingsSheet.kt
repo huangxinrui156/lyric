@@ -339,7 +339,7 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
 }
 
 @Composable
-private fun SettingSlider(
+internal fun SettingSlider(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,
@@ -368,7 +368,7 @@ private fun SettingSlider(
 }
 
 @Composable
-private fun ChoiceRow(label: String, options: List<String>, selected: Int, choose: (Int) -> Unit) {
+internal fun ChoiceRow(label: String, options: List<String>, selected: Int, choose: (Int) -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -385,8 +385,8 @@ private fun ChoiceRow(label: String, options: List<String>, selected: Int, choos
                     label = { Text(title, fontSize = 11.sp) },
                     colors =
                         FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Moss,
-                            selectedLabelColor = Paper,
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
                         ),
                 )
             }
@@ -395,7 +395,7 @@ private fun ChoiceRow(label: String, options: List<String>, selected: Int, choos
 }
 
 @Composable
-private fun SettingToggle(label: String, checked: Boolean, change: (Boolean) -> Unit) {
+internal fun SettingToggle(label: String, checked: Boolean, change: (Boolean) -> Unit) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 48.dp),
         horizontalArrangement = Arrangement.SpaceBetween,

@@ -2,7 +2,11 @@ package com.lyric.data
 
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.Serializable
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
+@Serializable
 @Entity(tableName = "books")
 data class ShelfBook(
     @PrimaryKey val id: String,
@@ -38,6 +42,7 @@ data class ShelfBook(
             )
         ],
 )
+@Serializable
 data class ProgressRow(
     @PrimaryKey val bookId: String,
     val chapterIndex: Int,
@@ -46,19 +51,8 @@ data class ProgressRow(
     val updatedAt: Long = System.currentTimeMillis(),
 )
 
-@Entity(
-    tableName = "bookmarks",
-    indices = [Index("bookId")],
-    foreignKeys =
-        [
-            ForeignKey(
-                entity = ShelfBook::class,
-                parentColumns = ["id"],
-                childColumns = ["bookId"],
-                onDelete = ForeignKey.CASCADE,
-            )
-        ],
-)
+@Serializable
+@Entity(tableName = "bookmarks", indices = [Index("bookId")])
 data class BookmarkRow(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val bookId: String,
@@ -68,10 +62,57 @@ data class BookmarkRow(
     val excerpt: String,
     val chapterTitle: String,
     val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "''") val bookTitle: String = "",
 )
+
+@Serializable
+@Entity(tableName = "reading_sessions", indices = [Index("startAt"), Index("bookId")])
+data class ReadingSession(
+    @PrimaryKey val id: String,
+    val bookId: String,
+    val startAt: Long,
+    val endAt: Long,
+    val durationSec: Long,
+    val chars: Long,
+)
+
+@Serializable
+@Entity(tableName = "finished_books")
+data class FinishedBook(@PrimaryKey val bookId: String, val title: String, val finishedAt: Long)
+
+@DatabaseView(viewName = "daily_stats", value = "SELECT date(startAt / 1000, 'unixepoch', 'localtime') AS day, SUM(durationSec) AS durationSec, SUM(chars) AS chars FROM reading_sessions GROUP BY day")
+data class DailyStat(val day: String, val durationSec: Long, val chars: Long)
+
+data class ReadingTotals(val durationSec: Long, val finished: Int)
+data class BookmarkSummary(
+    @Embedded val mark: BookmarkRow,
+    val title: String,
+    val unavailable: Boolean,
+)
+data class DayBook(val bookId: String, val title: String, val durationSec: Long)
 
 @Dao
 interface LibraryDao {
+    @Query("SELECT * FROM daily_stats WHERE day >= :from AND day <= :to ORDER BY day")
+    fun observeDailyStats(from: String, to: String): Flow<List<DailyStat>>
+
+    @Query("SELECT COALESCE(SUM(durationSec),0) AS durationSec, (SELECT COUNT(*) FROM finished_books) AS finished FROM reading_sessions")
+    fun observeTotals(): Flow<ReadingTotals>
+
+    @Query("SELECT bookmarks.*, COALESCE(books.title, NULLIF(bookmarks.bookTitle, ''), '已移除的书籍') AS title, CASE WHEN books.id IS NULL OR books.invalid = 1 THEN 1 ELSE 0 END AS unavailable FROM bookmarks LEFT JOIN books ON books.id = bookmarks.bookId ORDER BY bookmarks.createdAt DESC")
+    fun observeAllBookmarks(): Flow<List<BookmarkSummary>>
+
+    @Query("SELECT reading_sessions.bookId, COALESCE(books.title, finished_books.title, '已移除的书籍') AS title, SUM(durationSec) AS durationSec FROM reading_sessions LEFT JOIN books ON books.id = reading_sessions.bookId LEFT JOIN finished_books ON finished_books.bookId = reading_sessions.bookId WHERE startAt >= :from AND startAt < :to GROUP BY reading_sessions.bookId ORDER BY durationSec DESC")
+    suspend fun dayBooks(from: Long, to: Long): List<DayBook>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun addSession(session: ReadingSession)
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun finish(book: FinishedBook)
+    @Query("SELECT * FROM reading_sessions") suspend fun sessions(): List<ReadingSession>
+    @Query("SELECT * FROM finished_books") suspend fun finished(): List<FinishedBook>
+    @Query("SELECT * FROM progress") suspend fun allProgress(): List<ProgressRow>
+    @Query("SELECT * FROM bookmarks ORDER BY createdAt DESC") suspend fun allBookmarks(): List<BookmarkRow>
+    @Query("SELECT * FROM daily_stats ORDER BY day") suspend fun dailyStats(): List<DailyStat>
+
     @Query("SELECT * FROM books ORDER BY lastRead DESC, addedAt DESC")
     fun observeBooks(): Flow<List<ShelfBook>>
 
@@ -107,10 +148,28 @@ interface LibraryDao {
 }
 
 @Database(
-    entities = [ShelfBook::class, ProgressRow::class, BookmarkRow::class],
-    version = 1,
-    exportSchema = false,
+    entities = [ShelfBook::class, ProgressRow::class, BookmarkRow::class, ReadingSession::class, FinishedBook::class],
+    views = [DailyStat::class],
+    version = 2,
+    exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun library(): LibraryDao
+}
+
+/** The v1 tables are retained; only bookmarks is rebuilt to retain excerpts after shelf deletion. */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS reading_sessions (id TEXT NOT NULL PRIMARY KEY, bookId TEXT NOT NULL, startAt INTEGER NOT NULL, endAt INTEGER NOT NULL, durationSec INTEGER NOT NULL, chars INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_reading_sessions_startAt ON reading_sessions(startAt)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_reading_sessions_bookId ON reading_sessions(bookId)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS finished_books (bookId TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, finishedAt INTEGER NOT NULL)")
+        db.execSQL("INSERT OR IGNORE INTO finished_books SELECT id, title, lastRead FROM books WHERE percent >= 0.99")
+        db.execSQL("CREATE TABLE bookmarks_new (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, bookId TEXT NOT NULL, chapterIndex INTEGER NOT NULL, charOffset INTEGER NOT NULL, page INTEGER NOT NULL, excerpt TEXT NOT NULL, chapterTitle TEXT NOT NULL, createdAt INTEGER NOT NULL, bookTitle TEXT NOT NULL DEFAULT '')")
+        db.execSQL("INSERT INTO bookmarks_new SELECT bookmarks.*, COALESCE(books.title, '') FROM bookmarks LEFT JOIN books ON books.id = bookmarks.bookId")
+        db.execSQL("DROP TABLE bookmarks")
+        db.execSQL("ALTER TABLE bookmarks_new RENAME TO bookmarks")
+        db.execSQL("CREATE INDEX index_bookmarks_bookId ON bookmarks(bookId)")
+        db.execSQL("CREATE VIEW `daily_stats` AS SELECT date(startAt / 1000, 'unixepoch', 'localtime') AS day, SUM(durationSec) AS durationSec, SUM(chars) AS chars FROM reading_sessions GROUP BY day")
+    }
 }

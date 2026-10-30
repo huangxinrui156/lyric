@@ -3,6 +3,10 @@ package com.lyric.ui
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import com.lyric.core.ReaderSettings
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
@@ -55,10 +59,20 @@ val DarkColors =
         outline = Color(0xFF45444A),
     )
 
+val AccentPresets = listOf(Moss, Vermilion, Color(0xFF8A6A4F), Color(0xFF626D83), Color(0xFF7E667D), Color(0xFF73766C))
+val AccentNames = listOf("苔绿", "朱红", "枯茶", "黛蓝", "灰紫", "石色")
+
 @Composable
-fun LyricTheme(content: @Composable () -> Unit) {
+fun LyricTheme(prefs: ReaderSettings = ReaderSettings(), content: @Composable () -> Unit) {
+    val dark = when (prefs.appTheme) { "light" -> false; "dark" -> true; else -> isSystemInDarkTheme() }
+    val accent = AccentPresets[prefs.accentColor.coerceIn(0, 5)]
+    val primary by animateColorAsState(if (dark) androidx.compose.ui.graphics.lerp(accent, Paper, .42f) else accent, tween(400), label = "accent")
+    val base = if (dark) DarkColors else LightColors
+    val bg by animateColorAsState(base.background, tween(400), label = "background")
+    val surface by animateColorAsState(base.surface, tween(400), label = "surface")
+    val text by animateColorAsState(base.onBackground, tween(400), label = "text")
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
+        colorScheme = base.copy(primary = primary, background = bg, surface = surface, onBackground = text, onSurface = text),
         shapes =
             Shapes(
                 small = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),

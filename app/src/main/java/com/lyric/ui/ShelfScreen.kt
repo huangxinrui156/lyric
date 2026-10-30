@@ -37,7 +37,7 @@ import java.text.Collator
 import java.util.Locale
 
 @Composable
-fun ShelfScreen(vm: ShelfViewModel, open: (String) -> Unit) {
+fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -> Unit) {
     val books by vm.books.collectAsStateWithLifecycle()
     val status by vm.imports.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -313,48 +313,7 @@ fun ShelfScreen(vm: ShelfViewModel, open: (String) -> Unit) {
                         Spacer(Modifier.height(24.dp))
                         if (status.running || status.message.isNotEmpty()) ImportProgress(status)
                     }
-                2 ->
-                    Column(
-                        Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState())
-                    ) {
-                        Text(
-                            "我的",
-                            fontSize = 28.sp,
-                            fontFamily = Serif,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Spacer(Modifier.height(48.dp))
-                        Text(
-                            "Lyric",
-                            fontFamily = Serif,
-                            fontStyle = FontStyle.Italic,
-                            fontSize = 40.sp,
-                        )
-                        Text(
-                            "抒情诗 · 一页一行诗",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(vertical = 12.dp),
-                        )
-                        HorizontalDivider(Modifier.padding(vertical = 24.dp))
-                        Text(
-                            "${books.size} 本珍藏 · ${books.count { it.lastRead > 0 }} 本读过",
-                            fontFamily = Serif,
-                            fontSize = 18.sp,
-                        )
-                        Text(
-                            "阅读时轻点中央，打开排版、目录、搜索与书签。设置可应用到全局、文字书籍或仅本书。",
-                            fontSize = 13.sp,
-                            lineHeight = 24.sp,
-                            modifier = Modifier.padding(vertical = 24.dp),
-                        )
-                        Text(
-                            "长按封面可移出书架，原文件始终保留。\n\n没有账号、广告或在线书源。\n\n版本 0.1.0 · 本地文字阅读",
-                            fontSize = 12.sp,
-                            lineHeight = 23.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                2 -> me()
             }
         }
     }
@@ -384,7 +343,7 @@ fun ShelfScreen(vm: ShelfViewModel, open: (String) -> Unit) {
         AlertDialog(
             onDismissRequest = { remove = null },
             title = { Text("移出书架") },
-            text = { Text("将《${book.title}》移出书架？此书的阅读记录与书签会被清除，原文件保留。") },
+            text = { Text("将《${book.title}》移出书架？此书的进度会被清除，阅读足迹、书签摘录与原文件保留。") },
             confirmButton = {
                 TextButton(
                     onClick = {

@@ -61,11 +61,13 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
     val lifecycle = LocalLifecycleOwner.current
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) vm.flush()
+            if (event == Lifecycle.Event.ON_RESUME) vm.resume()
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) vm.pause()
         }
         lifecycle.lifecycle.addObserver(observer)
+        if (lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) vm.resume()
         onDispose {
-            vm.flush()
+            vm.pause()
             lifecycle.lifecycle.removeObserver(observer)
         }
     }
@@ -81,7 +83,8 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
     val ink = Color(if (theme == ReaderTheme.CUSTOM) prefs.customInk else theme.ink)
     val meta = Color(theme.meta)
     val darkReader = bg.luminance() < .2f
-    MaterialTheme(colorScheme = if (darkReader) DarkColors else LightColors) {
+    val accent = MaterialTheme.colorScheme.primary
+    MaterialTheme(colorScheme = (if (darkReader) DarkColors else LightColors).copy(primary = accent)) {
         val activity = LocalContext.current as Activity
         val controls = menu || settings || search || drawer.isOpen
         SideEffect {
@@ -97,6 +100,20 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                 activity.window.attributes.apply {
                     screenBrightness = prefs.brightness.coerceIn(.01f, 1f)
                 }
+        }
+        DisposableEffect(activity, prefs.keepScreenOn, prefs.orientation) {
+            val originalOrientation = activity.requestedOrientation
+            if (prefs.keepScreenOn) activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            else activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity.requestedOrientation = when (prefs.orientation) {
+                "portrait" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                "landscape" -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else -> android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+            onDispose {
+                activity.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                activity.requestedOrientation = originalOrientation
+            }
         }
         DisposableEffect(activity, systemDark) {
             onDispose {
@@ -325,7 +342,9 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                     AndroidView(
                         factory = { context -> ReaderCanvas(context) },
                         update = { view ->
-                            view.onLocator = vm::goTo
+                            view.onLocator = vm::readingActivity
+                            view.onEndReached = vm::finished
+                            view.onReadingActivity = vm::readingGesture
                             view.onMenu = { menu = !menu }
                             view.onPageInfo = { pageInfo = it }
                             view.bind(book, locator, prefs, ink.toArgb(), bg.toArgb(), highlight)

@@ -75,6 +75,48 @@ class SettingsStore(
         store.edit { it.remove(key(scope, id, type)) }
     }
 
+    /** Me edits only the global layer, never a merged book/type value. */
+    val global = store.data.map { prefs ->
+        prefs[stringPreferencesKey("global")]?.let {
+            runCatching { json.decodeFromString<ReaderSettings>(it) }.getOrNull()
+        } ?: ReaderSettings()
+    }.distinctUntilChanged()
+
+    val ownBookCount = store.data.map { prefs ->
+        prefs.asMap().count { (key, value) -> key.name.startsWith("book_") && value.toString() != "{}" }
+    }
+
+    suspend fun resetBookInheritance() {
+        store.edit { prefs -> prefs.asMap().keys.filter { it.name.startsWith("book_") }.forEach { prefs.remove(it) } }
+    }
+
+    suspend fun snapshot(): SettingsSnapshot {
+        val map = store.data.first().asMap()
+        return SettingsSnapshot(
+            map.filterValues { it is String }.mapKeys { it.key.name }.mapValues { it.value as String },
+            map.filterValues { it is Boolean }.mapKeys { it.key.name }.mapValues { it.value as Boolean },
+        )
+    }
+
+    fun validate(snapshot: SettingsSnapshot) {
+        snapshot.strings.forEach { (key, raw) ->
+            require(key == "global" || key.startsWith("type_") || key.startsWith("book_")) { "未知设置项" }
+            json.decodeFromString<ReaderSettings>(raw)
+        }
+        require(snapshot.flags.keys.all { it in setOf("grid", "sort_title", "seeded") }) { "未知设置项" }
+    }
+
+    suspend fun restore(snapshot: SettingsSnapshot) {
+        validate(snapshot)
+        store.edit { prefs ->
+            prefs.clear()
+            snapshot.strings.forEach { (key, value) -> prefs[stringPreferencesKey(key)] = value }
+            snapshot.flags.forEach { (key, value) -> prefs[booleanPreferencesKey(key)] = value }
+            // Restoring a library must not add example books on the next launch.
+            prefs[booleanPreferencesKey("seeded")] = true
+        }
+    }
+
     val grid = store.data.map { it[booleanPreferencesKey("grid")] ?: true }
     val sortTitle = store.data.map { it[booleanPreferencesKey("sort_title")] ?: false }
 
@@ -88,3 +130,6 @@ class SettingsStore(
 
     suspend fun isSeeded() = store.data.first()[booleanPreferencesKey("seeded")] ?: false
 }
+
+@kotlinx.serialization.Serializable
+data class SettingsSnapshot(val strings: Map<String, String> = emptyMap(), val flags: Map<String, Boolean> = emptyMap())

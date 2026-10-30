@@ -10,10 +10,17 @@ class LyricApp : Application() {
     lateinit var repository: LibraryRepository
         private set
 
+    lateinit var backup: BackupManager
+        private set
+    lateinit var storage: StorageInspector
+        private set
+
     override fun onCreate() {
         super.onCreate()
-        val database = Room.databaseBuilder(this, LibraryDatabase::class.java, "lyric.db").build()
+        val database = Room.databaseBuilder(this, LibraryDatabase::class.java, "lyric.db").addMigrations(MIGRATION_1_2).build()
         repository = LibraryRepository(this, database, SettingsStore(this))
+        backup = BackupManager(this, database, repository.settings)
+        storage = StorageInspector(this, repository)
         applicationScope.launch {
             repository.seed()
             repository.checkSources()

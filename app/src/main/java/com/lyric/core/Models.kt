@@ -92,6 +92,13 @@ enum class ReaderTheme(val label: String, val bg: Long, val ink: Long, val meta:
 
 @Serializable
 data class ReaderSettings(
+    val appTheme: String = "system",
+    val accentColor: Int = 0,
+    val dailyGoalMin: Int = 20,
+    val goalEnabled: Boolean = false,
+    val volumeKeys: Boolean = true,
+    val keepScreenOn: Boolean = false,
+    val orientation: String = "system",
     val fontSize: Float = 18f,
     val lineHeight: Float = 1.9f,
     val paragraphSpace: Float = .6f,

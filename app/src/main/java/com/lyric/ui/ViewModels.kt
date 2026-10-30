@@ -8,6 +8,7 @@ import com.lyric.LyricApp
 import com.lyric.core.*
 import com.lyric.data.*
 import com.lyric.reader.ReaderSession
+import com.lyric.reader.SessionTracker
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -67,6 +68,37 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
     val searching = MutableStateFlow(false)
     val highlight = MutableStateFlow("")
     val notice = MutableStateFlow<String?>(null)
+    private val tracker = SessionTracker(id) { session ->
+        app.applicationScope.launch(Dispatchers.IO) { repository.dao.addSession(session) }
+    }
+    private val tickJob = viewModelScope.launch {
+        while (isActive) { delay(1000); tracker.tick() }
+    }
+    private var pendingJump: Locator? = null
+
+    fun readingGesture() = tracker.onActivity()
+    fun resume() = tracker.onResume()
+    fun pause() { tracker.onPause(); flush() }
+    fun readingActivity(next: Locator) {
+        val book = state.value.book ?: return
+        val old = locator.value
+        if (next != old) {
+            val a = book.chapters.take(old.chapterIndex).sumOf { it.text.length.toLong() } + old.charOffset
+            val b = book.chapters.take(next.chapterIndex).sumOf { it.text.length.toLong() } + next.charOffset
+            tracker.onActivity(kotlin.math.abs(b - a))
+        }
+        engine.goTo(next)
+    }
+    private var finishedRecorded = false
+    fun finished() {
+        val book = state.value.book ?: return
+        if (finishedRecorded) return
+        finishedRecorded = true
+        viewModelScope.launch { repository.dao.finish(FinishedBook(id, book.title, System.currentTimeMillis())) }
+    }
+    fun jump(locator: Locator) {
+        if (state.value.book == null) pendingJump = locator else goTo(locator)
+    }
     private var searchJob: Job? = null
     private var saveJob: Job? = null
     private var settingsJob: Job? = null
@@ -92,8 +124,9 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
                 val p = repository.dao.progress(id)
                 engine.open(
                     book,
-                    p?.let { Locator(it.chapterIndex, it.charOffset, it.page) } ?: Locator(),
+                    pendingJump ?: p?.let { Locator(it.chapterIndex, it.charOffset, it.page) } ?: Locator(),
                 )
+                pendingJump = null
                 settingsJob?.cancel()
                 settingsJob =
                     viewModelScope.launch {
@@ -136,6 +169,7 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
                     chapterIndex = l.chapterIndex,
                     charOffset = l.charOffset,
                     excerpt = b.excerpt(l, 80),
+                    bookTitle = b.title,
                     chapterTitle = b.chapters[l.chapterIndex].title,
                 )
             )
@@ -215,6 +249,8 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
     }
 
     override fun onCleared() {
+        tracker.onPause()
+        tickJob.cancel()
         flush()
         super.onCleared()
     }
