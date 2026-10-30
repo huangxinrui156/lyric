@@ -134,7 +134,11 @@ private fun AboutContent() {
     var licenses by rememberSaveable { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
     Text("Lyric · 抒情诗", fontFamily = Serif, fontSize = 28.sp)
-    Text("版本 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    var taps by remember { mutableIntStateOf(0) }
+    var selfTest by remember { mutableStateOf(false) }
+    Text("版本 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.clickable { if (++taps >= 7) { taps = 0; selfTest = true } })
+    if (selfTest) SelfTestDialog { selfTest = false }
     Text("隐私声明", fontFamily = Serif, fontSize = 20.sp, modifier = Modifier.padding(top = 20.dp))
     Hint("所有书籍、进度、摘录、阅读统计与设置仅存本机。没有账号、广告、分析 SDK 或遥测。应用未声明 INTERNET 网络权限，不访问网络；本地文件仅使用系统文件选择器授予的权限读取。仅在你主动导出时，将备份或摘录写到你选择的位置。卸载应用将删除私有数据。")
     TextButton(onClick = { licenses = !licenses }) { Text(if (licenses) "收起开源许可" else "查看开源许可") }

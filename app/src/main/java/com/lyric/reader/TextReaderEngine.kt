@@ -26,9 +26,22 @@ class TextReaderEngine : ReaderEngine {
     }
 }
 
+/** Page-based engine: Locator(chapter, 0, page); clamp keeps pages within each chapter. */
+class ComicReaderEngine : ReaderEngine {
+    override val contentType = ContentType.COMIC
+    private var book: Book? = null
+    private val location = MutableStateFlow(Locator())
+    override val currentLocator = location.asStateFlow()
+    private val prefs = MutableStateFlow(ReaderSettings())
+    override val settings = prefs.asStateFlow()
+    override fun open(book: Book, locator: Locator) { this.book = book; goTo(locator) }
+    override fun goTo(locator: Locator) { location.value = book?.clamp(locator) ?: locator }
+    override fun settings(settings: ReaderSettings) { prefs.value = settings }
+}
+
 class EngineRegistry(
     private val factories: Map<ContentType, () -> ReaderEngine> =
-        mapOf(ContentType.TEXT to { TextReaderEngine() })
+        mapOf(ContentType.TEXT to { TextReaderEngine() }, ContentType.COMIC to { ComicReaderEngine() })
 ) {
     fun create(type: ContentType) = factories[type]?.invoke() ?: error("该内容类型的阅读引擎尚未安装")
 }

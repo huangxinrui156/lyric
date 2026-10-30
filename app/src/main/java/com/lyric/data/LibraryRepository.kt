@@ -20,6 +20,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToStream
 import kotlinx.serialization.json.decodeFromStream
 import com.lyric.core.ImportProgress
+import com.lyric.core.ContentType
+import com.lyric.core.ComicParser
+import com.lyric.reader.ComicPages
 
 class UriSource(
     private val context: Context,
@@ -68,7 +71,7 @@ class LibraryRepository(
     val dao = db.library()
     val books = dao.observeBooks()
     val imports = MutableStateFlow(ImportStatus())
-    private val registry = ParserRegistry(listOf(TxtParser(), EpubParser(context.cacheDir)))
+    private val registry = ParserRegistry(listOf(TxtParser(), EpubParser(context.cacheDir), ComicParser()))
     private val json = Json { ignoreUnknownKeys = true }
     private val cache = File(context.filesDir, "parsed-v1").apply { mkdirs() }
     // A FileProvider may grant only transient access. Retain a private source in that case,
@@ -76,6 +79,8 @@ class LibraryRepository(
     private val sources = File(context.filesDir, "sources-v1")
     private fun source(row: ShelfBook): ContentSource = File(sources, row.id).takeIf { it.isFile }
         ?.let { FileSource(it, row.name) } ?: UriSource(context, Uri.parse(row.uri), row.name)
+    /** Private CBZ copy for comic page decoding (always kept at import). */
+    fun comicFile(id: String): File = File(sources, id)
     private val importLock = Mutex()
     private val parseLock = Mutex()
     private val memory =
@@ -146,12 +151,17 @@ class LibraryRepository(
                     Log.i(ImportTrace.TAG, "开始导入 count=${uris.size} tree=$folder flags=$grantFlags")
                     val files = mutableListOf<Uri>()
                     val retained = mutableMapOf<Uri, Boolean>()
+                    val comicFolders = mutableListOf<Pair<String, List<Pair<String, Uri>>>>()
                     if (folder) {
                         uris.forEach { uri ->
                             val durable = persist(uri, grantFlags)
+                            val before = files.size
+                            val images = mutableListOf<Pair<String, Uri>>()
+                            val paths = mutableMapOf<String, String>()
                             ImportTrace.stage("扫描文件夹") {
                                 val queue = ArrayDeque<String>()
                                 queue.add(DocumentsContract.getTreeDocumentId(uri))
+                                paths[DocumentsContract.getTreeDocumentId(uri)] = ""
                                 val visited = mutableSetOf<String>()
                                 while (queue.isNotEmpty()) {
                                     currentCoroutineContext().ensureActive()
@@ -172,8 +182,13 @@ class LibraryRepository(
                                             val childId = c.getString(idCol) ?: continue
                                             val name = if (nameCol >= 0) c.getString(nameCol) else null
                                             val mime = if (mimeCol >= 0) c.getString(mimeCol) else null
-                                            if (mime == DocumentsContract.Document.MIME_TYPE_DIR) queue.add(childId)
-                                            else if (BookFormats.extension(name.orEmpty()) != null ||
+                                            if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                                                queue.add(childId)
+                                                paths[childId] = paths[directory].orEmpty() + name.orEmpty().ifBlank { childId.takeLast(12) } + "/"
+                                            } else if (name != null && ComicParser.isImage(name)) {
+                                                images += (paths[directory].orEmpty() + name) to
+                                                    DocumentsContract.buildDocumentUriUsingTree(uri, childId)
+                                            } else if (BookFormats.extension(name.orEmpty()) != null ||
                                                 mime in BookFormats.pickerMimeTypes || mime == null || name.isNullOrBlank()) {
                                                 val child = DocumentsContract.buildDocumentUriUsingTree(uri, childId)
                                                 files += child
@@ -183,13 +198,36 @@ class LibraryRepository(
                                     }
                                 }
                             }
+                            // A folder holding images but no books is one comic (sub-folders = chapters).
+                            if (files.size == before && images.isNotEmpty())
+                                comicFolders += (runCatching { displayName(uri) }.getOrNull()?.takeIf { it != "未知文件" }
+                                    ?: uri.lastPathSegment?.substringAfterLast(':')?.substringAfterLast('/') ?: "漫画") to images
                         }
                     } else {
                         uris.forEach { retained[it] = persist(it, grantFlags) }
                         files += uris
                     }
                     var lastFailure: String? = null
-                    var status = ImportStatus(running = true, total = files.size, batchId = batchId)
+                    var status = ImportStatus(running = true, total = files.size + comicFolders.size, batchId = batchId)
+                    comicFolders.forEach { (title, images) ->
+                        currentCoroutineContext().ensureActive()
+                        status = status.copy(message = title); imports.value = status
+                        val result = runCatching {
+                            val packed = ImportTrace.stage("打包图片文件夹") { packImages(images) }
+                            try { importOne(Uri.fromFile(packed), "$title.cbz", retainSource = true) } finally { packed.delete() }
+                        }
+                        result.exceptionOrNull()?.let {
+                            if (it is CancellationException) throw it
+                            lastFailure = "$title：${it.localizedMessage ?: "导入失败"}"
+                            Log.e(ImportTrace.TAG, lastFailure, it)
+                        }
+                        status = status.copy(done = status.done + 1,
+                            added = status.added + if (result.getOrNull() == true) 1 else 0,
+                            duplicates = status.duplicates + if (result.getOrNull() == false) 1 else 0,
+                            failures = status.failures + if (result.isFailure) 1 else 0,
+                            errors = status.errors + listOfNotNull(result.exceptionOrNull()?.let { "$title：${it.message}" }))
+                        imports.value = status
+                    }
                     files.forEach { uri ->
                         currentCoroutineContext().ensureActive()
                         val name = runCatching { displayName(uri) }.getOrDefault("未知文件")
@@ -260,10 +298,12 @@ class LibraryRepository(
                 temp.inputStream().use { it.readBounded(4) }, name,
                 runCatching { context.contentResolver.getType(uri) }.getOrNull(),
                 uri.lastPathSegment.orEmpty(),
-            ) }
+            ).let { if (it == "epub" || it == "cbz") BookFormats.zipKind(temp) else it } }
             val id = digest.digest().joinToString("") { "%02x".format(it) }
+            // Comics are read page by page with random access, so they always keep a private copy.
+            val keepCopy = retainSource || extension == "cbz"
             fun retain() = ImportTrace.stage("保存临时授权源文件") {
-                if (retainSource) {
+                if (keepCopy) {
                     check(sources.isDirectory || sources.mkdirs()) { "无法创建源文件目录" }
                     val target = File(sources, id)
                     val staging = File(sources, "$id.tmp")
@@ -297,6 +337,12 @@ class LibraryRepository(
             }
             imports.value = imports.value.copy(detail = "写入缓存…", detailFraction = 1f)
             val cover = ImportTrace.stage("保存封面") {
+                if (parsed.contentType == ContentType.COMIC) parsed.coverResource?.let { entry ->
+                    val directory = File(context.filesDir, "covers").apply { check(isDirectory || mkdirs()) }
+                    File(directory, "$id.${entry.substringAfterLast('.', "jpg").lowercase()}").apply {
+                        ComicPages.thumbnail(temp, entry, 720)?.let { writeBytes(it) }
+                    }.takeIf { it.length() > 0 }?.absolutePath
+                } else
                 parsed.coverResource?.let { path -> parsed.resources[path]?.let { encoded ->
                     val directory = File(context.filesDir, "covers").apply { check(isDirectory || mkdirs()) }
                     File(directory, "$id.${path.substringAfterLast('.', "jpg")}").apply {
@@ -338,6 +384,26 @@ class LibraryRepository(
         } finally {
             temp.delete()
         }
+    }
+
+    /** Copies folder images into an uncompressed ZIP (images are already compressed). */
+    private suspend fun packImages(images: List<Pair<String, Uri>>): File {
+        val out = File.createTempFile("comic-folder-", ".cbz", context.cacheDir)
+        try {
+            java.util.zip.ZipOutputStream(out.outputStream().buffered(1 shl 16)).use { zip ->
+                zip.setLevel(0)
+                val seen = mutableSetOf<String>()
+                images.sortedWith(compareBy(com.lyric.core.NaturalOrder) { it.first }).forEachIndexed { i, (path, uri) ->
+                    currentCoroutineContext().ensureActive()
+                    ImportProgress.tick("打包图片", i + 1, images.size)
+                    val name = if (seen.add(path)) path else "${i}_$path"
+                    zip.putNextEntry(java.util.zip.ZipEntry(name).apply { time = 315532800000L })
+                    (context.contentResolver.openInputStream(uri) ?: error("无法读取 $path")).use { it.copyTo(zip, 1 shl 16) }
+                    zip.closeEntry()
+                }
+            }
+            return out
+        } catch (e: Throwable) { out.delete(); throw e }
     }
 
     private fun writeCache(row: ShelfBook, book: Book) {

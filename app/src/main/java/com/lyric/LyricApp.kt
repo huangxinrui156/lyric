@@ -25,5 +25,8 @@ class LyricApp : Application() {
             repository.seed()
             repository.checkSources()
         }
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching { com.lyric.reader.KillCheck.verifyAfterRestart(this@LyricApp, repository) }
+        }
     }
 }

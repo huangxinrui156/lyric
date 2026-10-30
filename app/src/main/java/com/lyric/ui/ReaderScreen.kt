@@ -68,6 +68,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
+    state.book?.takeIf { it.contentType == ContentType.COMIC }?.let { comic ->
+        ComicReaderScreen(vm, comic, back)
+        return
+    }
     val prefs by vm.settings.collectAsStateWithLifecycle()
     val locator by vm.locator.collectAsStateWithLifecycle()
     val marks by vm.bookmarks.collectAsStateWithLifecycle()
@@ -488,7 +492,7 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                 }
                 }
                 curlFrame?.let { frame ->
-                    PageCurl(frame, bg, Modifier.fillMaxSize().testTag("page-curl")) { commit ->
+                    PageCurl(frame, bg, Modifier.fillMaxSize().testTag("page-curl"), ThemePalette.curl(prefs.theme, prefs.customBg, prefs.customInk)) { commit ->
                         canvas?.finishCurl(commit) {
                             if (curlFrame === frame) curlFrame = null
                         }

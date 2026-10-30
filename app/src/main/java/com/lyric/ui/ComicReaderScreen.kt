@@ -1,0 +1,352 @@
+package com.lyric.ui
+
+import android.app.Activity
+import android.graphics.Bitmap
+import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lyric.ReaderActivity
+import com.lyric.core.*
+import com.lyric.data.SettingsScope
+import com.lyric.reader.ComicArchive
+import com.lyric.reader.VolumeNavigation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private val ComicBg = Color(0xFF111111)
+private val BarBg = Color(0xE0111111)
+private val ComicInk = Color(0xFFD0CABE)
+private val ComicMeta = Color(0xFF8E897F)
+private val ComicAccent = Color(0xFFE08A6E)
+private val Track = Color(0xFF3A3A3E)
+private val Skeleton = Color(0xFF1A1A1D)
+
+data class ComicPageRef(val chapter: Int, val page: Int, val unit: ContentUnit.ImagePage)
+
+/** Flattened page list over all chapters; global index <-> Locator(chapter, 0, page). */
+class ComicPages(book: Book) {
+    val pages: List<ComicPageRef> = book.chapters.flatMap { c ->
+        c.units.mapIndexedNotNull { i, u -> (u as? ContentUnit.ImagePage)?.let { ComicPageRef(c.index, i, it) } }
+    }
+    fun indexOf(l: Locator): Int = pages.indexOfFirst { it.chapter == l.chapterIndex && it.page == l.page }.coerceAtLeast(0)
+    fun locator(i: Int): Locator = pages[i.coerceIn(0, pages.lastIndex)].let { Locator(it.chapter, 0, it.page) }
+}
+
+/** Which tap zone means "next": right→left books turn forward by tapping the left side. */
+object ComicTaps {
+    /** -1 previous, +1 next, 0 toggle chrome. */
+    fun step(x: Float, width: Float, rtl: Boolean): Int = when {
+        x < width / 3 -> if (rtl) 1 else -1
+        x > width * 2 / 3 -> if (rtl) -1 else 1
+        else -> 0
+    }
+}
+
+@Composable
+fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
+    val prefs by vm.settings.collectAsStateWithLifecycle()
+    val locator by vm.locator.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val rtl = prefs.comicDirection != "ltr"
+    val pages = remember(book) { ComicPages(book) }
+    val archive = remember(vm.id) {
+        runCatching { ComicArchive(vm.repository.comicFile(vm.id), pages.pages.firstOrNull()?.unit?.resource) }
+    }
+    DisposableEffect(archive) { onDispose { archive.getOrNull()?.close() } }
+    val pager = rememberPagerState(initialPage = pages.indexOf(locator)) { pages.pages.size }
+    var chrome by remember { mutableStateOf(false) }
+    var zoomed by remember { mutableStateOf(false) }
+    var chapters by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    BackHandler { if (chapters) chapters = false else back() }
+
+    LaunchedEffect(pager) {
+        snapshotFlowPage(pager) { i ->
+            vm.readingActivity(pages.locator(i))
+            if (i == pages.pages.lastIndex) vm.finished()
+        }
+    }
+    // Volume keys and D-pad: same direction semantics as text (down = next page).
+    val activity = context as? Activity
+    DisposableEffect(prefs.volumeKeys, prefs.swapVolumeKeys, chapters) {
+        (activity as? ReaderActivity)?.readerVolumeHandler = { event ->
+            val step = VolumeNavigation.step(event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN,
+                prefs.volumeKeys, prefs.swapVolumeKeys, chapters)
+            if (step != null && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0)
+                scope.launch { pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, pages.pages.lastIndex)) }
+            step != null
+        }
+        onDispose { (activity as? ReaderActivity)?.readerVolumeHandler = null }
+    }
+
+    // First-time hint: once per book per direction.
+    val hints = remember { context.getSharedPreferences("comic_hints", 0) }
+    val hintKey = "${vm.id}_${prefs.comicDirection}"
+    var hint by remember(hintKey) { mutableStateOf(!hints.getBoolean(hintKey, false)) }
+    LaunchedEffect(hintKey, hint) {
+        if (hint) { hints.edit().putBoolean(hintKey, true).apply(); delay(2400); hint = false }
+    }
+
+    Box(Modifier.fillMaxSize().background(ComicBg).testTag("comic-reader")) {
+        if (pages.pages.isEmpty() || archive.isFailure) {
+            ComicError("这本漫画没能打开", archive.exceptionOrNull()?.localizedMessage ?: "没有图片", null, null)
+        } else {
+            CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+                HorizontalPager(pager, Modifier.fillMaxSize(), beyondViewportPageCount = 2,
+                    userScrollEnabled = !zoomed, key = { it }) { index ->
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                        ComicPage(archive.getOrThrow(), pages.pages[index],
+                            onZoom = { if (index == pager.currentPage) zoomed = it },
+                            onTap = { x, w ->
+                                hint = false
+                                when (val step = ComicTaps.step(x, w, rtl)) {
+                                    0 -> chrome = !chrome
+                                    else -> scope.launch {
+                                        pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, pages.pages.lastIndex))
+                                    }
+                                }
+                            },
+                            onSkip = { scope.launch { pager.animateScrollToPage((index + 1).coerceAtMost(pages.pages.lastIndex)) } })
+                    }
+                }
+            }
+        }
+        // "Next page" zone flash with the first-time hint.
+        AnimatedVisibility(hint, enter = fadeIn(), exit = fadeOut(tween(300)),
+            modifier = Modifier.fillMaxHeight().fillMaxWidth(1f / 3).align(if (rtl) Alignment.CenterStart else Alignment.CenterEnd)) {
+            var flash by remember { mutableStateOf(true) }
+            LaunchedEffect(Unit) { delay(1200); flash = false }
+            Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = if (flash) .08f else 0f)))
+        }
+        AnimatedVisibility(hint, enter = fadeIn(), exit = fadeOut(tween(300)),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 56.dp)) {
+            Box(Modifier.height(32.dp).background(BarBg, RoundedCornerShape(16.dp)).padding(horizontal = 16.dp),
+                contentAlignment = Alignment.Center) {
+                Text(if (rtl) "从右往左读 · 点左侧翻下一页" else "左→右：点右侧翻下一页", color = ComicInk, fontSize = 12.sp)
+            }
+        }
+        val current = pages.pages.getOrNull(pager.currentPage)
+        AnimatedVisibility(chrome, enter = fadeIn(tween(200, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(160, easing = FastOutSlowInEasing)), modifier = Modifier.align(Alignment.TopCenter)) {
+            Row(Modifier.fillMaxWidth().background(BarBg).statusBarsPadding().height(56.dp).padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = ComicInk) }
+                Column(Modifier.weight(1f)) {
+                    Text(book.title, color = ComicInk, fontSize = 15.sp, maxLines = 1)
+                    current?.let { Text(book.chapters[it.chapter].title, color = ComicMeta, fontSize = 11.sp, maxLines = 1) }
+                }
+                IconButton({
+                    vm.updateSettings(SettingsScope.BOOK, prefs.copy(comicDirection = if (rtl) "ltr" else "rtl"))
+                    hint = true
+                }, Modifier.semantics { contentDescription = if (rtl) "当前从右往左，切换为从左往右" else "当前从左往右，切换为从右往左" }) {
+                    DirectionIcon(rtl, ComicAccent)
+                }
+            }
+        }
+        AnimatedVisibility(chrome, enter = fadeIn(tween(200, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(160, easing = FastOutSlowInEasing)), modifier = Modifier.align(Alignment.BottomCenter)) {
+            Column(Modifier.fillMaxWidth().background(BarBg).navigationBarsPadding().padding(horizontal = 20.dp, vertical = 10.dp)) {
+                Text("${pager.currentPage + 1} / ${pages.pages.size}", color = ComicInk, fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace, modifier = Modifier.align(Alignment.CenterHorizontally))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (rtl) "${pages.pages.size}" else "1", color = ComicMeta, fontSize = 11.sp)
+                    // Mirrored for right-to-left: the start of the book is on the right.
+                    CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
+                        var drag by remember { mutableStateOf<Float?>(null) }
+                        Slider(drag ?: pager.currentPage.toFloat(), { drag = it },
+                            valueRange = 0f..(pages.pages.lastIndex.coerceAtLeast(1)).toFloat(),
+                            onValueChangeFinished = { drag?.let { v -> scope.launch { pager.scrollToPage(v.toInt()) } }; drag = null },
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                            colors = SliderDefaults.colors(thumbColor = ComicAccent, activeTrackColor = ComicAccent, inactiveTrackColor = Track))
+                    }
+                    Text(if (rtl) "1" else "${pages.pages.size}", color = ComicMeta, fontSize = 11.sp)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                    IconButton({ chapters = true }) { Icon(Icons.AutoMirrored.Outlined.List, "章节", tint = ComicInk) }
+                    IconButton({ vm.updateSettings(SettingsScope.BOOK, prefs.copy(comicDirection = if (rtl) "ltr" else "rtl")); hint = true }) {
+                        DirectionIcon(rtl, ComicInk)
+                    }
+                    IconButton({ vm.bookmark(pages.locator(pager.currentPage)) }) { Icon(Icons.Outlined.BookmarkBorder, "书签", tint = ComicInk) }
+                }
+            }
+        }
+        if (chapters) Dialog({ chapters = false }) {
+            Surface(color = Color(0xFF1A1A1D), shape = RoundedCornerShape(10.dp)) {
+                LazyColumn(Modifier.heightIn(max = 480.dp).padding(vertical = 8.dp)) {
+                    itemsIndexed(book.chapters) { i, c ->
+                        Text("${c.title} · ${c.units.size} 页", color = if (current?.chapter == i) ComicAccent else ComicInk,
+                            fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
+                                chapters = false
+                                scope.launch { pager.scrollToPage(pages.indexOf(Locator(i, 0, 0))) }
+                            }.padding(horizontal = 20.dp, vertical = 12.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+private suspend fun snapshotFlowPage(pager: androidx.compose.foundation.pager.PagerState, onPage: (Int) -> Unit) {
+    snapshotFlow { pager.settledPage }.collect(onPage)
+}
+
+/** 24dp grid, 1.6dp round strokes: two page frames + arrow pointing in reading direction. */
+@Composable
+fun DirectionIcon(rtl: Boolean, tint: Color) {
+    Canvas(Modifier.size(24.dp)) {
+        val s = size.width / 24f
+        val stroke = Stroke(1.6f * s, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        drawRoundRect(tint, Offset(3 * s, 4 * s), androidx.compose.ui.geometry.Size(8 * s, 11 * s), style = stroke)
+        drawRoundRect(tint, Offset(13 * s, 4 * s), androidx.compose.ui.geometry.Size(8 * s, 11 * s), style = stroke)
+        val y = 19.5f * s
+        drawLine(tint, Offset(6 * s, y), Offset(18 * s, y), 1.6f * s, androidx.compose.ui.graphics.StrokeCap.Round)
+        val tip = if (rtl) 6 * s else 18 * s; val d = if (rtl) 3 * s else -3 * s
+        drawLine(tint, Offset(tip, y), Offset(tip + d, y - 2.5f * s), 1.6f * s, androidx.compose.ui.graphics.StrokeCap.Round)
+        drawLine(tint, Offset(tip, y), Offset(tip + d, y + 2.5f * s), 1.6f * s, androidx.compose.ui.graphics.StrokeCap.Round)
+    }
+}
+
+@Composable
+private fun ComicPage(archive: ComicArchive, ref: ComicPageRef, onZoom: (Boolean) -> Unit,
+                      onTap: (Float, Float) -> Unit, onSkip: () -> Unit) {
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    var attempt by remember { mutableIntStateOf(0) }
+    var result by remember(ref, attempt) { mutableStateOf<Result<Bitmap>?>(null) }
+    var slow by remember(ref, attempt) { mutableStateOf(false) }
+    var verySlow by remember(ref, attempt) { mutableStateOf(false) }
+    LaunchedEffect(ref, attempt, size.width) {
+        if (size.width == 0) return@LaunchedEffect
+        launch { delay(300); slow = true; delay(700); verySlow = true }
+        result = withContext(Dispatchers.IO) { runCatching { archive.page(ref.unit.resource, size.width * 2, size.height * 2) } }
+    }
+    var scale by remember(ref) { mutableFloatStateOf(1f) }
+    var offset by remember(ref) { mutableStateOf(Offset.Zero) }
+    val anim = rememberCoroutineScope()
+    LaunchedEffect(scale > 1.01f) { onZoom(scale > 1.01f) }
+    fun clampOffset(o: Offset, s: Float) = Offset(
+        o.x.coerceIn(-size.width * (s - 1) / 2, size.width * (s - 1) / 2),
+        o.y.coerceIn(-size.height * (s - 1) / 2, size.height * (s - 1) / 2))
+    Box(Modifier.fillMaxSize().onSizeChanged { size = it }
+        .pointerInput(ref) {
+            detectTapGestures(onDoubleTap = { p ->
+                val target = if (scale > 1.01f) 1f else 2f
+                val from = scale; val fromOffset = offset
+                val toOffset = if (target == 1f) Offset.Zero else clampOffset((Offset(size.width / 2f, size.height / 2f) - p) * (target - 1), target)
+                anim.launch {
+                    androidx.compose.animation.core.animate(0f, 1f, animationSpec = tween(250)) { t, _ ->
+                        scale = from + (target - from) * t; offset = fromOffset + (toOffset - fromOffset) * t
+                    }
+                }
+            }, onTap = { p -> if (scale <= 1.01f) onTap(p.x, size.width.toFloat()) })
+        }
+        .pointerInput(ref) {
+            // Pinch 1–4x; one-finger pan only while zoomed so the pager keeps its swipe otherwise.
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                do {
+                    val event = awaitPointerEvent()
+                    val pressed = event.changes.count { it.pressed }
+                    if (pressed >= 2 || scale > 1.01f) {
+                        val zoom = event.calculateZoom(); val pan = event.calculatePan()
+                        val next = (scale * zoom).coerceIn(1f, 4f)
+                        offset = clampOffset(offset + pan, next); scale = next
+                        event.changes.forEach { if (it.positionChanged()) it.consume() }
+                    }
+                } while (event.changes.any { it.pressed })
+                if (scale < 1.05f) { scale = 1f; offset = Offset.Zero }
+            }
+        }, contentAlignment = Alignment.Center) {
+        val r = result
+        val ratio = ref.unit.width?.let { w -> ref.unit.height?.takeIf { it > 0 && w > 0 }?.let { w.toFloat() / it } } ?: (3f / 4)
+        when {
+            r == null -> Box(Modifier.fillMaxWidth().aspectRatio(ratio, matchHeightConstraintsFirst = ratio < size.width.toFloat() / size.height.coerceAtLeast(1))) {
+                if (slow) {
+                    val breathe by rememberInfiniteTransition(label = "skeleton").animateFloat(.06f, .09f,
+                        infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "breathe")
+                    Box(Modifier.fillMaxSize().background(Skeleton).background(Color.White.copy(alpha = breathe)))
+                    if (verySlow) Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(.4f).height(2.dp).background(ComicAccent.copy(alpha = .7f)))
+                }
+            }
+            r.isFailure -> ComicError("这一页没能打开",
+                "${ref.unit.resource.substringAfterLast('/')} · ${r.exceptionOrNull()?.localizedMessage?.substringAfter(" · ") ?: "未知错误"}",
+                { attempt++ }, onSkip)
+            else -> Image(r.getOrThrow().asImageBitmap(), null, contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y
+                })
+        }
+        if (scale > 1.01f) Text("${"%.1f".format(scale)}×", color = ComicInk, fontSize = 11.sp,
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)
+                .background(BarBg, RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 2.dp))
+    }
+}
+
+@Composable
+private fun ComicError(title: String, reason: String, retry: (() -> Unit)?, skip: (() -> Unit)?) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(Modifier.padding(20.dp).fillMaxWidth().aspectRatio(1 / 1.4f, matchHeightConstraintsFirst = false)
+            .background(Skeleton, RoundedCornerShape(6.dp))
+            .drawBehindDashed(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Icon(Icons.Outlined.BrokenImage, null, tint = ComicMeta, modifier = Modifier.size(36.dp))
+            Spacer(Modifier.height(12.dp))
+            Text(title, color = ComicInk, fontSize = 15.sp, fontFamily = Serif)
+            Text(reason, color = ComicMeta, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                retry?.let { OutlinedButton(it, Modifier.height(32.dp), border = BorderStroke(1.dp, ComicAccent),
+                    contentPadding = PaddingValues(horizontal = 16.dp)) { Text("重试", color = ComicAccent, fontSize = 12.sp) } }
+                skip?.let { OutlinedButton(it, Modifier.height(32.dp), border = BorderStroke(1.dp, Color(0xFF45444A)),
+                    contentPadding = PaddingValues(horizontal = 16.dp)) { Text("跳过此页", color = ComicInk, fontSize = 12.sp) } }
+            }
+        }
+    }
+}
+
+private fun Modifier.drawBehindDashed() = this.then(Modifier.drawWithCacheDashed())
+private fun Modifier.drawWithCacheDashed() = this.drawBehind {
+    drawRoundRect(Color(0xFF45444A), cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
+        style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))))
+}

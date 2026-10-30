@@ -40,7 +40,7 @@ internal fun curlShouldComplete(direction: Int, x: Float, width: Float, velocity
 }
 
 @Composable
-internal fun PageCurl(frame: CurlFrame, paper: Color, modifier: Modifier, finished: (Boolean) -> Unit) {
+internal fun PageCurl(frame: CurlFrame, paper: Color, modifier: Modifier, style: com.lyric.core.CurlStyle? = null, finished: (Boolean) -> Unit) {
     val animated = remember(frame) { Animatable(frame.touch, Offset.VectorConverter) }
     var settling by remember(frame) { mutableStateOf(false) }
     val latestFinished by rememberUpdatedState(finished)
@@ -66,7 +66,7 @@ internal fun PageCurl(frame: CurlFrame, paper: Color, modifier: Modifier, finish
             val native = canvas.nativeCanvas
             if (frame.target == null) native.drawBitmap(current, null, RectF(0f, 0f, size.width, size.height), null)
             else drawPageCurl(native, current, frame.target!!, size.width, size.height,
-                if (settling) animated.value else frame.touch, frame.direction, frame.topCorner, paper.toArgb())
+                if (settling) animated.value else frame.touch, frame.direction, frame.topCorner, paper.toArgb(), style, density)
         }
     }
 }
@@ -127,7 +127,11 @@ internal class CurlGeometry(width: Float, height: Float, touch: Offset, directio
 
 internal fun drawPageCurl(canvas: AndroidCanvas, current: Bitmap, target: Bitmap, width: Float, height: Float,
     touch: Offset, direction: Int, top: Boolean, paper: Int,
+    style: com.lyric.core.CurlStyle? = null, density: Float = 1f,
 ) {
+    fun a(alpha: Float) = (alpha.coerceIn(0f, 1f) * 255).toInt() shl 24
+    val cast = style?.castAlpha ?: .33f
+    val dim = style?.dimAlpha ?: .10f
     val bounds = RectF(0f, 0f, width, height)
     val geometry = CurlGeometry(width, height, touch, direction, top)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -136,25 +140,30 @@ internal fun drawPageCurl(canvas: AndroidCanvas, current: Bitmap, target: Bitmap
     canvas.drawBitmap(target, null, bounds, paint)
     // Shadow cast by the lifted sheet on the revealed page.
     val m = geometry.midpoint; val n = geometry.normal
-    val shadowWidth = (width * .075f).coerceIn(12f, 72f)
-    paint.shader = LinearGradient(m.x - n.x * shadowWidth, m.y - n.y * shadowWidth,
+    val shadowWidth = if (style != null) 24 * density else (width * .075f).coerceIn(12f, 72f)
+    val dimWidth = if (style != null) 16 * density else shadowWidth
+    // Cast shadow: strongest at the fold, fading over 24dp onto the revealed page; under-page dim 16dp.
+    paint.shader = LinearGradient(m.x - n.x * dimWidth, m.y - n.y * dimWidth,
         m.x + n.x * shadowWidth, m.y + n.y * shadowWidth,
-        intArrayOf(0x00000000, 0x55000000, 0x00000000), floatArrayOf(0f, .5f, 1f), Shader.TileMode.CLAMP)
+        intArrayOf(a(dim * .4f), a(maxOf(cast, dim)), 0x00000000),
+        floatArrayOf(0f, dimWidth / (dimWidth + shadowWidth), 1f), Shader.TileMode.CLAMP)
     canvas.save(); canvas.clipPath(geometry.cut); canvas.drawRect(bounds, paint); canvas.restore()
     paint.shader = null
     canvas.save(); canvas.clipOutPath(geometry.cut)
     canvas.drawBitmap(current, null, bounds, paint); canvas.restore()
     // Paper underside, with reflected print and a highlight/shadow across the fold.
     canvas.save(); canvas.clipPath(geometry.back)
-    canvas.drawColor(paper)
+    canvas.drawColor(style?.back ?: paper)
     canvas.save(); canvas.concat(geometry.reflection)
-    paint.alpha = 45; canvas.drawBitmap(current, null, bounds, paint); paint.alpha = 255
+    paint.alpha = ((style?.showThrough ?: .18f) * 255).toInt(); canvas.drawBitmap(current, null, bounds, paint); paint.alpha = 255
     canvas.restore()
     paint.shader = LinearGradient(m.x - n.x * shadowWidth * 2, m.y - n.y * shadowWidth * 2,
         m.x + n.x * shadowWidth / 2, m.y + n.y * shadowWidth / 2,
         intArrayOf(0x18000000, 0x38ffffff, 0x68000000), floatArrayOf(0f, .55f, 1f), Shader.TileMode.CLAMP)
     canvas.drawRect(bounds, paint); canvas.restore()
-    paint.shader = null; paint.color = 0x33000000; paint.style = Paint.Style.STROKE; paint.strokeWidth = .8f
+    paint.shader = null
+    paint.color = if (style != null) a(style.highlightAlpha) or 0xFFFFFF else 0x33000000
+    paint.style = Paint.Style.STROKE; paint.strokeWidth = if (style != null) 1 * density else .8f
     canvas.drawPath(geometry.back, paint)
     canvas.restore()
 }

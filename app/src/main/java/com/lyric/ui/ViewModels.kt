@@ -118,13 +118,18 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
     fun readingActivity(next: Locator) {
         val book = state.value.book ?: return
         val old = locator.value
-        if (next != old) {
+        if (next != old && book.contentType == ContentType.COMIC) {
+            val pages = { l: Locator -> book.chapters.take(l.chapterIndex).sumOf { it.units.size.toLong() } + l.page }
+            tracker.onActivity(kotlin.math.abs(pages(next) - pages(old)))
+        } else if (next != old) {
             val a = book.chapters.take(old.chapterIndex).sumOf { it.text.length.toLong() } + old.charOffset
             val b = book.chapters.take(next.chapterIndex).sumOf { it.text.length.toLong() } + next.charOffset
             tracker.onActivity(kotlin.math.abs(b - a))
         }
         engine.goTo(next)
         flush()
+        com.lyric.reader.KillCheck.activity(app)
+        com.lyric.reader.KillCheck.record(app, id, book.title, book.clamp(next))
     }
     private var finishedRecorded = false
     fun finished() {

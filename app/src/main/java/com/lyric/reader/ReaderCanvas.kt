@@ -66,7 +66,7 @@ class ReaderCanvas(context: Context) : View(context) {
     private var animOffset = 0f
     private var direction = 1
     private val selectionPath = Path()
-    private val selectionPaint = Paint().apply { color = 0x55B5563A }
+    private val selectionPaint = Paint()
     private val paperPaint = Paint()
     private val scroller = OverScroller(context)
     private var selection: TextSelection? = null
@@ -91,7 +91,7 @@ class ReaderCanvas(context: Context) : View(context) {
                 // bind/syncLocation moves the dragged boundary to the new visible edge.
             }
             invalidate()
-            handler.postDelayed(this, 500)
+            handler.postDelayed(this, EDGE_TURN_MS)
         }
     }
     private var lastX = 0f
@@ -327,6 +327,7 @@ class ReaderCanvas(context: Context) : View(context) {
                 if (prefs.pageMode == PageMode.SCROLL)
                     set.layout.getLineEnd(set.layout.getLineForVertical((scroll + height).toInt()))
                 else set.pages[page].end
+            selectionPaint.color = palette().fill
             var index = set.plainText.indexOf(highlight, visibleStart, true)
             while (index in visibleStart until visibleEnd) {
                 selectionPath.reset()
@@ -345,6 +346,7 @@ class ReaderCanvas(context: Context) : View(context) {
             val a = (selected.start - base).coerceIn(0, set.layout.text.length)
             val z = (selected.end - base).coerceIn(0, set.layout.text.length)
             if (a < z) {
+                selectionPaint.color = palette().fill
                 selectionPath.reset()
                 set.layout.getSelectionPath(a, z, selectionPath)
                 canvas.drawPath(selectionPath, selectionPaint)
@@ -476,6 +478,8 @@ class ReaderCanvas(context: Context) : View(context) {
 
     private fun startCurl(step: Int, dragging: Boolean, x: Float, y: Float): Boolean {
         if (pendingKey != null || curlRunning || onCurl == null) return false
+        // Never curl while a selection or long-press is in progress (selection owns the gesture).
+        if (selection != null || longPressed || draggingHandle != 0) return false
         val next = target(step) ?: return false
         curlOrigin = locator
         curlDestination = next
@@ -650,13 +654,28 @@ class ReaderCanvas(context: Context) : View(context) {
             val x = if (atLineEnd) set.layout.getLineRight(line) else set.layout.getPrimaryHorizontal(local)
             point.set(horizontal + x,
                 (set.layout.getLineBottom(line) - top).coerceIn(12 * density, height - 12 * density))
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ink; alpha = 180 }
-            canvas.drawCircle(point.x, point.y, 8 * density, paint)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = palette().handle }
+            drawHandle(canvas, point, absolute == selected.start, paint)
         }
         handle(selected.start, startHandle)
         handle(selected.end, endHandle)
         actionMode?.invalidateContentRect()
     }
+
+    /** design §6: 12dp teardrop; the point sits on the text edge, the bulb hangs below. */
+    private fun drawHandle(canvas: Canvas, point: PointF, start: Boolean, paint: Paint) {
+        val r = 6 * density
+        val cx = point.x + if (start) -r else r
+        val cy = point.y + r
+        val drop = Path().apply {
+            addCircle(cx, cy, r, Path.Direction.CW)
+            // Square corner pointing at the text boundary.
+            addRect(if (start) cx else point.x, point.y, if (start) point.x else cx, cy, Path.Direction.CW)
+        }
+        canvas.drawPath(drop, paint)
+    }
+
+    private fun palette() = com.lyric.core.ThemePalette.selection(prefs.theme, prefs.customBg, prefs.customInk)
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (controlsOpen) return false
@@ -680,7 +699,8 @@ class ReaderCanvas(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 longPressed = false
                 if (selection != null) {
-                    fun near(point: PointF) = abs(event.x - point.x) < 30 * density && abs(event.y - point.y) < 30 * density
+                    // 48dp transparent hit target around the 12dp handle.
+                    fun near(point: PointF) = abs(event.x - point.x) < 24 * density && abs(event.y - point.y - 6 * density) < 24 * density
                     draggingHandle = when { near(startHandle) -> 1; near(endHandle) -> 2; else -> 0 }
                     if (draggingHandle != 0) {
                         parent?.requestDisallowInterceptTouchEvent(true)
@@ -689,7 +709,7 @@ class ReaderCanvas(context: Context) : View(context) {
                     }
                     clearSelection()
                 }
-                handler.postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
+                handler.postDelayed(longPress, LONG_PRESS_MS)
             }
             MotionEvent.ACTION_MOVE -> {
                 if (abs(event.x - downX) > 12 * density || abs(event.y - downY) > 12 * density)
@@ -705,7 +725,7 @@ class ReaderCanvas(context: Context) : View(context) {
                     if (step != edgeStep) {
                         edgeStep = step
                         handler.removeCallbacks(edgeTurn)
-                        if (step != 0) handler.postDelayed(edgeTurn, 450)
+                        if (step != 0) handler.postDelayed(edgeTurn, EDGE_TURN_MS)
                     }
                     return true
                 }
@@ -879,3 +899,7 @@ class ReaderCanvas(context: Context) : View(context) {
         if (width > 0 && height > 0) book?.let { bind(it, locator, prefs, ink, paper, highlight) }
     }
 }
+
+/** v0.4 P0 gesture timings (spec: selection ≤400ms; handle at page edge turns after 600ms). */
+const val LONG_PRESS_MS = 400L
+const val EDGE_TURN_MS = 600L

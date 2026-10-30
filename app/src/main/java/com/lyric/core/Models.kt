@@ -135,6 +135,8 @@ data class ReaderSettings(
     val useBookStyle: Boolean = false,
     val customBg: Long = 0xFFF4EFE6,
     val customInk: Long = 0xFF2B2A27,
+    /** Comic reading direction: "rtl" (default, manga) or "ltr". Stored per book via SettingsScope.BOOK. */
+    val comicDirection: String = "rtl",
 )
 
 interface BookParser {
@@ -143,10 +145,10 @@ interface BookParser {
     fun parse(source: ContentSource, encoding: String? = null, chapterRegex: String? = null): Book
 }
 
-class ParserRegistry(private val parsers: List<BookParser> = listOf(TxtParser(), EpubParser())) {
+class ParserRegistry(private val parsers: List<BookParser> = listOf(TxtParser(), EpubParser(), ComicParser())) {
     fun parser(extension: String): BookParser =
         parsers.firstOrNull { extension.lowercase() in it.extensions }
-            ?: throw IllegalArgumentException("暂不支持 .$extension，仅支持 TXT / EPUB")
+            ?: throw IllegalArgumentException("暂不支持 .$extension，仅支持 TXT / EPUB / CBZ")
 }
 
 interface ReaderEngine {
