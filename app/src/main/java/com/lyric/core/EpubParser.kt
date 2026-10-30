@@ -167,7 +167,7 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
                 .take(10)
                 .joinToString("\n") { String(it, Charsets.UTF_8) }
         val lineHeight =
-            Regex("line-height\\s*:\\s*([12](?:\\.\\d+)?)\\s*[;}]", RegexOption.IGNORE_CASE)
+            Regex("line-height\\s*:\\s*([12](?:\\.\\d+)?)\\s*[;\\}]", RegexOption.IGNORE_CASE)
                 .find(css)
                 ?.groupValues
                 ?.get(1)
@@ -180,7 +180,7 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
                     .joinToString("\n") { it.data().ifBlank { it.html() } }
             }
         fontSheets.forEach { (cssPath, sheet) ->
-            Regex("@font-face\\s*\\{([^}]+)}", RegexOption.IGNORE_CASE).findAll(sheet).forEach { face ->
+            Regex("@font-face\\s*\\{([^\\}]+)\\}", RegexOption.IGNORE_CASE).findAll(sheet).forEach { face ->
                 val props = EpubLayout.declarations(face.groupValues[1])
                 val family = props["font-family"]?.trim()?.trim('\'', '"')
                 val src = Regex("url\\(['\"]?([^)'\"]+)").find(props["src"].orEmpty())?.groupValues?.get(1)

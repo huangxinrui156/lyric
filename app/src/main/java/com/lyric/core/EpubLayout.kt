@@ -13,7 +13,7 @@ object EpubLayout {
             it.drop(colon + 1).trim().removeSuffix("!important").trim()
     }.toMap()
 
-    fun rules(css: String): List<Rule> = Regex("([^{}]+)\\{([^{}]*)}")
+    fun rules(css: String): List<Rule> = Regex("([^\\{\\}]+)\\{([^\\{\\}]*)\\}")
         .findAll(css.replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), ""))
         .filter { !it.groupValues[1].trim().startsWith('@') }
         .flatMap { match -> match.groupValues[1].split(',').map { selector ->
