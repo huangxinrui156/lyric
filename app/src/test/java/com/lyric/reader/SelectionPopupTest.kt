@@ -57,7 +57,7 @@ class SelectionPopupTest {
             val popup = requireNotNull(view.selectionPopup) { "$theme popup" }
             assertTrue(popup.isShowing)
             assertTrue(view.selectionMenuOpen)
-            assertEquals(listOf("复制", "摘录", "分享"), items(view).map { it.text.toString() })
+            assertEquals(listOf("复制", "划线", "笔记", "分享"), items(view).map { it.text.toString() })
             val colors = ThemePalette.selection(theme)
             assertEquals(colors.menuBg, (view.selectionMenuView!!.background as GradientDrawable).color!!.defaultColor)
             assertEquals(colors.menuInk, items(view)[0].currentTextColor)
@@ -78,13 +78,13 @@ class SelectionPopupTest {
     @Test fun excerptShareOutsideTapAndPageTurnDismiss() {
         val (activity, view) = open(ReaderTheme.PAPER)
         var excerpt: Pair<Locator, String>? = null
-        view.onExcerpt = { l, t -> excerpt = l to t }
+        view.onHighlight = { ch, start, end, t, _ -> excerpt = Locator(ch, start) to t; assertEquals(t.length, end - start) }
         longPress(view, view.width / 2f, view.height / 2f)
         items(view)[1].performClick()
         assertNotNull(excerpt); assertTrue(excerpt!!.second.isNotBlank())
 
         longPress(view, view.width / 2f, view.height / 2f)
-        items(view)[2].performClick()
+        items(view)[3].performClick()
         val chooser = shadowOf(activity).nextStartedActivity
         assertEquals(Intent.ACTION_CHOOSER, chooser.action)
         val send = chooser.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)!!

@@ -58,6 +58,10 @@ class ReaderCanvas(context: Context) : View(context) {
     private var paginationKey: Any? = null
     var controlsOpen = false
     var onExcerpt: (Locator, String) -> Unit = { _, _ -> }
+    /** (chapter, start, end, text, withNote) — chapter-relative offsets survive re-pagination. */
+    var onHighlight: (Int, Int, Int, String, Boolean) -> Unit = { _, _, _, _, _ -> }
+    var highlights: List<com.lyric.data.HighlightRow> = emptyList()
+        set(value) { if (field != value) { field = value; invalidate() } }
     var onImage: (String) -> Unit = {}
     private var pendingKey: Any? = null
     private var layoutKey: Any? = null
@@ -339,6 +343,18 @@ class ReaderCanvas(context: Context) : View(context) {
                 index = set.plainText.indexOf(highlight, index + highlight.length, true)
             }
         }
+        if (highlights.isNotEmpty()) {
+            selectionPaint.color = palette().fill
+            for (h in highlights) {
+                if (h.chapterIndex != chapter) continue
+                val a = (h.start - set.sourceStart).coerceIn(0, set.layout.text.length)
+                val z = (h.end - set.sourceStart).coerceIn(0, set.layout.text.length)
+                if (a >= z) continue
+                selectionPath.reset()
+                set.layout.getSelectionPath(a, z, selectionPath)
+                canvas.drawPath(selectionPath, selectionPaint)
+            }
+        }
         selection?.let { selected ->
             val b = book ?: return@let
             val base = TextSelection.absolute(b, chapter, set.sourceStart)
@@ -584,7 +600,13 @@ class ReaderCanvas(context: Context) : View(context) {
         when (id) {
             1 -> (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                 .setPrimaryClip(ClipData.newPlainText(b.title, text))
-            2 -> onExcerpt(selected.locator(b), text)
+            2, 4 -> {
+                val at = selected.locator(b)
+                val len = b.chapters[at.chapterIndex].text.length
+                val end = (at.charOffset + text.length).coerceAtMost(len)
+                onHighlight(at.chapterIndex, at.charOffset, end,
+                    b.chapters[at.chapterIndex].text.substring(at.charOffset, end), id == 4)
+            }
             3 -> context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, text)
@@ -610,11 +632,11 @@ class ReaderCanvas(context: Context) : View(context) {
                 cornerRadius = 10 * d; setColor(colors.menuBg)
             }
             elevation = 14 * d
-            listOf(1 to "复制", 2 to "摘录", 3 to "分享").forEachIndexed { i, (id, label) ->
+            listOf(1 to "复制", 2 to "划线", 4 to "笔记", 3 to "分享").forEachIndexed { i, (id, label) ->
                 addView(android.widget.TextView(context).apply {
                     text = label; textSize = 13f; setTextColor(colors.menuInk)
                     minHeight = (32 * d).toInt(); gravity = android.view.Gravity.CENTER
-                    setPadding(if (i == 0) 0 else (9 * d).toInt(), 0, if (i == 2) 0 else (9 * d).toInt(), 0)
+                    setPadding(if (i == 0) 0 else (9 * d).toInt(), 0, if (i == 3) 0 else (9 * d).toInt(), 0)
                     contentDescription = label
                     setOnClickListener { selectionAction(id) }
                 })

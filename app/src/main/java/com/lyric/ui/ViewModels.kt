@@ -32,8 +32,10 @@ class ShelfViewModel(private val app: LyricApp) : ViewModel() {
         viewModelScope.launch { repository.settings.shelf(grid = value) }
     }
 
-    fun sort(value: Boolean) {
-        viewModelScope.launch { repository.settings.shelf(sortTitle = value) }
+    val sortMode =
+        repository.settings.shelfSort.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    fun sort(mode: Int) {
+        viewModelScope.launch { repository.settings.shelfSort(mode) }
     }
 
     fun import(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null) {
@@ -65,6 +67,10 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
     val bookmarks =
         repository.dao
             .bookmarks(id)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val highlights =
+        repository.dao
+            .highlights(id)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val hits = MutableStateFlow<List<SearchHit>>(emptyList())
     val searching = MutableStateFlow(false)
@@ -177,6 +183,7 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
                         }
                     }
                 state.value = ReaderState(row, book, false)
+                runCatching { Annotations.migrateExcerpts(repository.dao, id, book) }
                 save()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -220,6 +227,21 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
             notice.value = "已夹入书签"
         }
     }
+
+    fun addHighlight(chapter: Int, start: Int, end: Int, text: String, onCreated: (Long) -> Unit = {}) {
+        val b = state.value.book ?: return
+        viewModelScope.launch {
+            val rowId = repository.dao.addHighlight(
+                HighlightRow(bookId = id, chapterIndex = chapter, start = start, end = end, text = text,
+                    chapterTitle = b.chapters.getOrNull(chapter)?.title.orEmpty(), bookTitle = b.title)
+            )
+            onCreated(rowId)
+        }
+    }
+
+    fun highlightNote(rowId: Long, note: String) { viewModelScope.launch { repository.dao.highlightNote(rowId, note.trim()) } }
+    fun deleteHighlight(rowId: Long) { viewModelScope.launch { repository.dao.deleteHighlight(rowId) } }
+    fun bookmarkNote(rowId: Long, note: String) { viewModelScope.launch { repository.dao.bookmarkNote(rowId, note.trim()) } }
 
     fun deleteBookmark(id: Long) {
         viewModelScope.launch { repository.dao.deleteBookmark(id) }

@@ -52,6 +52,8 @@ data class ImportStatus(
     val detail: String = "",
     val detailFraction: Float = 0f,
     val batchId: Long = 0,
+    val folder: Boolean = false,
+    val source: String = "",
 )
 
 data class SearchHit(
@@ -147,7 +149,8 @@ class LibraryRepository(
         withContext(Dispatchers.IO) {
             importLock.withLock {
                 val batchId = System.nanoTime()
-                imports.value = ImportStatus(running = true, message = "正在扫描本地文件…", batchId = batchId)
+                imports.value = ImportStatus(running = true, message = "正在扫描本地文件…", batchId = batchId, folder = folder,
+                    source = if (folder) uris.firstOrNull()?.lastPathSegment?.substringAfter(':')?.let { "/$it" }.orEmpty() else "")
                 try {
                     Log.i(ImportTrace.TAG, "开始导入 count=${uris.size} tree=$folder flags=$grantFlags")
                     val files = mutableListOf<Uri>()

@@ -66,6 +66,23 @@ data class BookmarkRow(
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "''") val bookTitle: String = "",
     @ColumnInfo(defaultValue = "0") val contentRevision: Int = 0,
+    @ColumnInfo(defaultValue = "''") val note: String = "",
+)
+
+/** Highlights anchor to chapter-relative UTF-16 offsets, so re-pagination never moves them. */
+@Serializable
+@Entity(tableName = "highlights", indices = [Index("bookId")])
+data class HighlightRow(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bookId: String,
+    val chapterIndex: Int,
+    val start: Int,
+    val end: Int,
+    val text: String,
+    val note: String = "",
+    val chapterTitle: String = "",
+    val bookTitle: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
 )
 
 @Serializable
@@ -153,12 +170,20 @@ interface LibraryDao {
     @Query("SELECT * FROM bookmarks WHERE id = :id") suspend fun bookmark(id: Long): BookmarkRow?
 
     @Query("DELETE FROM bookmarks WHERE id = :id") suspend fun deleteBookmark(id: Long)
+    @Query("UPDATE bookmarks SET note = :note WHERE id = :id") suspend fun bookmarkNote(id: Long, note: String)
+
+    @Query("SELECT * FROM highlights WHERE bookId = :id ORDER BY chapterIndex, start")
+    fun highlights(id: String): Flow<List<HighlightRow>>
+    @Query("SELECT * FROM highlights") suspend fun allHighlights(): List<HighlightRow>
+    @Insert suspend fun addHighlight(row: HighlightRow): Long
+    @Query("UPDATE highlights SET note = :note WHERE id = :id") suspend fun highlightNote(id: Long, note: String)
+    @Query("DELETE FROM highlights WHERE id = :id") suspend fun deleteHighlight(id: Long)
 }
 
 @Database(
-    entities = [ShelfBook::class, ProgressRow::class, BookmarkRow::class, ReadingSession::class, FinishedBook::class],
+    entities = [ShelfBook::class, ProgressRow::class, BookmarkRow::class, ReadingSession::class, FinishedBook::class, HighlightRow::class],
     views = [DailyStat::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -188,5 +213,14 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         db.execSQL("ALTER TABLE books ADD COLUMN contentRevision INTEGER NOT NULL DEFAULT 0")
         db.execSQL("ALTER TABLE progress ADD COLUMN contentRevision INTEGER NOT NULL DEFAULT 0")
         db.execSQL("ALTER TABLE bookmarks ADD COLUMN contentRevision INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+/** v0.5: bookmark notes and chapter-anchored highlights (old 摘录 bookmarks migrate on first open). */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE bookmarks ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `highlights` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bookId` TEXT NOT NULL, `chapterIndex` INTEGER NOT NULL, `start` INTEGER NOT NULL, `end` INTEGER NOT NULL, `text` TEXT NOT NULL, `note` TEXT NOT NULL, `chapterTitle` TEXT NOT NULL, `bookTitle` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_highlights_bookId` ON `highlights` (`bookId`)")
     }
 }

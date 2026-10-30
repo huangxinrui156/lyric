@@ -80,6 +80,12 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
     val prefs by vm.settings.collectAsStateWithLifecycle()
     val locator by vm.locator.collectAsStateWithLifecycle()
     val marks by vm.bookmarks.collectAsStateWithLifecycle()
+    val highlightRows by vm.highlights.collectAsStateWithLifecycle()
+    var noteEdit by remember { mutableStateOf<Triple<Boolean, Long, String>?>(null) }
+    noteEdit?.let { (isHighlight, rowId, old) ->
+        NoteDialog(if (isHighlight) "想法" else "书签备注", old,
+            { if (isHighlight) vm.highlightNote(rowId, it) else vm.bookmarkNote(rowId, it) }, { noteEdit = null })
+    }
     val highlight by vm.highlight.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
     var menu by rememberSaveable { mutableStateOf(false) }
@@ -269,121 +275,22 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                         )
                     }
                     TabRow(selectedTabIndex = drawerTab, containerColor = Color.Transparent) {
-                        listOf("目录", "书签").forEachIndexed { i, s ->
-                            Tab(
-                                selected = drawerTab == i,
-                                onClick = { drawerTab = i },
-                                text = { Text(s) },
-                            )
+                        listOf("目录", "书签", "划线").forEachIndexed { i, s ->
+                            Tab(selected = drawerTab == i, onClick = { drawerTab = i }, text = { Text(s) })
                         }
                     }
-                    if (drawerTab == 0)
-                        LazyColumn(
-                            state = tocScroll,
-                            contentPadding = PaddingValues(vertical = 12.dp),
-                        ) {
-                            itemsIndexed(book.toc, key = { i, _ -> i }) { i, entry ->
-                                Row(
-                                    Modifier.fillMaxWidth()
-                                        .background(
-                                            if (i == currentToc)
-                                                MaterialTheme.colorScheme.primaryContainer
-                                            else Color.Transparent
-                                        )
-                                        .clickable {
-                                            vm.goTo(Locator(entry.chapterIndex, entry.charOffset))
-                                            scope.launch { drawer.close() }
-                                            menu = false
-                                        }
-                                        .padding(horizontal = 24.dp, vertical = 17.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        entry.title,
-                                        color =
-                                            if (i == currentToc) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.onBackground,
-                                        fontSize = 14.sp,
-                                        fontWeight =
-                                            if (i == currentToc) FontWeight.SemiBold
-                                            else FontWeight.Normal,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    if (i == currentToc)
-                                        Icon(
-                                            Icons.Outlined.Bookmark,
-                                            "当前章节",
-                                            Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.primary,
-                                        )
-                                }
-                            }
-                        }
-                    else if (marks.isEmpty())
-                        Text(
-                            "还没有书签\n在喜欢的字句之间，夹一片叶子。",
-                            lineHeight = 25.sp,
-                            color = Stone,
-                            fontSize = 13.sp,
-                            modifier = Modifier.padding(24.dp),
-                        )
-                    else
-                        LazyColumn {
-                            items(marks, key = { it.id }) { mark ->
-                                Row(
-                                    Modifier.fillMaxWidth()
-                                        .clickable {
-                                            vm.goTo(
-                                                Locator(
-                                                    mark.chapterIndex,
-                                                    mark.charOffset,
-                                                    mark.page,
-                                                )
-                                            )
-                                            scope.launch { drawer.close() }
-                                            menu = false
-                                        }
-                                        .padding(
-                                            start = 24.dp,
-                                            top = 16.dp,
-                                            bottom = 16.dp,
-                                            end = 8.dp,
-                                        )
-                                ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(
-                                            mark.chapterTitle,
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.primary,
-                                        )
-                                        Text(
-                                            mark.excerpt,
-                                            fontFamily = Serif,
-                                            fontSize = 14.sp,
-                                            lineHeight = 23.sp,
-                                            maxLines = 3,
-                                            modifier = Modifier.padding(vertical = 8.dp),
-                                        )
-                                        Text(
-                                            SimpleDateFormat("MM月dd日 HH:mm", Locale.CHINA)
-                                                .format(Date(mark.createdAt)),
-                                            fontSize = 10.sp,
-                                            color = Stone,
-                                        )
-                                    }
-                                    IconButton(onClick = { vm.deleteBookmark(mark.id) }) {
-                                        Icon(
-                                            Icons.Outlined.Close,
-                                            "删除书签",
-                                            Modifier.size(18.dp),
-                                            tint = Stone,
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                    val goClose: (Locator) -> Unit = {
+                        vm.goTo(it)
+                        scope.launch { drawer.close() }
+                        menu = false
+                    }
+                    when (drawerTab) {
+                        0 -> TocPanel(book, locator, currentToc, tocScroll, goClose)
+                        1 -> BookmarkPanel(marks, { goClose(Locator(it.chapterIndex, it.charOffset, it.page)) },
+                            { noteEdit = Triple(false, it.id, it.note) }, { vm.deleteBookmark(it.id) })
+                        else -> HighlightPanel(highlightRows, { goClose(Locator(it.chapterIndex, it.start)) },
+                            { noteEdit = Triple(true, it.id, it.note) }, { vm.deleteHighlight(it.id) })
+                    }
                 }
             },
         ) {
@@ -421,6 +328,10 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                                     view.onContentReady = { activity.reportFullyDrawn() }
                                     view.controlsOpen = controls
                                     view.onExcerpt = { at, text -> vm.bookmark(at, text) }
+                                    view.highlights = highlightRows
+                                    view.onHighlight = { ch, start, end, text, withNote ->
+                                        vm.addHighlight(ch, start, end, text) { if (withNote) noteEdit = Triple(true, it, "") }
+                                    }
                                     view.onImage = { enlargedImage = it }
                                     view.onLocator = vm::readingActivity
                                     view.onEndReached = vm::finished
@@ -760,11 +671,7 @@ private fun SearchDialog(vm: ReaderViewModel, dismiss: () -> Unit) {
                                 }
                                 .padding(horizontal = 24.dp, vertical = 16.dp)
                         ) {
-                            Text(
-                                hit.chapterTitle,
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+                            Text(hit.chapterTitle, fontSize = 11.sp, color = Stone)
                             val context =
                                 androidx.compose.ui.text.buildAnnotatedString {
                                     append(hit.context)
@@ -772,8 +679,7 @@ private fun SearchDialog(vm: ReaderViewModel, dismiss: () -> Unit) {
                                     while (at >= 0 && query.isNotEmpty()) {
                                         addStyle(
                                             androidx.compose.ui.text.SpanStyle(
-                                                color = Vermilion,
-                                                background = Vermilion.copy(alpha = .12f),
+                                                background = Vermilion.copy(alpha = .26f),
                                             ),
                                             at,
                                             at + query.length,
@@ -786,7 +692,7 @@ private fun SearchDialog(vm: ReaderViewModel, dismiss: () -> Unit) {
                                 fontFamily = Serif,
                                 fontSize = 15.sp,
                                 lineHeight = 25.sp,
-                                modifier = Modifier.padding(top = 8.dp),
+                                modifier = Modifier.padding(top = 4.dp),
                             )
                         }
                         HorizontalDivider(

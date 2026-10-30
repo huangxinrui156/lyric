@@ -34,6 +34,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.lyric.data.*
 import java.io.File
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import java.text.Collator
 import java.util.Locale
 
@@ -43,7 +45,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
     val status by vm.imports.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(status.running, status.message) {
-        if (!status.running && status.message.isNotBlank()) snackbar.showSnackbar(status.message)
+        if (!status.running && status.message.isNotBlank() && !status.folder) snackbar.showSnackbar(status.message)
     }
     val clipboard = LocalClipboardManager.current
     var dismissedErrorBatch by remember { mutableLongStateOf(-1L) }
@@ -59,7 +61,11 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
         )
     }
     val grid by vm.grid.collectAsStateWithLifecycle()
-    val sortTitle by vm.sortTitle.collectAsStateWithLifecycle()
+    val sortMode by vm.sortMode.collectAsStateWithLifecycle()
+    var query by rememberSaveable { mutableStateOf("") }
+    var summaryShown by rememberSaveable { mutableLongStateOf(-1L) }
+    if (!status.running && status.folder && status.batchId != 0L && status.batchId != summaryShown && status.errors.isEmpty())
+        FolderImportSheet(status) { summaryShown = status.batchId }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var filter by rememberSaveable { mutableIntStateOf(0) }
     var importer by remember { mutableStateOf(false) }
@@ -81,7 +87,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
         onDispose { lifecycle.lifecycle.removeObserver(observer) }
     }
     val visible =
-        remember(books, sortTitle, filter) {
+        remember(books, sortMode, filter, query) {
             val list =
                 when (filter) {
                     1 -> books.filter { it.extension == "txt" }
@@ -89,11 +95,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                     3 -> books.filter { it.lastRead > 0 }
                     else -> books
                 }
-            if (sortTitle)
-                list.sortedWith(
-                    compareBy(Collator.getInstance(Locale.SIMPLIFIED_CHINESE)) { it.title }
-                )
-            else list
+            sortShelf(filterShelf(list, query), sortMode)
         }
     val continuing =
         books.firstOrNull { it.lastRead > 0 && !it.invalid } ?: books.firstOrNull { !it.invalid }
@@ -211,6 +213,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                                         )
                                     }
                                 }
+                                ShelfSearchBox(query) { query = it }
                                 Row(
                                     Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -221,17 +224,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                                         fontSize = 11.sp,
                                     )
                                     Spacer(Modifier.weight(1f))
-                                    TextButton(
-                                        onClick = { vm.sort(!sortTitle) },
-                                        contentPadding = PaddingValues(0.dp),
-                                        modifier = Modifier.height(30.dp),
-                                    ) {
-                                        Text(
-                                            if (sortTitle) "书名排序 ↓" else "最近阅读 ↓",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
+                                    ShelfSortChips(sortMode, vm::sort)
                                 }
                                 if (status.running) ImportProgress(status)
                             }
@@ -583,5 +576,76 @@ private fun ImportProgress(status: ImportStatus) {
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/** Title/author contains, case-insensitive. */
+fun filterShelf(books: List<ShelfBook>, query: String): List<ShelfBook> {
+    val q = query.trim()
+    if (q.isEmpty()) return books
+    return books.filter { it.title.contains(q, true) || it.author.contains(q, true) || it.name.contains(q, true) }
+}
+
+/** 0 最近阅读 · 1 导入时间 · 2 书名. */
+fun sortShelf(books: List<ShelfBook>, mode: Int): List<ShelfBook> = when (mode) {
+    1 -> books.sortedByDescending { it.addedAt }
+    2 -> books.sortedWith(compareBy(Collator.getInstance(Locale.SIMPLIFIED_CHINESE)) { it.title })
+    else -> books.sortedWith(compareByDescending<ShelfBook> { it.lastRead }.thenByDescending { it.addedAt })
+}
+
+@Composable
+private fun ShelfSearchBox(query: String, change: (String) -> Unit) {
+    Row(
+        Modifier.padding(vertical = 10.dp).fillMaxWidth().height(40.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(20.dp))
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Search, null, Modifier.size(18.dp), tint = Stone)
+        Box(Modifier.weight(1f).padding(start = 8.dp)) {
+            if (query.isEmpty()) Text("搜索书名或作者", fontSize = 13.sp, color = Stone)
+            androidx.compose.foundation.text.BasicTextField(
+                query, change, singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(Moss),
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = "搜索书架" },
+            )
+        }
+        if (query.isNotEmpty()) Icon(Icons.Outlined.Close, "清空", Modifier.size(18.dp).clickable { change("") }, tint = Stone)
+    }
+}
+
+@Composable
+private fun ShelfSortChips(mode: Int, pick: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf("最近阅读", "导入时间", "书名").forEachIndexed { i, label ->
+            val on = i == mode
+            Text(
+                label, fontSize = 11.sp,
+                color = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.background(if (on) Moss else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
+                    .clickable { pick(i) }.padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FolderImportSheet(status: ImportStatus, dismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.background) {
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 28.dp)) {
+            Text("导入完成", fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+            Text("新增 ${status.added} 本", fontSize = 14.sp, modifier = Modifier.padding(top = 14.dp))
+            Text(androidx.compose.ui.text.buildAnnotatedString {
+                append("跳过重复 ")
+                pushStyle(androidx.compose.ui.text.SpanStyle(color = Vermilion)); append("${status.duplicates}"); pop()
+                append(" 本")
+            }, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+            if (status.failures > 0) Text("失败 ${status.failures} 本", fontSize = 13.sp, color = Stone, modifier = Modifier.padding(top = 6.dp))
+            if (status.source.isNotEmpty()) Text("来自 ${status.source}", fontSize = 11.sp, color = Stone, modifier = Modifier.padding(top = 6.dp))
+            Button(onClick = dismiss, colors = ButtonDefaults.buttonColors(containerColor = Moss),
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(44.dp), shape = RoundedCornerShape(22.dp)) { Text("好的") }
+        }
     }
 }

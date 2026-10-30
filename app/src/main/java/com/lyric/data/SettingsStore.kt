@@ -120,6 +120,10 @@ class SettingsStore(
     val grid = store.data.map { it[booleanPreferencesKey("grid")] ?: true }
     val sortTitle = store.data.map { it[booleanPreferencesKey("sort_title")] ?: false }
 
+    /** 0 最近阅读 · 1 导入时间 · 2 书名 (falls back to the pre-0.5 boolean). */
+    val shelfSort = store.data.map { it[intPreferencesKey("shelf_sort")] ?: if (it[booleanPreferencesKey("sort_title")] == true) 2 else 0 }
+    suspend fun shelfSort(mode: Int) = store.edit { it[intPreferencesKey("shelf_sort")] = mode }
+
     suspend fun shelf(grid: Boolean? = null, sortTitle: Boolean? = null) =
         store.edit { p ->
             grid?.let { p[booleanPreferencesKey("grid")] = it }
