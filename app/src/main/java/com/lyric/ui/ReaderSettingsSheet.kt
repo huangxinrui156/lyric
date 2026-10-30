@@ -111,10 +111,10 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                     modifier = Modifier.padding(bottom = 10.dp),
                 )
             }
-            SettingSlider("亮度", prefs.brightness, .01f..1f, "☀") {
+            SettingStepper("亮度", prefs.brightness, listOf(.01f) + (1..10).map { it / 10f }, "${kotlin.math.round(prefs.brightness * 100).toInt()}%") {
                 update(prefs.copy(brightness = it))
             }
-            SettingSlider("字号", prefs.fontSize, 12f..36f, "${prefs.fontSize.toInt()}") {
+            SettingStepper("字号", prefs.fontSize, (12..36).map { it.toFloat() }, "${prefs.fontSize.toInt()} sp") {
                 update(prefs.copy(fontSize = it))
             }
             Row(
@@ -342,6 +342,22 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
     }
 }
 
+/** Explicit levels; existing fractional preferences are preserved until the user taps. */
+@Composable
+internal fun SettingStepper(label: String, value: Float, levels: List<Float>, suffix: String, change: (Float) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = 12.sp, color = Stone, modifier = Modifier.weight(1f))
+        IconButton(onClick = { levels.lastOrNull { it < value - .001f }?.let(change) }, enabled = value > levels.first()) {
+            Icon(Icons.Outlined.Remove, "减少$label", tint = MaterialTheme.colorScheme.primary)
+        }
+        Text(suffix, fontFamily = Serif, fontSize = 14.sp, modifier = Modifier.width(68.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        IconButton(onClick = { levels.firstOrNull { it > value + .001f }?.let(change) }, enabled = value < levels.last()) {
+            Icon(Icons.Outlined.Add, "增加$label", tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
 @Composable
 internal fun SettingSlider(
     label: String,
@@ -359,6 +375,11 @@ internal fun SettingSlider(
             value = value.coerceIn(range),
             onValueChange = change,
             valueRange = range,
+            colors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
+                inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
+            ),
             modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
         )
         Text(

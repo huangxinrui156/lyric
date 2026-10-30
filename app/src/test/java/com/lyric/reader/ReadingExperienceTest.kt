@@ -19,8 +19,8 @@ class ReadingExperienceTest {
         val emoji = TextSelection.word("a😀b", 2)!!
         assertEquals("😀", emoji.text(Book("emoji", chapters = listOf(Chapter(0, "", "a😀b")))))
     }
-    @Test fun volumeIsOptInSwappableAndDefersToSystemForControls() {
-        assertFalse(ReaderSettings().volumeKeys)
+    @Test fun volumeDefaultsOnIsSwappableAndDefersToSystemForControls() {
+        assertTrue(ReaderSettings().volumeKeys)
         assertNull(VolumeNavigation.step(true, false, false, false))
         assertNull(VolumeNavigation.step(true, true, false, true))
         assertEquals(1, VolumeNavigation.step(true, true, false, false))
@@ -36,6 +36,17 @@ class ReadingExperienceTest {
         val json = kotlinx.serialization.json.Json
         assertEquals(configured, json.decodeFromString(ReaderSettings.serializer(), json.encodeToString(ReaderSettings.serializer(), configured)))
         assertEquals(defaults, json.decodeFromString(ReaderSettings.serializer(), "{}"))
+    }
+    @Test fun percentLabelDoesNotRoundEarlyPagesOfLongBooksBackToZero() {
+        val original = java.util.Locale.getDefault()
+        java.util.Locale.setDefault(java.util.Locale.US)
+        try {
+            assertEquals("0.0%", com.lyric.ui.readingPercentLabel(0f))
+            assertEquals("0.01%", com.lyric.ui.readingPercentLabel(.0001f))
+            assertEquals("0.02%", com.lyric.ui.readingPercentLabel(.0002f))
+            assertEquals("50.0%", com.lyric.ui.readingPercentLabel(.5f))
+            assertEquals("100.0%", com.lyric.ui.readingPercentLabel(1f))
+        } finally { java.util.Locale.setDefault(original) }
     }
     @Test fun paginationPrioritizesCurrentAndNeighborsAndVisitsEveryWindow() {
         val order = PrePaginator.order(listOf(1, 24_001, 25_000, 0, 12_000), Locator(2, 14_000))

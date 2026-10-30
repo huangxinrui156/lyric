@@ -14,8 +14,8 @@ android {
         applicationId = "com.lyric.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.3.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -28,6 +28,7 @@ android {
             isDebuggable = false
         }
     }
+    sourceSets.getByName("androidTest").assets.srcDir("src/test/resources")
     buildFeatures {
         compose = true
         buildConfig = true

@@ -292,11 +292,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                         )
                         ImportOption(Icons.Outlined.InsertDriveFile, "选择文件", "一次导入多本 TXT / EPUB") {
                             filePicker.launch(
-                                arrayOf(
-                                    "text/plain",
-                                    "application/epub+zip",
-                                    "application/octet-stream",
-                                )
+                                com.lyric.core.BookFormats.pickerMimeTypes
                             )
                         }
                         Spacer(Modifier.height(16.dp))
@@ -328,7 +324,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                 ImportOption(Icons.Outlined.InsertDriveFile, "选择文件", "TXT / EPUB · 支持多选") {
                     importer = false
                     filePicker.launch(
-                        arrayOf("text/plain", "application/epub+zip", "application/octet-stream")
+                        com.lyric.core.BookFormats.pickerMimeTypes
                     )
                 }
                 Spacer(Modifier.height(12.dp))

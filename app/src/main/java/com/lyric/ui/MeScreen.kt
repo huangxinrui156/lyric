@@ -97,13 +97,13 @@ private fun Footprint(value: String, label: String) {
 
 @Composable
 internal fun MeLink(title: String, subtitle: String, click: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clickable(onClick = click).padding(vertical = 8.dp)) {
+    Column(Modifier.fillMaxWidth().clickable(onClick = click).padding(vertical = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(title, fontFamily = Serif, fontSize = 18.sp, modifier = Modifier.weight(1f))
+            Text(title, fontFamily = Serif, fontSize = 16.sp, modifier = Modifier.weight(1f))
             Icon(Icons.Outlined.ChevronRight, "打开$title", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-        HorizontalDivider(Modifier.padding(top = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        HorizontalDivider(Modifier.padding(top = 14.dp), color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 

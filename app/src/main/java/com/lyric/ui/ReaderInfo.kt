@@ -42,7 +42,7 @@ fun readerClockAndBattery(): Pair<String, String> {
 }
 
 @Composable
-fun PaperSkeleton(paper: Color, ink: Color, margin: Float = 28f) {
+fun PaperSkeleton(paper: Color, ink: Color, margin: Float = 20f) {
     Column(Modifier.fillMaxSize().background(paper).padding(horizontal = margin.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp)) {
         repeat(30) { row ->
@@ -50,4 +50,13 @@ fun PaperSkeleton(paper: Color, ink: Color, margin: Float = 28f) {
                 .background(ink.copy(alpha = .065f), RoundedCornerShape(3.dp)))
         }
     }
+}
+
+/** Preserve visible movement near the beginning of a long book instead of rounding to 0.0%. */
+internal fun readingPercentLabel(fraction: Float): String {
+    val percent = fraction.coerceIn(0f, 1f) * 100.0
+    val decimals = if (percent > 0 && percent < .1)
+        kotlin.math.ceil(-kotlin.math.log10(percent) - 1e-6).toInt().coerceIn(2, 8)
+    else 1
+    return String.format(Locale.getDefault(), "%.${decimals}f%%", percent)
 }

@@ -95,7 +95,7 @@ class LibraryRepository(
         else
             context.contentResolver
                 .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "未命名.txt"
+                ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "未命名"
 
     suspend fun importUris(uris: List<Uri>, folder: Boolean = false) =
         withContext(Dispatchers.IO) {
@@ -113,8 +113,8 @@ class LibraryRepository(
                                 queue.removeFirst().listFiles().forEach { f ->
                                     if (f.isDirectory) queue.add(f)
                                     else if (
-                                        f.name?.substringAfterLast('.', "")?.lowercase() in
-                                            setOf("txt", "epub")
+                                        BookFormats.extension(f.name.orEmpty()) != null ||
+                                        f.type in BookFormats.pickerMimeTypes
                                     )
                                         files += f.uri
                                 }
@@ -124,6 +124,7 @@ class LibraryRepository(
                         uris.forEach { if (it.scheme != "file") persist(it) }
                         files += uris
                     }
+                    var lastFailure: String? = null
                     var status = ImportStatus(running = true, total = files.size)
                     files.forEach { uri ->
                         currentCoroutineContext().ensureActive()
@@ -131,7 +132,10 @@ class LibraryRepository(
                         status = status.copy(message = name)
                         imports.value = status
                         val result = runCatching { importOne(uri, name) }
-                        result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+                        result.exceptionOrNull()?.let {
+                            if (it is CancellationException) throw it
+                            lastFailure = "$name：${it.localizedMessage ?: "解析失败"}"
+                        }
                         status =
                             status.copy(
                                 done = status.done + 1,
@@ -147,7 +151,8 @@ class LibraryRepository(
                         status.copy(
                             running = false,
                             message =
-                                "已导入 ${status.added} 本 · 重复 ${status.duplicates} 本 · 失败 ${status.failures} 本",
+                                "已导入 ${status.added} 本 · 重复 ${status.duplicates} 本 · 失败 ${status.failures} 本" +
+                                    (lastFailure?.let { "\n$it" } ?: ""),
                         )
                 } catch (e: CancellationException) {
                     imports.value = imports.value.copy(running = false, message = "导入已停止")
@@ -160,7 +165,6 @@ class LibraryRepository(
         }
 
     private suspend fun importOne(uri: Uri, name: String): Boolean {
-        registry.parser(name.substringAfterLast('.', "").lowercase())
         val temp = File.createTempFile("import-", ".tmp", context.cacheDir)
         try {
             val digest = MessageDigest.getInstance("SHA-256")
@@ -180,15 +184,20 @@ class LibraryRepository(
                     }
                 }
             }
+            val extension = BookFormats.detect(
+                temp.inputStream().use { it.readBounded(4) }, name,
+                runCatching { context.contentResolver.getType(uri) }.getOrNull(),
+                uri.lastPathSegment.orEmpty(),
+            )
             val id = digest.digest().joinToString("") { "%02x".format(it) }
             dao.book(id)?.let { old ->
                 // Re-import can repair a moved or revoked original without discarding its progress.
-                dao.update(old.copy(uri = uri.toString(), name = name, invalid = false))
+                dao.update(old.copy(uri = uri.toString(), name = name, extension = extension, invalid = false))
                 return false
             }
             val parsed =
                 registry
-                    .parser(name.substringAfterLast('.').lowercase())
+                    .parser(extension)
                     .parse(FileSource(temp, name))
             val row =
                 ShelfBook(
@@ -197,7 +206,7 @@ class LibraryRepository(
                     name,
                     parsed.title,
                     parsed.author,
-                    name.substringAfterLast('.').lowercase(),
+                    extension,
                     contentType = parsed.contentType.name,
                     totalChars = parsed.totalChars,
                     chapterCount = parsed.chapters.size,

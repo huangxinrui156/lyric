@@ -67,8 +67,8 @@ class EpubParserTest {
     }
     @Test fun layoutSubsetPreservesOffsetsRubyImagesCssAndFonts() {
         val entries = fixture(true).toMutableMap()
-        entries["OPS/first.xhtml"] = """<html><head><link rel="stylesheet" href="styles/book.css"/></head><body><h1>大标题</h1><p class="quote" id="leaf" style="text-align:right">前文<strong>粗体</strong><em>斜体</em><ruby>漢字<rt>かんじ</rt><rp>(</rp></ruby>后文</p><center>居中</center><hr/><p><img src="images/p.png" alt="插图"/></p></body></html>"""
-        entries["OPS/styles/book.css"] = """@font-face {font-family:'BookFont';src:url('../fonts/book.ttf')} body {font-family:BookFont} p {text-indent:2em} .quote {text-align:center; font-size:120%; font-style:italic} h1 {font-size:2em} """
+        entries["OPS/first.xhtml"] = """<html><head><link rel="stylesheet" href="styles/book.css"/><link rel="stylesheet" href="https://example.invalid/remote.css"/></head><body><h1>大标题</h1><p class="quote" id="leaf" style="text-align:right">前文<strong>粗体</strong><em>斜体</em><ruby>漢字<rt>かんじ</rt><rp>(</rp></ruby>后文</p><center>居中</center><hr/><p><img src="images/p.png" alt="插图"/></p></body></html>"""
+        entries["OPS/styles/book.css"] = """@font-face {font-family:'BookFont';src:url('../fonts/book.ttf')} @font-face {font-family:Remote;src:url(https://example.invalid/font.ttf)} body {font-family:BookFont} p {text-indent:2em} .quote {text-align:center; font-size:120%; font-style:italic} h1 {font-size:2em} """
         entries["OPS/fonts/book.ttf"] = "fixture font bytes"
         entries["OPS/images/p.png"] = "fixture image bytes"
         val b = EpubParser().parse(BytesSource(zip(entries), "styles.epub"), null, null)

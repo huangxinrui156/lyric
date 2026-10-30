@@ -97,6 +97,24 @@ class RepositoryTest {
     }
 
     @Test
+    fun epubFixturesThroughRealSafProviderBothMimeTypesAndMissingExtensions() = runBlocking {
+        for (name in listOf("epub3-basic.epub", "epub2-root.epub", "epub2-nested.epub",
+            "epub3-nested.epub", "epub3-literal-percent.epub")) {
+            for (mime in listOf("epub", "octet")) for (display in listOf("named", "bare")) {
+                val uri = android.provider.DocumentsContract.buildDocumentUri(
+                    "com.lyric.reader.test.epubs", "$name|$mime|$display")
+                repo.importUris(listOf(uri))
+                assertEquals("$name/$mime/$display: ${repo.imports.value}", 0, repo.imports.value.failures)
+                assertEquals(1, repo.imports.value.added + repo.imports.value.duplicates)
+                val row = repo.dao.all().first { it.uri == uri.toString() }
+                assertEquals("epub", row.extension)
+                assertTrue(repo.load(row.id, force = true).second.totalChars > 0)
+            }
+        }
+        assertEquals(5, repo.dao.all().size)
+    }
+
+    @Test
     fun sparseSettingsInheritanceAndBookOnlyReset() = runBlocking {
         val defaults = ReaderSettings()
         prefs.update(SettingsScope.GLOBAL, "a", defaults, defaults.copy(fontSize = 22f))

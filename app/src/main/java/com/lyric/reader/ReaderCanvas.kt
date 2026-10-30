@@ -26,6 +26,12 @@ class ReaderCanvas(context: Context) : View(context) {
     var onEndReached: () -> Unit = {}
     var onReadingActivity: () -> Unit = {}
     var onPageInfo: (String) -> Unit = {}
+    var onVisibleLocator: (Locator) -> Unit = {}
+    var onCurl: (Bitmap, Int) -> Unit = { _, _ -> }
+    var onCurlReady: () -> Unit = {}
+    var onCurlCancel: () -> Unit = {}
+    var curlRunning = false
+    private var curlAwaitingDraw = false
     private var book: Book? = null
     private var locator = Locator()
     private var prefs = ReaderSettings()
@@ -198,6 +204,7 @@ class ReaderCanvas(context: Context) : View(context) {
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
+        cancelAnimation()
         layoutKey = null
         pendingKey = null
         book?.let { bind(it, locator, prefs, ink, paper, highlight) }
@@ -228,7 +235,35 @@ class ReaderCanvas(context: Context) : View(context) {
             val offset = if (edgeStep > 0) p.end else p.start
             moveBoundary(TextSelection.absolute(book ?: return, chapter, set.sourceStart + offset))
         }
+        reportVisibleLocation()
         pageInfo()
+    }
+
+    private fun reportVisibleLocation() {
+        val set = typeset ?: return
+        val offset = if (prefs.pageMode == PageMode.SCROLL)
+            set.layout.getLineStart(set.layout.getLineForVertical(scroll.toInt()))
+        else set.pages[page].start
+        onVisibleLocator(Locator(chapter, set.sourceStart + offset, page))
+    }
+
+    private fun navigate(next: Locator) {
+        val b = book ?: return
+        val at = b.clamp(next)
+        // Advance locally in the same event, including repeated key/touch events before Compose
+        // rebinds. Compose and the durable writer receive the exact same canonical anchor.
+        onLocator(at)
+        bind(b, at, prefs, ink, paper, highlight)
+    }
+
+    private fun cancelAnimation() {
+        animator?.cancel()
+        oldBitmap?.recycle()
+        oldBitmap = null
+        animOffset = 0f
+        curlAwaitingDraw = false
+        curlRunning = false
+        onCurlCancel()
     }
 
     private fun pageInfo() {
@@ -315,6 +350,10 @@ class ReaderCanvas(context: Context) : View(context) {
         }
         contentDescription = "Lyric正文:" + preview(book?.chapters?.getOrNull(chapter)?.text.orEmpty(), locator.charOffset, 200)
         canvas.restore()
+        if (curlAwaitingDraw) {
+            curlAwaitingDraw = false
+            post { if (curlRunning) onCurlReady() }
+        }
         if (selection != null) drawHandles(canvas, currentTop)
         if (moving && prefs.pageMode == PageMode.SLIDE)
             oldBitmap?.let { canvas.drawBitmap(it, animOffset - direction * width, 0f, null) }
@@ -344,6 +383,7 @@ class ReaderCanvas(context: Context) : View(context) {
         locator = locator.copy(charOffset = offset)
         page = set.pages.indexOfLast { it.start <= offset - set.sourceStart }.coerceAtLeast(0)
         onLocator(locator)
+        reportVisibleLocation()
         val b = book
         if (b != null && chapter == b.chapters.lastIndex && set.sourceEnd == b.chapters[chapter].text.length &&
             scroll >= maxScroll() && maxScroll() > 0) onEndReached()
@@ -368,7 +408,7 @@ class ReaderCanvas(context: Context) : View(context) {
     }
 
     fun turn(step: Int) {
-        if (pendingKey != null) return
+        if (pendingKey != null || curlRunning) return
         val next =
             target(step)
                 ?: run {
@@ -376,9 +416,14 @@ class ReaderCanvas(context: Context) : View(context) {
                     performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     return
                 }
-        animator?.cancel()
-        oldBitmap?.recycle()
-        oldBitmap = null
+        cancelAnimation()
+        if (prefs.pageMode == PageMode.CURL && width > 0 && height > 0) {
+            val snapshot = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            draw(Canvas(snapshot))
+            curlRunning = true
+            curlAwaitingDraw = true
+            onCurl(snapshot, step)
+        }
         if (
             prefs.pageMode in listOf(PageMode.SLIDE, PageMode.COVER) &&
                 next.chapterIndex == chapter &&
@@ -409,7 +454,7 @@ class ReaderCanvas(context: Context) : View(context) {
         }
         performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
         checkCompletionAfterNavigation = true
-        onLocator(next)
+        navigate(next)
         val set = typeset
         val b = book
         if (b != null && set != null && chapter == b.chapters.lastIndex &&
@@ -551,6 +596,7 @@ class ReaderCanvas(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (controlsOpen || curlRunning) return false
         lastX = event.x
         lastY = if (event.actionMasked == MotionEvent.ACTION_DOWN) event.y else lastY
         when (event.actionMasked) {
@@ -664,7 +710,7 @@ class ReaderCanvas(context: Context) : View(context) {
                                         }
                             if (next != null) {
                                 checkCompletionAfterNavigation = true
-                                onLocator(next)
+                                navigate(next)
                             } else if (step > 0) onEndReached()
                         }
                     } else {
@@ -732,6 +778,7 @@ class ReaderCanvas(context: Context) : View(context) {
 
     override fun onDetachedFromWindow() {
         clearSelection()
+        cancelAnimation()
         handler.removeCallbacksAndMessages(null)
         super.onDetachedFromWindow()
         job?.cancel()

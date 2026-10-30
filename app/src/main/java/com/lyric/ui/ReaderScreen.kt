@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.lyric.ui
 
@@ -68,6 +68,13 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
     var search by rememberSaveable { mutableStateOf(false) }
     var pageInfo by remember { mutableStateOf("") }
     var canvas by remember { mutableStateOf<ReaderCanvas?>(null) }
+    var visibleLocator by remember(state.book) { mutableStateOf(locator) }
+    var curlFrame by remember { mutableStateOf<CurlFrame?>(null) }
+    var curlReady by remember { mutableStateOf(false) }
+    LaunchedEffect(state.book, prefs.pageMode, prefs.fontSize, prefs.margin, prefs.orientation) {
+        curlFrame = null
+        canvas?.curlRunning = false
+    }
     var enlargedImage by remember { mutableStateOf<String?>(null) }
     val (clock, battery) = readerClockAndBattery()
     var drawerTab by rememberSaveable { mutableIntStateOf(0) }
@@ -102,7 +109,7 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
     val accent = MaterialTheme.colorScheme.primary
     MaterialTheme(colorScheme = (if (darkReader) DarkColors else LightColors).copy(primary = accent)) {
         val activity = LocalContext.current as Activity
-        val controls = menu || settings || search || drawer.isOpen || enlargedImage != null
+        val controls = menu || settings || search || drawer.targetValue == DrawerValue.Open || drawer.isOpen || enlargedImage != null
         DisposableEffect(activity) {
             onDispose { (activity as? ReaderActivity)?.readerVolumeHandler = null }
         }
@@ -204,11 +211,16 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
             if (drawer.isOpen && drawerTab == 0) tocScroll.scrollToItem(currentToc)
         }
         ModalNavigationDrawer(
+            modifier = Modifier.fillMaxSize().background(bg).windowInsetsPadding(
+                WindowInsets.systemBarsIgnoringVisibility.union(WindowInsets.displayCutout)
+            ),
             drawerState = drawer,
             gesturesEnabled = drawer.isOpen,
             drawerContent = {
                 ModalDrawerSheet(
-                    modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * .85f).dp),
+                    modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * .85f).coerceAtMost(360f).dp)
+                        .fillMaxHeight(),
+                    windowInsets = WindowInsets(0, 0, 0, 0),
                     drawerContainerColor = MaterialTheme.colorScheme.background,
                 ) {
                     Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
@@ -217,6 +229,8 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                             fontFamily = Serif,
                             fontSize = 23.sp,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             "${(book.percent(locator) * 100).toInt()}% · ${book.chapters.size} 章",
@@ -345,7 +359,7 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
             },
         ) {
             Box(Modifier.fillMaxSize().background(bg).paperGrain()) {
-                Column(Modifier.fillMaxSize().padding(top = 28.dp, bottom = 16.dp)) {
+                Column(Modifier.fillMaxSize().padding(top = 8.dp, bottom = 8.dp)) {
                     if (prefs.showChapter) Text(
                         book.chapters[locator.chapterIndex].title,
                         color = meta,
@@ -354,24 +368,42 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier =
-                            Modifier.padding(horizontal = prefs.margin.dp).padding(bottom = 18.dp),
+                            Modifier.padding(horizontal = prefs.margin.dp).padding(bottom = 8.dp),
                     )
-                    AndroidView(
-                        factory = { context -> ReaderCanvas(context).also { canvas = it } },
-                        update = { view ->
-                            view.onContentReady = { activity.reportFullyDrawn() }
-                            view.controlsOpen = controls
-                            view.onExcerpt = { at, text -> vm.bookmark(at, text) }
-                            view.onImage = { enlargedImage = it }
-                            view.onLocator = vm::readingActivity
-                            view.onEndReached = vm::finished
-                            view.onReadingActivity = vm::readingGesture
-                            view.onMenu = { menu = !menu }
-                            view.onPageInfo = { pageInfo = it }
-                            view.bind(book, locator, prefs, ink.toArgb(), bg.toArgb(), highlight)
-                        },
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                    )
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                        AndroidView(
+                            factory = { context -> ReaderCanvas(context).also { canvas = it } },
+                            update = { view ->
+                                view.onContentReady = { activity.reportFullyDrawn() }
+                                view.controlsOpen = controls
+                                view.curlRunning = curlFrame != null
+                                view.onExcerpt = { at, text -> vm.bookmark(at, text) }
+                                view.onImage = { enlargedImage = it }
+                                view.onLocator = vm::readingActivity
+                                view.onEndReached = vm::finished
+                                view.onReadingActivity = vm::readingGesture
+                                view.onMenu = { menu = !menu }
+                                view.onPageInfo = { pageInfo = it }
+                                view.onVisibleLocator = { visibleLocator = it }
+                                view.onCurl = { bitmap, direction ->
+                                    curlReady = false
+                                    curlFrame = CurlFrame(bitmap, direction)
+                                }
+                                view.onCurlReady = { curlReady = true }
+                                view.onCurlCancel = { curlFrame = null }
+                                view.bind(book, locator, prefs, ink.toArgb(), bg.toArgb(), highlight)
+                            },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        curlFrame?.let { frame ->
+                            PageCurl(frame, curlReady, bg, Modifier.fillMaxSize()) {
+                                if (curlFrame === frame) {
+                                    curlFrame = null
+                                    canvas?.curlRunning = false
+                                }
+                            }
+                        }
+                    }
                     Row(
                         Modifier.fillMaxWidth()
                             .padding(horizontal = prefs.margin.dp)
@@ -380,7 +412,7 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                     ) {
                         val infoSize = (prefs.fontSize * .7f).sp
                         if (prefs.showPage) Text(pageInfo, color = meta, fontSize = infoSize)
-                        if (prefs.showPercent) Text("%.1f%%".format(book.percent(locator) * 100), color = meta, fontSize = infoSize)
+                        if (prefs.showPercent) Text(readingPercentLabel(book.percent(visibleLocator)), color = meta, fontSize = infoSize)
                         if (prefs.showTime) Text(clock, color = meta, fontSize = infoSize)
                         if (prefs.showBattery) Text(battery, color = meta, fontSize = infoSize)
                     }
@@ -397,7 +429,7 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                                 runCatching { java.util.Base64.getDecoder().decode(book.resources[path]) }.getOrNull()
                             }
                         }
-                        Box(Modifier.fillMaxSize().background(Color.Black)) {
+                        Box(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding()) {
                             val request = remember(data, path) {
                                 coil.request.ImageRequest.Builder(activity).data(data).apply {
                                     if (path.endsWith(".svg", true)) decoderFactory(coil.decode.SvgDecoder.Factory())
@@ -419,7 +451,7 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                 AnimatedVisibility(visible = menu, modifier = Modifier.align(Alignment.TopCenter)) {
                     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
                         Row(
-                            Modifier.fillMaxWidth().statusBarsPadding(),
+                            Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             IconButton(onClick = back) { Icon(Icons.Outlined.ArrowBack, "返回书架") }
@@ -454,8 +486,9 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                         shadowElevation = 6.dp,
                     ) {
                         Column(
-                            Modifier.navigationBarsPadding()
-                                .padding(horizontal = 20.dp, vertical = 16.dp)
+                            Modifier.heightIn(max = (LocalConfiguration.current.screenHeightDp * .7f).dp)
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 20.dp, vertical = 12.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(

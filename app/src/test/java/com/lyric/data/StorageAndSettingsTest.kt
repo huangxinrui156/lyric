@@ -72,7 +72,29 @@ class StorageAndSettingsTest {
             assertEquals(0, store.ownBookCount.first())
             assertEquals(22f, store.settings("a").first().fontSize)
             assertEquals(2.1f, store.settings("a").first().lineHeight)
-            assertEquals(28f, store.settings("b").first().margin)
+            assertEquals(20f, store.settings("b").first().margin)
         } finally { scope.cancel() }
     }
+    @Test fun v031DefaultsApplyOnlyToUnsetFieldsAndPreserveExplicitOldPreferences() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val store = SettingsStore(context, PreferenceDataStoreFactory.create(scope = scope) {
+            File(context.filesDir, "defaults-${System.nanoTime()}.preferences_pb")
+        })
+        try {
+            val fresh = store.settings("new").first()
+            assertEquals(17f, fresh.fontSize)
+            assertEquals(20f, fresh.margin)
+            assertEquals(.3f, fresh.paragraphSpace)
+            assertTrue(fresh.volumeKeys)
+            store.restore(SettingsSnapshot(strings = mapOf("global" to
+                """{"fontSize":18.0,"margin":28.0,"paragraphSpace":0.6,"volumeKeys":false}""")))
+            val old = store.settings("old").first()
+            assertEquals(18f, old.fontSize)
+            assertEquals(28f, old.margin)
+            assertEquals(.6f, old.paragraphSpace)
+            assertFalse(old.volumeKeys)
+        } finally { scope.cancel() }
+    }
+
 }
