@@ -38,11 +38,25 @@ class ComicParser : BookParser {
                 ContentUnit.ImagePage(name, size?.first, size?.second)
             })
         }
-        Book(displayName.substringBeforeLast('.').ifBlank { "漫画" }, "", chapters,
-            contentType = ContentType.COMIC, coverResource = sorted.first())
+        val info = zip.entries().asSequence().firstOrNull { it.name.substringAfterLast('/').equals("ComicInfo.xml", true) }
+            ?.let { runCatching { zip.getInputStream(it).use { s -> String(s.readBounded(256 * 1024), Charsets.UTF_8) } }.getOrNull() }
+        Book(info?.let { tag(it, "Title") }?.takeIf { it.isNotBlank() } ?: displayName.substringBeforeLast('.').ifBlank { "漫画" },
+            info?.let { tag(it, "Writer") }.orEmpty(), chapters,
+            contentType = ContentType.COMIC, coverResource = sorted.first(), readingDirection = info?.let(::direction))
     }
 
     companion object {
+        private fun tag(xml: String, name: String): String? {
+            val open = xml.indexOf("<$name>"); if (open < 0) return null
+            val close = xml.indexOf("</$name>", open); if (close < 0) return null
+            return xml.substring(open + name.length + 2, close).trim()
+        }
+        /** ComicInfo.xml (Anansi schema): Manga=YesAndRightToLeft → rtl, No → ltr, Yes/Unknown → undeclared. */
+        fun direction(xml: String): String? = when (tag(xml, "Manga")?.lowercase()) {
+            "yesandrighttoleft" -> "rtl"
+            "no" -> "ltr"
+            else -> null
+        }
         private val imageExt = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
         fun isImage(name: String) = name.substringAfterLast('.', "").lowercase() in imageExt
         private fun hidden(name: String) = name.split('/').any { it.startsWith(".") || it == "__MACOSX" }

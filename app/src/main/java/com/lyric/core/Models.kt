@@ -61,6 +61,8 @@ data class Book(
     val resources: Map<String, String> = emptyMap(),
     val embeddedFonts: Map<String, String> = emptyMap(),
     val coverResource: String? = null,
+    /** Direction declared by the file (ComicInfo.xml Manga / EPUB page-progression): "rtl" | "ltr" | null. */
+    val readingDirection: String? = null,
 ) {
     val totalChars: Long
         get() = chapters.sumOf { it.text.length.toLong() }
@@ -135,7 +137,7 @@ data class ReaderSettings(
     val useBookStyle: Boolean = false,
     val customBg: Long = 0xFFF4EFE6,
     val customInk: Long = 0xFF2B2A27,
-    /** Comic reading direction: "rtl" (default, manga) or "ltr". Stored per book via SettingsScope.BOOK. */
+    /** Comic reading direction: "rtl" (default, manga), "ltr" or "vertical" (条漫). Stored per book via SettingsScope.BOOK. */
     val comicDirection: String = "rtl",
 )
 

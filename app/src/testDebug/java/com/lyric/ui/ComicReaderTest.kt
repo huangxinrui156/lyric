@@ -51,6 +51,10 @@ class ComicReaderTest {
         compose.onNodeWithTag("comic-reader").assertExists()
         // First-time hint for the default right-to-left direction.
         compose.onNodeWithText("从右往左读 · 点左侧翻下一页").assertExists()
+        compose.onNodeWithTag("direction-hint").assertExists()
+        compose.onNodeWithContentDescription("从右往左（当前）").assertExists()
+        compose.onNodeWithContentDescription("条漫").assertExists()
+        compose.onNodeWithContentDescription("从左往右").assertExists()
         val reader = compose.onNodeWithTag("comic-reader")
         // RTL: left third = next page.
         reader.performTouchInput { click(Offset(width * .1f, height * .5f)) }
@@ -84,5 +88,10 @@ class ComicReaderTest {
             stored = runBlocking(Dispatchers.IO) { app.repository.settings.settings(row.id, ContentType.COMIC).first().comicDirection }
         }
         assertEquals("ltr", stored)
+        // Cycling on to 条漫 swaps the pager for the vertical strip.
+        compose.onAllNodesWithContentDescription("当前从左往右，切换为条漫")[0].performClick()
+        compose.waitUntil(5000) { vm.settings.value.comicDirection == "vertical" }
+        compose.mainClock.advanceTimeBy(500); compose.waitForIdle()
+        compose.onNodeWithTag("comic-strip").assertExists()
     }
 }

@@ -11,6 +11,8 @@ import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -91,13 +93,16 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
     val prefs by vm.settings.collectAsStateWithLifecycle()
     val locator by vm.locator.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val rtl = prefs.comicDirection != "ltr"
+    val dir = prefs.comicDirection.takeIf { it in ComicDirections.all } ?: "rtl"
+    val rtl = dir == "rtl"
+    val vertical = dir == "vertical"
     val pages = remember(book) { ComicPages(book) }
     val archive = remember(vm.id) {
         runCatching { ComicArchive(vm.repository.comicFile(vm.id), pages.pages.firstOrNull()?.unit?.resource) }
     }
     DisposableEffect(archive) { onDispose { archive.getOrNull()?.close() } }
     val pager = rememberPagerState(initialPage = pages.indexOf(locator)) { pages.pages.size }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = pages.indexOf(locator))
     var chrome by remember { mutableStateOf(false) }
     var zoomed by remember { mutableStateOf(false) }
     var chapters by remember { mutableStateOf(false) }
@@ -117,23 +122,49 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
             val step = VolumeNavigation.step(event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN,
                 prefs.volumeKeys, prefs.swapVolumeKeys, chapters)
             if (step != null && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0)
-                scope.launch { pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, pages.pages.lastIndex)) }
+                scope.launch {
+                    if (prefs.comicDirection == "vertical") listState.animateScrollBy(step * listState.layoutInfo.viewportSize.height * 0.85f)
+                    else pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, pages.pages.lastIndex))
+                }
             step != null
         }
         onDispose { (activity as? ReaderActivity)?.readerVolumeHandler = null }
     }
 
-    // First-time hint: once per book per direction.
+    // First open of a book: apply the direction the file declares (if any), otherwise RTL stays,
+    // and show the hint bar with the three directions; untouched, it fades after 2.4s.
     val hints = remember { context.getSharedPreferences("comic_hints", 0) }
-    val hintKey = "${vm.id}_${prefs.comicDirection}"
-    var hint by remember(hintKey) { mutableStateOf(!hints.getBoolean(hintKey, false)) }
-    LaunchedEffect(hintKey, hint) {
-        if (hint) { hints.edit().putBoolean(hintKey, true).apply(); delay(2400); hint = false }
+    val firstKey = "first_${vm.id}"
+    var hint by remember { mutableStateOf(!hints.getBoolean(firstKey, false)) }
+    fun choose(next: String) { if (next != prefs.comicDirection) vm.updateSettings(SettingsScope.BOOK, prefs.copy(comicDirection = next)) }
+    LaunchedEffect(Unit) {
+        if (hint) {
+            hints.edit().putBoolean(firstKey, true).apply()
+            book.readingDirection?.takeIf { it in ComicDirections.all }?.let { choose(it) }
+        }
     }
+    LaunchedEffect(hint) { if (hint) { delay(2400); hint = false } }
+    LaunchedEffect(vertical) {
+        // Keep the same page when switching between paged and 条漫.
+        if (vertical) listState.scrollToItem(pager.currentPage) else pager.scrollToPage(listState.firstVisibleItemIndex)
+    }
+    LaunchedEffect(listState, vertical) {
+        if (vertical) snapshotFlow { listState.firstVisibleItemIndex }.collect { i ->
+            vm.readingActivity(pages.locator(i)); if (i == pages.pages.lastIndex) vm.finished()
+        }
+    }
+    val currentIndex = if (vertical) listState.firstVisibleItemIndex else pager.currentPage
 
     Box(Modifier.fillMaxSize().background(ComicBg).testTag("comic-reader")) {
         if (pages.pages.isEmpty() || archive.isFailure) {
             ComicError("这本漫画没能打开", archive.exceptionOrNull()?.localizedMessage ?: "没有图片", null, null)
+        } else if (vertical) {
+            // 条漫: images fill the screen width, stacked without gaps.
+            LazyColumn(Modifier.fillMaxSize().testTag("comic-strip"), state = listState) {
+                items(pages.pages.size, key = { it }) { index ->
+                    ComicStripPage(archive.getOrThrow(), pages.pages[index]) { hint = false; chrome = !chrome }
+                }
+            }
         } else {
             CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                 HorizontalPager(pager, Modifier.fillMaxSize(), beyondViewportPageCount = 2,
@@ -156,20 +187,28 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
             }
         }
         // "Next page" zone flash with the first-time hint.
-        AnimatedVisibility(hint, enter = fadeIn(), exit = fadeOut(tween(300)),
+        AnimatedVisibility(hint && !vertical, enter = fadeIn(), exit = fadeOut(tween(300)),
             modifier = Modifier.fillMaxHeight().fillMaxWidth(1f / 3).align(if (rtl) Alignment.CenterStart else Alignment.CenterEnd)) {
             var flash by remember { mutableStateOf(true) }
             LaunchedEffect(Unit) { delay(1200); flash = false }
             Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = if (flash) .08f else 0f)))
         }
         AnimatedVisibility(hint, enter = fadeIn(), exit = fadeOut(tween(300)),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 56.dp)) {
-            Box(Modifier.height(32.dp).background(BarBg, RoundedCornerShape(16.dp)).padding(horizontal = 16.dp),
-                contentAlignment = Alignment.Center) {
-                Text(if (rtl) "从右往左读 · 点左侧翻下一页" else "左→右：点右侧翻下一页", color = ComicInk, fontSize = 12.sp)
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 56.dp)) {
+            Row(Modifier.height(32.dp).background(BarBg, RoundedCornerShape(16.dp)).padding(start = 14.dp, end = 4.dp)
+                .testTag("direction-hint"), verticalAlignment = Alignment.CenterVertically) {
+                Text(ComicDirections.hint(dir), color = ComicInk, fontSize = 12.sp)
+                Spacer(Modifier.width(6.dp))
+                ComicDirections.all.forEach { d ->
+                    Box(Modifier.size(32.dp).clickable { choose(d); hint = false }
+                        .semantics { contentDescription = ComicDirections.label(d) + if (d == dir) "（当前）" else "" },
+                        contentAlignment = Alignment.Center) {
+                        DirectionIcon(d, if (d == dir) ComicAccent else ComicInk, Modifier.size(20.dp))
+                    }
+                }
             }
         }
-        val current = pages.pages.getOrNull(pager.currentPage)
+        val current = pages.pages.getOrNull(currentIndex)
         AnimatedVisibility(chrome, enter = fadeIn(tween(200, easing = FastOutSlowInEasing)),
             exit = fadeOut(tween(160, easing = FastOutSlowInEasing)), modifier = Modifier.align(Alignment.TopCenter)) {
             Row(Modifier.fillMaxWidth().background(BarBg).statusBarsPadding().height(56.dp).padding(horizontal = 4.dp),
@@ -179,27 +218,25 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
                     Text(book.title, color = ComicInk, fontSize = 15.sp, maxLines = 1)
                     current?.let { Text(book.chapters[it.chapter].title, color = ComicMeta, fontSize = 11.sp, maxLines = 1) }
                 }
-                IconButton({
-                    vm.updateSettings(SettingsScope.BOOK, prefs.copy(comicDirection = if (rtl) "ltr" else "rtl"))
-                    hint = true
-                }, Modifier.semantics { contentDescription = if (rtl) "当前从右往左，切换为从左往右" else "当前从左往右，切换为从右往左" }) {
-                    DirectionIcon(rtl, ComicAccent)
+                IconButton({ choose(ComicDirections.next(dir)) },
+                    Modifier.semantics { contentDescription = "当前${ComicDirections.label(dir)}，切换为${ComicDirections.label(ComicDirections.next(dir))}" }) {
+                    DirectionIcon(dir, ComicAccent)
                 }
             }
         }
         AnimatedVisibility(chrome, enter = fadeIn(tween(200, easing = FastOutSlowInEasing)),
             exit = fadeOut(tween(160, easing = FastOutSlowInEasing)), modifier = Modifier.align(Alignment.BottomCenter)) {
             Column(Modifier.fillMaxWidth().background(BarBg).navigationBarsPadding().padding(horizontal = 20.dp, vertical = 10.dp)) {
-                Text("${pager.currentPage + 1} / ${pages.pages.size}", color = ComicInk, fontSize = 12.sp,
+                Text("${currentIndex + 1} / ${pages.pages.size}", color = ComicInk, fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace, modifier = Modifier.align(Alignment.CenterHorizontally))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(if (rtl) "${pages.pages.size}" else "1", color = ComicMeta, fontSize = 11.sp)
                     // Mirrored for right-to-left: the start of the book is on the right.
                     CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                         var drag by remember { mutableStateOf<Float?>(null) }
-                        Slider(drag ?: pager.currentPage.toFloat(), { drag = it },
+                        Slider(drag ?: currentIndex.toFloat(), { drag = it },
                             valueRange = 0f..(pages.pages.lastIndex.coerceAtLeast(1)).toFloat(),
-                            onValueChangeFinished = { drag?.let { v -> scope.launch { pager.scrollToPage(v.toInt()) } }; drag = null },
+                            onValueChangeFinished = { drag?.let { v -> scope.launch { if (vertical) listState.scrollToItem(v.toInt()) else pager.scrollToPage(v.toInt()) } }; drag = null },
                             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                             colors = SliderDefaults.colors(thumbColor = ComicAccent, activeTrackColor = ComicAccent, inactiveTrackColor = Track))
                     }
@@ -207,10 +244,8 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
                     IconButton({ chapters = true }) { Icon(Icons.AutoMirrored.Outlined.List, "章节", tint = ComicInk) }
-                    IconButton({ vm.updateSettings(SettingsScope.BOOK, prefs.copy(comicDirection = if (rtl) "ltr" else "rtl")); hint = true }) {
-                        DirectionIcon(rtl, ComicInk)
-                    }
-                    IconButton({ vm.bookmark(pages.locator(pager.currentPage)) }) { Icon(Icons.Outlined.BookmarkBorder, "书签", tint = ComicInk) }
+                    IconButton({ choose(ComicDirections.next(dir)) }) { DirectionIcon(dir, ComicInk) }
+                    IconButton({ vm.bookmark(pages.locator(currentIndex)) }) { Icon(Icons.Outlined.BookmarkBorder, "书签", tint = ComicInk) }
                 }
             }
         }
@@ -221,7 +256,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
                         Text("${c.title} · ${c.units.size} 页", color = if (current?.chapter == i) ComicAccent else ComicInk,
                             fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
                                 chapters = false
-                                scope.launch { pager.scrollToPage(pages.indexOf(Locator(i, 0, 0))) }
+                                scope.launch { pages.indexOf(Locator(i, 0, 0)).let { if (vertical) listState.scrollToItem(it) else pager.scrollToPage(it) } }
                             }.padding(horizontal = 20.dp, vertical = 12.dp))
                     }
                 }
@@ -234,19 +269,61 @@ private suspend fun snapshotFlowPage(pager: androidx.compose.foundation.pager.Pa
     snapshotFlow { pager.settledPage }.collect(onPage)
 }
 
-/** 24dp grid, 1.6dp round strokes: two page frames + arrow pointing in reading direction. */
+object ComicDirections {
+    val all = listOf("rtl", "ltr", "vertical")
+    fun next(d: String) = all[(all.indexOf(d).coerceAtLeast(0) + 1) % all.size]
+    fun label(d: String) = when (d) { "ltr" -> "从左往右"; "vertical" -> "条漫"; else -> "从右往左" }
+    fun hint(d: String) = when (d) {
+        "ltr" -> "左→右：点右侧翻下一页"; "vertical" -> "条漫 · 向上滑动连续阅读"; else -> "从右往左读 · 点左侧翻下一页"
+    }
+}
+
+/** design §2: 24dp grid, 1.6dp round strokes. Paged = two page frames + arrow; 条漫 = two stacked frames + down arrow. */
 @Composable
-fun DirectionIcon(rtl: Boolean, tint: Color) {
-    Canvas(Modifier.size(24.dp)) {
+fun DirectionIcon(dir: String, tint: Color, modifier: Modifier = Modifier.size(24.dp)) {
+    Canvas(modifier) {
         val s = size.width / 24f
         val stroke = Stroke(1.6f * s, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+        val round = androidx.compose.ui.graphics.StrokeCap.Round
+        if (dir == "vertical") {
+            drawRoundRect(tint, Offset(4 * s, 3 * s), androidx.compose.ui.geometry.Size(11 * s, 8 * s), style = stroke)
+            drawRoundRect(tint, Offset(4 * s, 13 * s), androidx.compose.ui.geometry.Size(11 * s, 8 * s), style = stroke)
+            drawLine(tint, Offset(19.5f * s, 5 * s), Offset(19.5f * s, 19 * s), 1.6f * s, round)
+            drawLine(tint, Offset(19.5f * s, 19 * s), Offset(17 * s, 16 * s), 1.6f * s, round)
+            drawLine(tint, Offset(19.5f * s, 19 * s), Offset(22 * s, 16 * s), 1.6f * s, round)
+            return@Canvas
+        }
+        val rtl = dir != "ltr"
         drawRoundRect(tint, Offset(3 * s, 4 * s), androidx.compose.ui.geometry.Size(8 * s, 11 * s), style = stroke)
         drawRoundRect(tint, Offset(13 * s, 4 * s), androidx.compose.ui.geometry.Size(8 * s, 11 * s), style = stroke)
         val y = 19.5f * s
-        drawLine(tint, Offset(6 * s, y), Offset(18 * s, y), 1.6f * s, androidx.compose.ui.graphics.StrokeCap.Round)
+        drawLine(tint, Offset(6 * s, y), Offset(18 * s, y), 1.6f * s, round)
         val tip = if (rtl) 6 * s else 18 * s; val d = if (rtl) 3 * s else -3 * s
-        drawLine(tint, Offset(tip, y), Offset(tip + d, y - 2.5f * s), 1.6f * s, androidx.compose.ui.graphics.StrokeCap.Round)
-        drawLine(tint, Offset(tip, y), Offset(tip + d, y + 2.5f * s), 1.6f * s, androidx.compose.ui.graphics.StrokeCap.Round)
+        drawLine(tint, Offset(tip, y), Offset(tip + d, y - 2.5f * s), 1.6f * s, round)
+        drawLine(tint, Offset(tip, y), Offset(tip + d, y + 2.5f * s), 1.6f * s, round)
+    }
+}
+
+/** 条漫 page: full width, height from the header aspect ratio (no layout jump), decoded at screen width. */
+@Composable
+private fun ComicStripPage(archive: ComicArchive, ref: ComicPageRef, onTap: () -> Unit) {
+    var width by remember { mutableIntStateOf(0) }
+    var attempt by remember { mutableIntStateOf(0) }
+    var result by remember(ref, attempt) { mutableStateOf<Result<Bitmap>?>(null) }
+    LaunchedEffect(ref, attempt, width) {
+        if (width > 0) result = withContext(Dispatchers.IO) { runCatching { archive.page(ref.unit.resource, width) } }
+    }
+    val ratio = ref.unit.width?.let { w -> ref.unit.height?.takeIf { it > 0 && w > 0 }?.let { w.toFloat() / it } } ?: (1 / 1.4f)
+    Box(Modifier.fillMaxWidth().aspectRatio(ratio).onSizeChanged { width = it.width }
+        .pointerInput(ref) { detectTapGestures(onTap = { onTap() }) }) {
+        val r = result
+        when {
+            r == null -> Box(Modifier.fillMaxSize().background(Skeleton))
+            r.isFailure -> ComicError("这一页没能打开",
+                "${ref.unit.resource.substringAfterLast('/')} · ${r.exceptionOrNull()?.localizedMessage?.substringAfter(" · ") ?: "未知错误"}",
+                { attempt++ }, null)
+            else -> Image(r.getOrThrow().asImageBitmap(), null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxSize())
+        }
     }
 }
 
