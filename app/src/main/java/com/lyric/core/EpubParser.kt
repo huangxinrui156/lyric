@@ -101,15 +101,21 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
             }
         }
         val anchors = mutableMapOf<String, Locator>()
+        val ruleCache = HashMap<String, List<EpubLayout.Rule>>()
+        val inlineSheets = mutableListOf<Pair<String, String>>()
         val chapters =
             spine.mapIndexed { index, item ->
+                ImportProgress.tick("解析章节", index + 1, spine.size)
                 val path = resolve(item.attr("href"))
                 val html = document(path)
                 fun relative(href: String) = EpubPaths.resolve(path, href)
                 val chapterCss = html.select("link[rel=stylesheet]").joinToString("\n") {
                     runCatching { files[relative(it.attr("href"))]?.toString(Charsets.UTF_8) }.getOrNull().orEmpty()
-                } + "\n" + html.select("style").joinToString("\n") { it.data().ifBlank { it.html() } }
-                val extracted = EpubLayout.extract(html.body(), chapterCss, ::relative) { id, offset ->
+                }
+                val inline = html.select("style").joinToString("\n") { it.data().ifBlank { it.html() } }
+                if (inline.isNotBlank()) inlineSheets += path to inline
+                val chapterRules = ruleCache.getOrPut(chapterCss + "\n" + inline) { EpubLayout.rules(chapterCss + "\n" + inline) }
+                val extracted = EpubLayout.extract(html.body(), chapterRules, ::relative) { id, offset ->
                     anchors["$path#$id"] = Locator(index, offset)
                 }
                 val text = extracted.text
@@ -123,11 +129,12 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
                 ).also { it.legacyOffsets = extracted.legacyOffsets }
             }
         require(chapters.isNotEmpty()) { "EPUB 没有可阅读的章节" }
+        val chapterByHref = HashMap<String, Int>().also { m -> chapters.forEach { m.putIfAbsent(it.href, it.index) } }
         fun locate(path: String, href: String): Locator? {
             val full = runCatching { EpubPaths.resolve(path, href) }.getOrNull() ?: return null
             val fragment = runCatching { EpubPaths.decode(href.substringAfter('#', "")) }.getOrNull() ?: return null
             return anchors["$full#$fragment"]
-                ?: chapters.indexOfFirst { it.href == full }.takeIf { it >= 0 }?.let { Locator(it) }
+                ?: chapterByHref[full]?.let { Locator(it) }
         }
         val toc = mutableListOf<TocEntry>()
         val nav = manifest.values.firstOrNull { "nav" in it.attr("properties").split(Regex("\\s+")) }
@@ -174,11 +181,7 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
                 ?.toFloatOrNull()
         val fonts = mutableMapOf<String, String>()
         val fontSheets = files.filterKeys { it.endsWith(".css") }.map { it.key to it.value.toString(Charsets.UTF_8) } +
-            spine.map { item ->
-                val path = resolve(item.attr("href"))
-                path to document(path).select("style")
-                    .joinToString("\n") { it.data().ifBlank { it.html() } }
-            }
+            inlineSheets
         fontSheets.forEach { (cssPath, sheet) ->
             Regex("@font-face\\s*\\{([^\\}]+)\\}", RegexOption.IGNORE_CASE).findAll(sheet).forEach { face ->
                 val props = EpubLayout.declarations(face.groupValues[1])

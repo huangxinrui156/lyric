@@ -6,7 +6,12 @@ import org.jsoup.nodes.TextNode
 
 /** Deliberately small, inert CSS subset. No network, scripts, floats, tables or columns. */
 object EpubLayout {
-    data class Rule(val selector: String, val declarations: Map<String, String>, val priority: Int)
+    data class Rule(val selector: String, val declarations: Map<String, String>, val priority: Int) {
+        /** Compiled once; Element.is(String) re-parses the selector on every call (O(elements x rules)). */
+        val evaluator: org.jsoup.select.Evaluator? by lazy(LazyThreadSafetyMode.NONE) {
+            runCatching { org.jsoup.select.QueryParser.parse(selector) }.getOrNull()
+        }
+    }
     fun declarations(css: String): Map<String, String> = css.split(';').mapNotNull {
         val colon = it.indexOf(':')
         if (colon < 0) null else it.take(colon).trim().lowercase() to
@@ -35,8 +40,11 @@ object EpubLayout {
 
     data class Result(val text: String, val styles: List<TextStyleRange>, val legacyOffsets: List<OffsetMapping>)
     fun extract(body: Element, css: String, resolve: (String) -> String,
+                anchor: (String, Int) -> Unit): Result = extract(body, rules(css), resolve, anchor)
+
+    fun extract(body: Element, rules: List<Rule>, resolve: (String) -> String,
                 anchor: (String, Int) -> Unit): Result {
-        val rules = rules(css)
+        val root = body.root()
         val out = StringBuilder()
         val styles = mutableListOf<TextStyleRange>()
         val currentRanges = java.util.IdentityHashMap<Node, Pair<Int, Int>>()
@@ -56,7 +64,8 @@ object EpubLayout {
                     if (node.id().isNotEmpty()) anchor(node.id(), start)
                     val authored = mutableMapOf<String, String>()
                     rules.forEach { rule ->
-                        if (runCatching { node.`is`(rule.selector) }.getOrDefault(false)) authored.putAll(rule.declarations)
+                        val ev = rule.evaluator
+                        if (ev != null && runCatching { ev.matches(root, node) }.getOrDefault(false)) authored.putAll(rule.declarations)
                     }
                     authored.putAll(declarations(node.attr("style")))
                     when (tag) {

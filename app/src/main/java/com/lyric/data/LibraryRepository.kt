@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.encodeToStream
+import kotlinx.serialization.json.decodeFromStream
+import com.lyric.core.ImportProgress
 
 class UriSource(
     private val context: Context,
@@ -41,6 +44,9 @@ data class ImportStatus(
     val failures: Int = 0,
     val message: String = "",
     val errors: List<String> = emptyList(),
+    /** In-book progress for the file currently being imported, e.g. "解析章节 120 / 1248". */
+    val detail: String = "",
+    val detailFraction: Float = 0f,
     val batchId: Long = 0,
 )
 
@@ -51,6 +57,9 @@ data class SearchHit(
     val context: String,
 )
 
+private const val PARSE_TIMEOUT_MS = 180_000L
+
+@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
 class LibraryRepository(
     private val context: Context,
     private val db: LibraryDatabase,
@@ -270,11 +279,23 @@ class LibraryRepository(
                 }
                 return false
             }
+            val job = currentCoroutineContext()[kotlinx.coroutines.Job]
+            var lastEmit = 0L
             val parsed = ImportTrace.stage("解析书籍") {
-                registry
-                    .parser(extension)
-                    .parse(FileSource(temp, name))
+                ImportProgress.run(PARSE_TIMEOUT_MS, { job?.isActive == false }, { stage, done, total ->
+                    val now = System.nanoTime()
+                    if (done == total || now - lastEmit > 100_000_000L) {
+                        lastEmit = now
+                        imports.value = imports.value.copy(detail = "$stage $done / $total",
+                            detailFraction = if (total > 0) done.toFloat() / total else 0f)
+                    }
+                }) {
+                    registry
+                        .parser(extension)
+                        .parse(FileSource(temp, name))
+                }
             }
+            imports.value = imports.value.copy(detail = "写入缓存…", detailFraction = 1f)
             val cover = ImportTrace.stage("保存封面") {
                 parsed.coverResource?.let { path -> parsed.resources[path]?.let { encoded ->
                     val directory = File(context.filesDir, "covers").apply { check(isDirectory || mkdirs()) }
@@ -323,7 +344,8 @@ class LibraryRepository(
         check(cache.isDirectory || cache.mkdirs()) { "无法创建解析缓存目录" }
         val file = cacheFile(row)
         val tmp = File(file.path + ".tmp")
-        tmp.writeText(json.encodeToString(Book.serializer(), book))
+        // Stream instead of building a ~50 MB String (x2 bytes) for large web novels.
+        tmp.outputStream().buffered(1 shl 16).use { json.encodeToStream(Book.serializer(), book, it) }
         check(tmp.renameTo(file)) { "无法写入解析缓存" }
         memory.remove(file.name)
     }
@@ -345,10 +367,9 @@ class LibraryRepository(
                         if (!force && !upgrade)
                             memory[key]
                                 ?: runCatching {
-                                        json.decodeFromString(
-                                            Book.serializer(),
-                                            cacheFile(row).readText(),
-                                        )
+                                        cacheFile(row).inputStream().buffered(1 shl 16).use {
+                                            json.decodeFromStream(Book.serializer(), it)
+                                        }
                                     }
                                     .getOrNull()
                         else null

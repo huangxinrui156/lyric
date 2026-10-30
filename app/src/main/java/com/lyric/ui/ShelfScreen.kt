@@ -568,12 +568,14 @@ private fun ImportProgress(status: ImportStatus) {
         )
         if (status.running && status.total > 0)
             LinearProgressIndicator(
-                progress = { status.done.toFloat() / status.total },
+                progress = { ((status.done + status.detailFraction) / status.total).coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
                 color = Moss,
             )
         else if (status.running)
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp))
+        if (status.running && status.detail.isNotBlank())
+            Text(status.detail, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             status.message,
             fontSize = 11.sp,
