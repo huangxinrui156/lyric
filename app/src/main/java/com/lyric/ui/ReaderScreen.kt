@@ -72,6 +72,11 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
         ComicReaderScreen(vm, comic, back)
         return
     }
+    // Comics never flash the paper colour while loading.
+    if (state.book == null && state.row?.contentType == ContentType.COMIC.name) {
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF111111)))
+        return
+    }
     val prefs by vm.settings.collectAsStateWithLifecycle()
     val locator by vm.locator.collectAsStateWithLifecycle()
     val marks by vm.bookmarks.collectAsStateWithLifecycle()

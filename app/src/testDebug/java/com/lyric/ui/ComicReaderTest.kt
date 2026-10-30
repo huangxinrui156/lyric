@@ -88,6 +88,8 @@ class ComicReaderTest {
             stored = runBlocking(Dispatchers.IO) { app.repository.settings.settings(row.id, ContentType.COMIC).first().comicDirection }
         }
         assertEquals("ltr", stored)
+        // Hand-picked: recorded per book, so a declared direction no longer overrides it.
+        assertTrue(app.getSharedPreferences("comic_hints", 0).getBoolean("chosen_${row.id}", false))
         // Cycling on to 条漫 swaps the pager for the vertical strip.
         compose.onAllNodesWithContentDescription("当前从左往右，切换为条漫")[0].performClick()
         compose.waitUntil(5000) { vm.settings.value.comicDirection == "vertical" }

@@ -33,6 +33,7 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
                 }
             }
         try {
+            ImportTrace.stage("EPUB/图片书检测") { ImageEpub.detect(archive, source.displayName) }?.let { return it }
             var first: Exception? = null
             // ZIP central-directory sizes support STORED descriptors and ZIP64. Legacy names
             // are retried against the actual OPF references, rather than accepting mojibake.

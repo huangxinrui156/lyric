@@ -22,6 +22,7 @@ import kotlinx.serialization.json.decodeFromStream
 import com.lyric.core.ImportProgress
 import com.lyric.core.ContentType
 import com.lyric.core.ComicParser
+import com.lyric.core.ImageEpub
 import com.lyric.reader.ComicPages
 
 class UriSource(
@@ -301,7 +302,7 @@ class LibraryRepository(
             ).let { if (it == "epub" || it == "cbz") BookFormats.zipKind(temp) else it } }
             val id = digest.digest().joinToString("") { "%02x".format(it) }
             // Comics are read page by page with random access, so they always keep a private copy.
-            val keepCopy = retainSource || extension == "cbz"
+            var keepCopy = retainSource || extension == "cbz"
             fun retain() = ImportTrace.stage("保存临时授权源文件") {
                 if (keepCopy) {
                     check(sources.isDirectory || sources.mkdirs()) { "无法创建源文件目录" }
@@ -312,6 +313,7 @@ class LibraryRepository(
                 }
             }
             ImportTrace.stage("Room/查询重复") { dao.book(id) }?.let { old ->
+                if (old.contentType == ContentType.COMIC.name) keepCopy = true
                 retain()
                 // Re-import can repair a moved or revoked original without discarding its progress.
                 ImportTrace.stage("Room/更新重复书籍") {
@@ -335,6 +337,8 @@ class LibraryRepository(
                         .parse(FileSource(temp, name))
                 }
             }
+            // Image EPUBs are read page by page out of the ZIP, like CBZ.
+            if (parsed.contentType == ContentType.COMIC) keepCopy = true
             imports.value = imports.value.copy(detail = "写入缓存…", detailFraction = 1f)
             val cover = ImportTrace.stage("保存封面") {
                 if (parsed.contentType == ContentType.COMIC) parsed.coverResource?.let { entry ->
@@ -363,7 +367,7 @@ class LibraryRepository(
                     chapterCount = parsed.chapters.size,
                     encoding = parsed.encoding,
                     excerpt = parsed.chapters.first().text.take(80),
-                    contentRevision = 3,
+                    contentRevision = 4,
                     coverPath = cover,
                 )
             try {
@@ -406,6 +410,35 @@ class LibraryRepository(
         } catch (e: Throwable) { out.delete(); throw e }
     }
 
+    private suspend fun redetectComic(row: ShelfBook): Pair<ShelfBook, Book>? {
+        val kept = File(sources, row.id)
+        val file = if (kept.isFile) kept else File.createTempFile("redetect-", ".epub", context.cacheDir).also { t ->
+            source(row).open().use { input -> t.outputStream().use { input.copyTo(it, 1 shl 16) } }
+        }
+        try {
+            val book = runCatching { ImageEpub.detect(file, row.name) }.getOrNull()
+            if (book == null) { dao.update(row.copy(contentRevision = 4)); return null }
+            check(sources.isDirectory || sources.mkdirs()) { "无法创建源文件目录" }
+            if (file != kept) { file.copyTo(File(sources, "${row.id}.tmp"), true); check(File(sources, "${row.id}.tmp").renameTo(kept)) }
+            val cover = book.coverResource?.let { entry ->
+                val directory = File(context.filesDir, "covers").apply { check(isDirectory || mkdirs()) }
+                File(directory, "${row.id}.${entry.substringAfterLast('.', "jpg").lowercase()}").apply {
+                    ComicPages.thumbnail(kept, entry, 720)?.let { writeBytes(it) }
+                }.takeIf { it.length() > 0 }?.absolutePath
+            } ?: row.coverPath
+            val updated = row.copy(contentType = ContentType.COMIC.name, contentRevision = 4, totalChars = book.totalChars,
+                chapterCount = book.chapters.size, excerpt = "", coverPath = cover)
+            writeCache(updated, book)
+            // Text offsets mean nothing in a comic: restart at the first page, keep timestamps.
+            dao.progress(row.id)?.let { dao.saveProgress(it.copy(chapterIndex = 0, charOffset = 0, page = 0, contentRevision = 3)) }
+            dao.update(updated)
+            memory[cacheFile(updated).name] = book
+            dao.invalid(row.id, false)
+            Log.i(ImportTrace.TAG, "图片 EPUB 重新识别为漫画 id=${row.id} pages=${book.chapters.sumOf { it.content.size }}")
+            return updated to book
+        } finally { if (file != kept) file.delete() }
+    }
+
     private fun writeCache(row: ShelfBook, book: Book) {
         check(cache.isDirectory || cache.mkdirs()) { "无法创建解析缓存目录" }
         val file = cacheFile(row)
@@ -428,6 +461,9 @@ class LibraryRepository(
                     // Even with a parsed cache, check the source so revoked/missing files are
                     // explicit.
                     ImportTrace.stage("打开阅读源") { source(row).open().use {} }
+                    // Books imported before 0.4.0-p0.3 as text may be image-only EPUBs: re-detect once.
+                    if (row.extension == "epub" && row.contentType == ContentType.TEXT.name && row.contentRevision < 4)
+                        redetectComic(row)?.let { return@withLock it }
                     val key = cacheFile(row).name
                     val parsed =
                         if (!force && !upgrade)

@@ -104,4 +104,26 @@ class ComicImportTest {
         repo.importUris(listOf(tree), folder = true, grantFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION)
         assertEquals(1, repo.imports.value.duplicates)
     }
+
+    @Test fun imageEpubImportsAsComicAndOldTextRowIsRedetected() = env { context, repo ->
+        val pages = (1..5).map { """<div><svg xmlns="http://www.w3.org/2000/svg"><image xlink:href="../Images/$it.png"/></svg></div>""" }
+        val src = ImageEpubTest().epub("", """page-progression-direction="rtl"""", pages)
+        val file = File(context.filesDir, "再见绘梨.epub").also { src.copyTo(it, true) }
+        repo.importUris(listOf(Uri.fromFile(file)))
+        val row = repo.dao.all().first { it.title == "再见绘梨" }
+        assertEquals("COMIC", row.contentType)
+        assertTrue(repo.comicFile(row.id).isFile)
+        val (_, book) = repo.load(row.id)
+        assertEquals(ContentType.COMIC, book.contentType)
+        assertEquals("rtl", book.readingDirection)
+        // A copy imported by an older build as TEXT: re-detected on open, without a re-import.
+        repo.dao.update(row.copy(contentType = "TEXT", contentRevision = 3))
+        repo.comicFile(row.id).delete()
+        val (fixed, again) = repo.load(row.id, force = false)
+        assertEquals("COMIC", fixed.contentType)
+        assertEquals("COMIC", repo.dao.book(row.id)!!.contentType)
+        assertEquals(5, again.chapters.sumOf { it.content.size })
+        assertTrue(repo.comicFile(row.id).isFile)
+        ComicArchive(repo.comicFile(row.id), (again.chapters[0].content[0] as ContentUnit.ImagePage).resource).close()
+    }
 }

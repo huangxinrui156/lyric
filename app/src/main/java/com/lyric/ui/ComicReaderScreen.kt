@@ -134,14 +134,16 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
     // First open of a book: apply the direction the file declares (if any), otherwise RTL stays,
     // and show the hint bar with the three directions; untouched, it fades after 2.4s.
     val hints = remember { context.getSharedPreferences("comic_hints", 0) }
-    val firstKey = "first_${vm.id}"
-    var hint by remember { mutableStateOf(!hints.getBoolean(firstKey, false)) }
-    fun choose(next: String) { if (next != prefs.comicDirection) vm.updateSettings(SettingsScope.BOOK, prefs.copy(comicDirection = next)) }
+    // Per-book flag: has the reader picked a direction by hand? Until then the file's declared
+    // direction wins (also for books opened in older builds) and the first-open hint shows once.
+    val chosenKey = "chosen_${vm.id}"
+    val hintKey = "hint_v3_${vm.id}"
+    var hint by remember { mutableStateOf(!hints.getBoolean(chosenKey, false) && !hints.getBoolean(hintKey, false)) }
+    fun apply(next: String) { if (next != prefs.comicDirection) vm.updateSettings(SettingsScope.BOOK, prefs.copy(comicDirection = next)) }
+    fun choose(next: String) { hints.edit().putBoolean(chosenKey, true).apply(); apply(next) }
     LaunchedEffect(Unit) {
-        if (hint) {
-            hints.edit().putBoolean(firstKey, true).apply()
-            book.readingDirection?.takeIf { it in ComicDirections.all }?.let { choose(it) }
-        }
+        if (!hints.getBoolean(chosenKey, false)) book.readingDirection?.takeIf { it in ComicDirections.all }?.let { apply(it) }
+        if (hint) hints.edit().putBoolean(hintKey, true).apply()
     }
     LaunchedEffect(hint) { if (hint) { delay(2400); hint = false } }
     LaunchedEffect(vertical) {

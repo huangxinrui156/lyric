@@ -56,20 +56,24 @@ class BookAssets(private val context: Context, private val book: Book) {
     }
 }
 
-class BookImageSpan(val resource: String, private val bitmap: Bitmap?, width: Int, height: Int) : ReplacementSpan() {
+/** [bleed] > 0: standalone image, scaled to the full page width (layout width + both margins), centred. */
+class BookImageSpan(val resource: String, private val bitmap: Bitmap?, private val width: Int, height: Int, private val bleed: Int = 0) : ReplacementSpan() {
     private val targetWidth: Int
     private val targetHeight: Int
     init {
-        val ratio = bitmap?.let { minOf(width.toFloat() / it.width, height.toFloat() / it.height) } ?: 1f
+        val full = width + 2 * bleed
+        val ratio = bitmap?.let { if (bleed > 0) minOf(full.toFloat() / it.width, height.toFloat() / it.height)
+            else minOf(width.toFloat() / it.width, height.toFloat() / it.height) } ?: 1f
         targetWidth = bitmap?.let { (it.width * ratio).toInt().coerceAtLeast(1) } ?: width
         targetHeight = bitmap?.let { (it.height * ratio).toInt().coerceAtLeast(1) } ?: 48
     }
     override fun getSize(paint: Paint, text: CharSequence, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
         fm?.apply { ascent = -targetHeight; top = ascent; descent = 0; bottom = 0 }
-        return targetWidth
+        return if (bleed > 0) width else targetWidth
     }
     override fun draw(canvas: Canvas, text: CharSequence, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
-        if (bitmap != null) canvas.drawBitmap(bitmap, null, RectF(x, (y - targetHeight).toFloat(), x + targetWidth, y.toFloat()), paint)
+        val left = if (bleed > 0) x + (width - targetWidth) / 2f else x
+        if (bitmap != null) canvas.drawBitmap(bitmap, null, RectF(left, (y - targetHeight).toFloat(), left + targetWidth, y.toFloat()), paint)
         else canvas.drawText("［图片不可用］", x, y.toFloat(), paint)
     }
 }
