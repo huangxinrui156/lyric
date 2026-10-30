@@ -18,7 +18,7 @@ internal object CacheFiles {
     }.map { File(it).canonicalPath }.toSet()
 
     fun temporary(context: Context) = context.cacheDir.listFiles().orEmpty().filter {
-        it.isFile && Regex("(import-.*\\.tmp|font-.*\\.ttf|restore-.*\\.(ttf|otf))", RegexOption.IGNORE_CASE).matches(it.name)
+        (it.isDirectory && it.name == "epub-fonts") || it.isFile && Regex("(import-.*\\.tmp|font-.*\\.ttf|restore-.*\\.(ttf|otf))", RegexOption.IGNORE_CASE).matches(it.name)
     }
 
     fun size(file: File, protected: Set<String> = emptySet()): Long {

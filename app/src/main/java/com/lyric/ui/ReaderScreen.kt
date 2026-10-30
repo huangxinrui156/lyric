@@ -3,6 +3,16 @@
 package com.lyric.ui
 
 import android.app.Activity
+import android.view.KeyEvent
+import com.lyric.ReaderActivity
+import com.lyric.reader.VolumeNavigation
+import coil.compose.AsyncImage
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.*
@@ -14,6 +24,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -54,6 +67,9 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
     var settings by rememberSaveable { mutableStateOf(false) }
     var search by rememberSaveable { mutableStateOf(false) }
     var pageInfo by remember { mutableStateOf("") }
+    var canvas by remember { mutableStateOf<ReaderCanvas?>(null) }
+    var enlargedImage by remember { mutableStateOf<String?>(null) }
+    val (clock, battery) = readerClockAndBattery()
     var drawerTab by rememberSaveable { mutableIntStateOf(0) }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -86,8 +102,19 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
     val accent = MaterialTheme.colorScheme.primary
     MaterialTheme(colorScheme = (if (darkReader) DarkColors else LightColors).copy(primary = accent)) {
         val activity = LocalContext.current as Activity
-        val controls = menu || settings || search || drawer.isOpen
+        val controls = menu || settings || search || drawer.isOpen || enlargedImage != null
+        DisposableEffect(activity) {
+            onDispose { (activity as? ReaderActivity)?.readerVolumeHandler = null }
+        }
         SideEffect {
+            (activity as? ReaderActivity)?.readerVolumeHandler = { event ->
+                val step = VolumeNavigation.step(event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN,
+                    prefs.volumeKeys, prefs.swapVolumeKeys, controls || canvas?.selectionMenuOpen == true)
+                if (step == null || canvas == null) false else {
+                    if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) canvas?.turn(step)
+                    true
+                }
+            }
             val controller =
                 WindowCompat.getInsetsController(activity.window, activity.window.decorView)
             controller.systemBarsBehavior =
@@ -139,16 +166,7 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                 Modifier.fillMaxSize().background(bg).safeDrawingPadding(),
                 contentAlignment = Alignment.Center,
             ) {
-                if (state.loading)
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = Moss, strokeWidth = 2.dp)
-                        Text(
-                            "正在铺开书页…",
-                            fontFamily = Serif,
-                            color = meta,
-                            modifier = Modifier.padding(20.dp),
-                        )
-                    }
+                if (state.loading) PaperSkeleton(bg, ink, prefs.margin)
                 else
                     Column(
                         Modifier.padding(32.dp),
@@ -328,20 +346,23 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
         ) {
             Box(Modifier.fillMaxSize().background(bg).paperGrain()) {
                 Column(Modifier.fillMaxSize().padding(top = 28.dp, bottom = 16.dp)) {
-                    Text(
-                        "${book.title} · ${book.chapters[locator.chapterIndex].title}",
+                    if (prefs.showChapter) Text(
+                        book.chapters[locator.chapterIndex].title,
                         color = meta,
                         fontFamily = Serif,
-                        fontSize = 12.sp,
-                        letterSpacing = 1.5.sp,
+                        fontSize = (prefs.fontSize * .7f).sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier =
                             Modifier.padding(horizontal = prefs.margin.dp).padding(bottom = 18.dp),
                     )
                     AndroidView(
-                        factory = { context -> ReaderCanvas(context) },
+                        factory = { context -> ReaderCanvas(context).also { canvas = it } },
                         update = { view ->
+                            view.onContentReady = { activity.reportFullyDrawn() }
+                            view.controlsOpen = controls
+                            view.onExcerpt = { at, text -> vm.bookmark(at, text) }
+                            view.onImage = { enlargedImage = it }
                             view.onLocator = vm::readingActivity
                             view.onEndReached = vm::finished
                             view.onReadingActivity = vm::readingGesture
@@ -357,19 +378,44 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                             .padding(top = 12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text(pageInfo, color = meta, fontSize = 10.sp)
-                        Text(
-                            "%.1f%%".format(book.percent(locator) * 100),
-                            color = meta,
-                            fontSize = 10.sp,
-                        )
+                        val infoSize = (prefs.fontSize * .7f).sp
+                        if (prefs.showPage) Text(pageInfo, color = meta, fontSize = infoSize)
+                        if (prefs.showPercent) Text("%.1f%%".format(book.percent(locator) * 100), color = meta, fontSize = infoSize)
+                        if (prefs.showTime) Text(clock, color = meta, fontSize = infoSize)
+                        if (prefs.showBattery) Text(battery, color = meta, fontSize = infoSize)
                     }
                 }
-                if (state.loading)
-                    LinearProgressIndicator(
-                        Modifier.fillMaxWidth().align(Alignment.TopCenter),
-                        color = Moss,
-                    )
+                enlargedImage?.let { path ->
+                    Dialog(onDismissRequest = { enlargedImage = null },
+                        properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                        var zoom by remember(path) { mutableFloatStateOf(1f) }
+                        var dx by remember(path) { mutableFloatStateOf(0f) }
+                        var dy by remember(path) { mutableFloatStateOf(0f) }
+                        var data by remember(path) { mutableStateOf<ByteArray?>(null) }
+                        LaunchedEffect(path) {
+                            data = withContext(Dispatchers.Default) {
+                                runCatching { java.util.Base64.getDecoder().decode(book.resources[path]) }.getOrNull()
+                            }
+                        }
+                        Box(Modifier.fillMaxSize().background(Color.Black)) {
+                            val request = remember(data, path) {
+                                coil.request.ImageRequest.Builder(activity).data(data).apply {
+                                    if (path.endsWith(".svg", true)) decoderFactory(coil.decode.SvgDecoder.Factory())
+                                }.build()
+                            }
+                            AsyncImage(request, "书中插图", contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize().pointerInput(path) {
+                                    detectTransformGestures { _, pan, scale, _ ->
+                                        zoom = (zoom * scale).coerceIn(1f, 5f)
+                                        dx += pan.x; dy += pan.y
+                                    }
+                                }.graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = dx; translationY = dy })
+                            IconButton(onClick = { enlargedImage = null }, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
+                                Icon(Icons.Outlined.Close, "关闭大图", tint = Color.White)
+                            }
+                        }
+                    }
+                }
                 AnimatedVisibility(visible = menu, modifier = Modifier.align(Alignment.TopCenter)) {
                     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
                         Row(
@@ -587,6 +633,8 @@ private fun SearchDialog(vm: ReaderViewModel, dismiss: () -> Unit) {
                     items(hits, key = { "${it.chapterIndex}:${it.charOffset}" }) { hit ->
                         Column(
                             Modifier.fillMaxWidth()
+                                .semantics { contentDescription = "搜索结果" }
+                                .drawWithContent { drawContent(); com.lyric.reader.ReaderMetrics.endSearch() }
                                 .clickable {
                                     vm.goTo(Locator(hit.chapterIndex, hit.charOffset))
                                     dismiss()

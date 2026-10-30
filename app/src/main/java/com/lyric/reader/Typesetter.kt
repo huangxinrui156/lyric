@@ -9,6 +9,8 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.style.LeadingMarginSpan
 import android.text.style.LineHeightSpan
+import android.text.style.*
+import com.lyric.core.Chapter
 import com.lyric.core.ReaderSettings
 import kotlin.math.roundToInt
 
@@ -36,6 +38,8 @@ object Typesetter {
         scaledDensity: Float,
         settings: ReaderSettings,
         font: Typeface,
+        chapter: Chapter? = null,
+        assets: BookAssets? = null,
     ): TypesetChapter {
         var from = at.coerceAtLeast(0) / WINDOW * WINDOW
         if (from > 0 && from < text.length && text[from].isLowSurrogate()) from--
@@ -52,9 +56,16 @@ object Typesetter {
         var start = 0
         while (start < span.length) {
             val end = span.indexOf('\n', start).let { if (it < 0) span.length else it + 1 }
-            if (settings.indent && (start > 0 || from == 0 || text.getOrNull(from - 1) == '\n'))
+            val authoredIndent = if (settings.useBookStyle) chapter?.styles
+                ?.filter { it.bookStyle && it.indentEm != null && it.start <= from + start && it.end > from + start }
+                ?.minByOrNull { it.end - it.start }?.indentEm else null
+            val structural = span[start] == '\uFFFC' || chapter?.styles?.any {
+                !it.bookStyle && (it.sizeEm != null || it.align == "center") && it.start <= from + start && it.end > from + start
+            } == true
+            val indentEm = if (span[start] == '\uFFFC') 0f else authoredIndent ?: if (settings.indent && !structural) 2f else 0f
+            if (indentEm != 0f && (start > 0 || from == 0 || text.getOrNull(from - 1) == '\n'))
                 span.setSpan(
-                    LeadingMarginSpan.Standard((size * 2).toInt(), 0),
+                    LeadingMarginSpan.Standard((size * indentEm).toInt(), 0),
                     start,
                     end,
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
@@ -68,6 +79,30 @@ object Typesetter {
                 )
             start = end
         }
+        chapter?.styles?.filter { it.end > from && it.start < to && (!it.bookStyle || settings.useBookStyle) }
+            ?.sortedByDescending { it.end - it.start }?.forEach { style ->
+                val a = (style.start - from).coerceAtLeast(0)
+                val b = (style.end - from).coerceAtMost(span.length)
+                fun apply(value: Any, end: Int = b) { if (end > a) span.setSpan(value, a, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
+                if (style.bold || style.italic) apply(StyleSpan(
+                    (if (style.bold) Typeface.BOLD else 0) or (if (style.italic) Typeface.ITALIC else 0)))
+                val overriddenSize = !style.bookStyle && settings.useBookStyle && chapter.styles.any {
+                    it.bookStyle && it.start == style.start && it.end == style.end && it.sizeEm != null
+                }
+                if (!overriddenSize) style.sizeEm?.let { apply(RelativeSizeSpan(it)) }
+                style.align?.let { alignment -> apply(AlignmentSpan.Standard(when (alignment) {
+                    "center" -> Layout.Alignment.ALIGN_CENTER
+                    "right", "end" -> Layout.Alignment.ALIGN_OPPOSITE
+                    else -> Layout.Alignment.ALIGN_NORMAL
+                })) }
+                if (settings.useBookStyle) style.fontFamily?.let { family ->
+                    val face = assets?.font(family)
+                    if (face != null) apply(BookTypefaceSpan(face)) else apply(TypefaceSpan(family))
+                }
+                style.resource?.let { path -> apply(BookImageSpan(path, assets?.image(path, width, height), width, (height * .85f).toInt()), minOf(a + 1, b)) }
+                if (style.rule) apply(RuleSpan(width), minOf(a + 1, b))
+                style.ruby?.let { apply(RubySpan(it)) }
+            }
         val paint =
             TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                 textSize = size
@@ -88,6 +123,7 @@ object Typesetter {
         val pages = mutableListOf<TextPage>()
         var firstLine = 0
         while (firstLine < layout.lineCount) {
+            if (span.isNotEmpty() && layout.getLineStart(firstLine) >= span.length) break
             val top = layout.getLineTop(firstLine)
             var last = firstLine
             while (
@@ -105,6 +141,11 @@ object Typesetter {
         return TypesetChapter(layout, pages, from, to, span.toString())
     }
 
+    private class BookTypefaceSpan(private val face: Typeface) : MetricAffectingSpan() {
+        override fun updateDrawState(tp: TextPaint) { tp.typeface = Typeface.create(face, tp.typeface?.style ?: Typeface.NORMAL) }
+        override fun updateMeasureState(tp: TextPaint) = updateDrawState(tp)
+    }
+
     /** CSS-style em line height, independent of the font's built-in ascent/descent. */
     private class ExactLineHeight(private val height: Int) : LineHeightSpan {
         override fun chooseHeight(
@@ -116,8 +157,9 @@ object Typesetter {
             fm: android.graphics.Paint.FontMetricsInt,
         ) {
             val original = (fm.descent - fm.ascent).coerceAtLeast(1)
-            fm.descent = (fm.descent.toFloat() / original * height).roundToInt()
-            fm.ascent = fm.descent - height
+            val actual = maxOf(height, original)
+            fm.descent = (fm.descent.toFloat() / original * actual).roundToInt()
+            fm.ascent = fm.descent - actual
             fm.top = fm.ascent
             fm.bottom = fm.descent
         }

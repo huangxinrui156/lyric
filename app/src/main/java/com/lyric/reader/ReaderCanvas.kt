@@ -2,6 +2,11 @@ package com.lyric.reader
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.graphics.*
 import android.view.*
 import android.widget.OverScroller
@@ -16,6 +21,8 @@ import kotlinx.coroutines.*
 class ReaderCanvas(context: Context) : View(context) {
     var onLocator: (Locator) -> Unit = {}
     var onMenu: () -> Unit = {}
+    var onContentReady: () -> Unit = {}
+    private var contentReported = false
     var onEndReached: () -> Unit = {}
     var onReadingActivity: () -> Unit = {}
     var onPageInfo: (String) -> Unit = {}
@@ -35,6 +42,11 @@ class ReaderCanvas(context: Context) : View(context) {
     private var reportedScroll = 0f
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
+    private var paginator: PrePaginator? = null
+    private var paginationKey: Any? = null
+    var controlsOpen = false
+    var onExcerpt: (Locator, String) -> Unit = { _, _ -> }
+    var onImage: (String) -> Unit = {}
     private var pendingKey: Any? = null
     private var layoutKey: Any? = null
     private var animator: ValueAnimator? = null
@@ -45,6 +57,32 @@ class ReaderCanvas(context: Context) : View(context) {
     private val selectionPaint = Paint().apply { color = 0x55B5563A }
     private val paperPaint = Paint()
     private val scroller = OverScroller(context)
+    private var selection: TextSelection? = null
+    private var actionMode: ActionMode? = null
+    val selectionMenuOpen: Boolean get() = actionMode != null
+    private var draggingHandle = 0
+    private val startHandle = PointF()
+    private val endHandle = PointF()
+    private val handler = Handler(Looper.getMainLooper())
+    private var longPressed = false
+    private val longPress = Runnable { beginSelection(downX, downY) }
+    private var edgeStep = 0
+    private val edgeTurn = object : Runnable {
+        override fun run() {
+            if (draggingHandle == 0 || edgeStep == 0) return
+            if (prefs.pageMode == PageMode.SCROLL && (if (edgeStep > 0) scroll < maxScroll() else scroll > 0)) {
+                scroll = (scroll + edgeStep * prefs.fontSize * resources.displayMetrics.scaledDensity * 2).coerceIn(0f, maxScroll())
+                emitScroll()
+                extendSelection(lastX, lastY)
+            } else {
+                turn(edgeStep)
+                // bind/syncLocation moves the dragged boundary to the new visible edge.
+            }
+            invalidate()
+            handler.postDelayed(this, 500)
+        }
+    }
+    private var lastX = 0f
     private val density
         get() = resources.displayMetrics.density
 
@@ -78,7 +116,9 @@ class ReaderCanvas(context: Context) : View(context) {
         paper: Int,
         highlight: String,
     ) {
+        if (this.book !== book) { clearSelection(); contentReported = false }
         val oldLoc = this.locator
+        val oldMode = this.prefs.pageMode
         val changedBook = this.book !== book
         this.book = book
         this.locator = locator
@@ -87,57 +127,56 @@ class ReaderCanvas(context: Context) : View(context) {
         this.paper = paper
         this.highlight = highlight
         contentDescription =
-            book.chapters[locator.chapterIndex].text.drop(locator.charOffset).take(800)
+            preview(book.chapters[locator.chapterIndex].text, locator.charOffset, 800)
         val window = locator.charOffset / Typesetter.WINDOW
         val key =
             listOf(
-                book,
+                System.identityHashCode(book),
                 locator.chapterIndex,
                 window,
                 width,
                 height,
-                settings.copy(
-                    theme = ReaderTheme.PAPER,
-                    brightness = .6f,
-                    dim = 0f,
-                    pageMode = PageMode.NONE,
-                    followSystem = false,
-                    customBg = 0,
-                    customInk = 0,
-                ),
+                listOf(settings.fontSize, settings.lineHeight, settings.paragraphSpace, settings.margin,
+                    settings.indent, settings.justify, settings.font, settings.useBookStyle,
+                    resources.displayMetrics.scaledDensity),
             )
         if (width > 0 && height > 0 && key != layoutKey && key != pendingKey) {
             job?.cancel()
             pendingKey = key
             val index = locator.chapterIndex
-            val text = book.chapters[index].text
             val textWidth = (width - horizontal * 2).toInt().coerceAtLeast(32)
             val textHeight = bodyHeight
-            val font = font(settings.font)
-            job =
-                scope.launch {
-                    val result =
-                        withContext(Dispatchers.Default) {
-                            Typesetter.layout(
-                                text,
-                                locator.charOffset,
-                                textWidth,
-                                textHeight,
-                                density,
-                                resources.displayMetrics.scaledDensity,
-                                effective(settings, book),
-                                font,
-                            )
-                        }
-                    typeset = result
-                    chapter = index
-                    layoutKey = key
-                    pendingKey = null
-                    syncLocation()
-                    invalidate()
-                }
-        } else if (key == layoutKey && (oldLoc != locator || changedBook)) syncLocation()
+            val geometry = listOf(key[0], key.drop(3))
+            if (geometry != paginationKey) {
+                paginator?.close()
+                paginationKey = geometry
+                val assets = BookAssets(context, book)
+                paginator = PrePaginator(book, scope, { c, offset ->
+                    Typesetter.layout(book.chapters[c].text, offset, textWidth, textHeight,
+                        density, resources.displayMetrics.scaledDensity, effective(settings, book), font(settings.font, settings, book),
+                        book.chapters[c], assets)
+                }, { c -> if (c == chapter) pageInfo() })
+            }
+            val worker = paginator!!
+            val anchor = locator
+            job = scope.launch {
+                val result = worker.get(index, anchor.charOffset)
+                if (pendingKey != key) return@launch
+                typeset = result
+                chapter = index
+                layoutKey = key
+                pendingKey = null
+                syncLocation()
+                worker.prioritize(this@ReaderCanvas.locator)
+                invalidate()
+            }
+        } else if (key == layoutKey && (oldLoc != locator || changedBook || oldMode != settings.pageMode)) syncLocation()
         invalidate()
+    }
+
+    private fun preview(text: String, offset: Int, length: Int): String {
+        val start = offset.coerceIn(0, text.length)
+        return text.substring(start, minOf(start + length, text.length))
     }
 
     private fun effective(settings: ReaderSettings, book: Book): ReaderSettings {
@@ -148,11 +187,11 @@ class ReaderCanvas(context: Context) : View(context) {
         )
     }
 
-    private fun font(name: String): Typeface =
+    private fun font(name: String, settings: ReaderSettings = prefs, book: Book? = this.book): Typeface =
         when {
             name.startsWith('/') ->
                 runCatching { Typeface.createFromFile(File(name)) }.getOrDefault(Typeface.SERIF)
-            prefs.useBookStyle && book?.suggestedStyle?.serif == false -> Typeface.SANS_SERIF
+            settings.useBookStyle && book?.suggestedStyle?.serif == false -> Typeface.SANS_SERIF
             name == "serif" -> serifFont
             else -> Typeface.create(name, Typeface.NORMAL)
         }
@@ -184,23 +223,39 @@ class ReaderCanvas(context: Context) : View(context) {
                 set.sourceEnd == b.chapters[chapter].text.length && page == set.pages.lastIndex) onEndReached()
             checkCompletionAfterNavigation = false
         }
+        if (draggingHandle != 0 && edgeStep != 0) {
+            val p = set.pages[page]
+            val offset = if (edgeStep > 0) p.end else p.start
+            moveBoundary(TextSelection.absolute(book ?: return, chapter, set.sourceStart + offset))
+        }
         pageInfo()
     }
 
     private fun pageInfo() {
         val set = typeset ?: return
         onPageInfo(
-            if (prefs.pageMode == PageMode.SCROLL) "连续阅读"
-            else
-                "${page + 1} / ${set.pages.size}${if (set.sourceStart > 0 || set.sourceEnd < (book?.chapters?.getOrNull(chapter)?.text?.length ?: 0)) " · 分段" else " · 本章"}"
+            "${page + 1} / ${set.pages.size}${if (set.sourceStart > 0 || set.sourceEnd < (book?.chapters?.getOrNull(chapter)?.text?.length ?: 0)) " · 分段" else " · 本章"}"
         )
+        val current = layoutKey
+        val atChapter = chapter
+        val atPage = page
+        val worker = paginator
+        if (worker != null) scope.launch {
+            worker.pagePosition(atChapter, set.sourceStart, atPage)?.let { (number, total) ->
+                if (current == layoutKey && atChapter == chapter && atPage == page)
+                    onPageInfo("$number / $total · 本章")
+            }
+        }
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         canvas.drawColor(paper)
-        val set = typeset ?: return
-        if (chapter != locator.chapterIndex) return
+        val set = typeset
+        if (set == null || chapter != locator.chapterIndex || pendingKey != null) {
+            drawSkeleton(canvas)
+            return
+        }
         val currentTop =
             if (prefs.pageMode == PageMode.SCROLL) scroll
             else set.pages.getOrNull(page)?.top?.toFloat() ?: 0f
@@ -241,10 +296,41 @@ class ReaderCanvas(context: Context) : View(context) {
                 index = set.plainText.indexOf(highlight, index + highlight.length, true)
             }
         }
+        selection?.let { selected ->
+            val b = book ?: return@let
+            val base = TextSelection.absolute(b, chapter, set.sourceStart)
+            val a = (selected.start - base).coerceIn(0, set.layout.text.length)
+            val z = (selected.end - base).coerceIn(0, set.layout.text.length)
+            if (a < z) {
+                selectionPath.reset()
+                set.layout.getSelectionPath(a, z, selectionPath)
+                canvas.drawPath(selectionPath, selectionPaint)
+            }
+        }
         set.layout.draw(canvas)
+        if (!contentReported) {
+            contentReported = true
+            ReaderMetrics.endOpen()
+            onContentReady()
+        }
+        contentDescription = "Lyric正文:" + preview(book?.chapters?.getOrNull(chapter)?.text.orEmpty(), locator.charOffset, 200)
         canvas.restore()
+        if (selection != null) drawHandles(canvas, currentTop)
         if (moving && prefs.pageMode == PageMode.SLIDE)
             oldBitmap?.let { canvas.drawBitmap(it, animOffset - direction * width, 0f, null) }
+    }
+
+    private fun drawSkeleton(canvas: Canvas) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ink; alpha = 18 }
+        val line = prefs.fontSize * resources.displayMetrics.scaledDensity
+        var y = line
+        var row = 0
+        while (y < height - line) {
+            val right = width - horizontal - if (row % 4 == 3) width * .18f else 0f
+            canvas.drawRoundRect(horizontal, y, right, y + line * .38f, 3f, 3f, paint)
+            y += line * prefs.lineHeight
+            row++
+        }
     }
 
     private fun maxScroll() = ((typeset?.layout?.height ?: 0) - height).coerceAtLeast(0).toFloat()
@@ -331,7 +417,194 @@ class ReaderCanvas(context: Context) : View(context) {
             next.charOffset >= set.sourceStart + set.pages.last().start) onEndReached()
     }
 
+    private fun visibleTop(): Float = if (prefs.pageMode == PageMode.SCROLL) scroll
+        else typeset?.pages?.getOrNull(page)?.top?.toFloat() ?: 0f
+
+    private fun offsetAt(x: Float, y: Float): Int? {
+        val set = typeset ?: return null
+        if (pendingKey != null) return null
+        val line = set.layout.getLineForVertical((y + visibleTop()).toInt())
+        var offset = set.layout.getOffsetForHorizontal(line, x - horizontal) + set.sourceStart
+        val text = book?.chapters?.getOrNull(chapter)?.text ?: return null
+        if (offset in 1 until text.length && text[offset].isLowSurrogate()) offset--
+        return offset.coerceIn(0, text.length)
+    }
+
+    private fun imageAt(x: Float, y: Float): String? {
+        val set = typeset ?: return null
+        val text = set.layout.text as? android.text.Spanned ?: return null
+        val line = set.layout.getLineForVertical((y + visibleTop()).toInt())
+        for (image in text.getSpans(set.layout.getLineStart(line), set.layout.getLineEnd(line), BookImageSpan::class.java)) {
+            val a = text.getSpanStart(image)
+            val b = text.getSpanEnd(image)
+            val left = horizontal + set.layout.getPrimaryHorizontal(a)
+            val right = left + image.getSize(set.layout.paint, text, a, b, null)
+            if (x in left..right) return image.resource
+        }
+        return null
+    }
+
+    private fun beginSelection(x: Float, y: Float) {
+        val b = book ?: return
+        val offset = offsetAt(x, y) ?: return
+        selection = TextSelection.word(b.chapters[chapter].text, offset,
+            TextSelection.absolute(b, chapter, 0)) ?: return
+        longPressed = true
+        moved = true
+        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        showSelectionMenu()
+        invalidate()
+    }
+
+    private fun showSelectionMenu() {
+        if (actionMode != null) { actionMode?.invalidate(); return }
+        actionMode = startActionMode(object : ActionMode.Callback2() {
+            override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                menu.clear()
+                menu.add(0, 1, 0, "复制")
+                menu.add(0, 2, 1, "存为书签摘录")
+                menu.add(0, 3, 2, "分享")
+                return true
+            }
+            override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
+            override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+                val selected = selection ?: return false
+                val b = book ?: return false
+                val text = selected.text(b)
+                when (item.itemId) {
+                    1 -> (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                        .setPrimaryClip(ClipData.newPlainText(b.title, text))
+                    2 -> onExcerpt(selected.locator(b), text)
+                    3 -> context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, text)
+                    }, "分享摘录"))
+                    else -> return false
+                }
+                mode.finish()
+                return true
+            }
+            override fun onDestroyActionMode(mode: ActionMode) {
+                actionMode = null
+                selection = null
+                invalidate()
+            }
+            override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
+                outRect.set((width * .2f).toInt(), minOf(startHandle.y, endHandle.y).toInt().coerceIn(0, height),
+                    (width * .8f).toInt(), maxOf(startHandle.y, endHandle.y).toInt().coerceIn(0, height))
+            }
+        }, ActionMode.TYPE_FLOATING)
+    }
+
+    private fun clearSelection() {
+        actionMode?.finish()
+        actionMode = null
+        selection = null
+        draggingHandle = 0
+        edgeStep = 0
+        handler.removeCallbacks(edgeTurn)
+        invalidate()
+    }
+
+    private fun moveBoundary(absolute: Int) {
+        val old = selection ?: return
+        selection = if (draggingHandle == 1) {
+            if (absolute < old.end) TextSelection(absolute, old.end) else {
+                draggingHandle = 2; TextSelection(old.end, absolute)
+            }
+        } else {
+            if (absolute > old.start) TextSelection(old.start, absolute) else {
+                draggingHandle = 1; TextSelection(absolute, old.start)
+            }
+        }
+    }
+
+    private fun extendSelection(x: Float, y: Float) {
+        val b = book ?: return
+        val offset = offsetAt(x, y) ?: return
+        moveBoundary(TextSelection.absolute(b, chapter, offset))
+        invalidate()
+    }
+
+    private fun drawHandles(canvas: Canvas, top: Float) {
+        val set = typeset ?: return
+        val b = book ?: return
+        val selected = selection ?: return
+        val base = TextSelection.absolute(b, chapter, set.sourceStart)
+        val visibleStart = if (prefs.pageMode == PageMode.SCROLL)
+            set.layout.getLineStart(set.layout.getLineForVertical(top.toInt())) else set.pages[page].start
+        val visibleEnd = if (prefs.pageMode == PageMode.SCROLL)
+            set.layout.getLineEnd(set.layout.getLineForVertical((top + height - 1).toInt())) else set.pages[page].end
+        fun handle(absolute: Int, point: PointF) {
+            val local = (absolute - base).coerceIn(visibleStart, visibleEnd.coerceAtMost(set.layout.text.length))
+            val atLineEnd = absolute == selected.end && local > 0 && set.plainText.getOrNull(local - 1) == '\n'
+            val line = set.layout.getLineForOffset(if (atLineEnd) local - 1 else local)
+            val x = if (atLineEnd) set.layout.getLineRight(line) else set.layout.getPrimaryHorizontal(local)
+            point.set(horizontal + x,
+                (set.layout.getLineBottom(line) - top).coerceIn(12 * density, height - 12 * density))
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ink; alpha = 180 }
+            canvas.drawCircle(point.x, point.y, 8 * density, paint)
+        }
+        handle(selected.start, startHandle)
+        handle(selected.end, endHandle)
+        actionMode?.invalidateContentRect()
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        lastX = event.x
+        lastY = if (event.actionMasked == MotionEvent.ACTION_DOWN) event.y else lastY
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                longPressed = false
+                if (selection != null) {
+                    fun near(point: PointF) = abs(event.x - point.x) < 30 * density && abs(event.y - point.y) < 30 * density
+                    draggingHandle = when { near(startHandle) -> 1; near(endHandle) -> 2; else -> 0 }
+                    if (draggingHandle != 0) {
+                        parent?.requestDisallowInterceptTouchEvent(true)
+                        actionMode?.hide(Long.MAX_VALUE)
+                        return true
+                    }
+                    clearSelection()
+                }
+                handler.postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (abs(event.x - downX) > 12 * density || abs(event.y - downY) > 12 * density)
+                    handler.removeCallbacks(longPress)
+                if (draggingHandle != 0) {
+                    lastY = event.y
+                    extendSelection(event.x, event.y)
+                    val step = when {
+                        event.y < 28 * density || (prefs.pageMode != PageMode.SCROLL && event.x < 20 * density) -> -1
+                        event.y > height - 28 * density || (prefs.pageMode != PageMode.SCROLL && event.x > width - 20 * density) -> 1
+                        else -> 0
+                    }
+                    if (step != edgeStep) {
+                        edgeStep = step
+                        handler.removeCallbacks(edgeTurn)
+                        if (step != 0) handler.postDelayed(edgeTurn, 450)
+                    }
+                    return true
+                }
+                if (longPressed) return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                handler.removeCallbacks(longPress)
+                handler.removeCallbacks(edgeTurn)
+                edgeStep = 0
+                if (draggingHandle != 0 || longPressed) {
+                    draggingHandle = 0
+                    actionMode?.hide(0)
+                    showSelectionMenu()
+                    return true
+                }
+                if (!moved && event.actionMasked == MotionEvent.ACTION_UP) {
+                    val image = imageAt(event.x, event.y)
+                    if (image != null) { onImage(image); return true }
+                }
+            }
+        }
+
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 scroller.forceFinished(true)
@@ -435,18 +708,21 @@ class ReaderCanvas(context: Context) : View(context) {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (!prefs.volumeKeys && keyCode in listOf(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP))
-            return super.onKeyDown(keyCode, event)
+        if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            val step = VolumeNavigation.step(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN,
+                prefs.volumeKeys, prefs.swapVolumeKeys, controlsOpen || actionMode != null)
+                ?: return super.onKeyDown(keyCode, event)
+            if (event?.repeatCount == 0) turn(step)
+            return true
+        }
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_RIGHT,
-            KeyEvent.KEYCODE_PAGE_DOWN,
-            KeyEvent.KEYCODE_VOLUME_DOWN -> {
+            KeyEvent.KEYCODE_PAGE_DOWN -> {
                 turn(1)
                 true
             }
             KeyEvent.KEYCODE_DPAD_LEFT,
-            KeyEvent.KEYCODE_PAGE_UP,
-            KeyEvent.KEYCODE_VOLUME_UP -> {
+            KeyEvent.KEYCODE_PAGE_UP -> {
                 turn(-1)
                 true
             }
@@ -455,8 +731,15 @@ class ReaderCanvas(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        clearSelection()
+        handler.removeCallbacksAndMessages(null)
         super.onDetachedFromWindow()
         job?.cancel()
+        paginator?.close()
+        paginator = null
+        paginationKey = null
+        pendingKey = null
+        layoutKey = null
         scope.cancel()
         animator?.cancel()
         oldBitmap?.recycle()
@@ -466,5 +749,6 @@ class ReaderCanvas(context: Context) : View(context) {
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         if (!scope.isActive) scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        if (width > 0 && height > 0) book?.let { bind(it, locator, prefs, ink, paper, highlight) }
     }
 }

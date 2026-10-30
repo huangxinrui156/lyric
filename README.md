@@ -36,6 +36,48 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 「我的」验收明细、备份格式和边界见 [docs/me-page-implementation.md](docs/me-page-implementation.md)。
 
+## 0.3 阅读体验与真机基准
+
+版本 `0.3.0`（versionCode `3`）。完整逐条证据与待实机项目见 [docs/v0.3-status.md](docs/v0.3-status.md)，需求见 [docs/v0.3-spec.md](docs/v0.3-spec.md)。
+
+- 翻页立即排队保存进度，滚动只合并尚未开始的写入；会话每15秒更新同一行，暂停/停止补写并等待落盘。继续保留30秒空闲封顶和少于10秒会话过滤。
+- 可见窗口、当前章及前后章先分页，其余后台计算；读取与重新分页时显示纸色骨架行。字体、边距、方向与模式变化保留原文锚点。
+- 阅读信息栏可逐项关闭章节名、页码、百分比、时间、电量，均为正文70%字号，默认只显示章节名和百分比。
+- 长按选词、拖动两端手柄扩选；拖到边缘稍候可继续翻页或滚动跨页。浮动菜单只有「复制 / 存为书签摘录 / 分享」。两个阅读模式共用全书字符选区。
+- 音量键翻页默认关闭，可在阅读偏好或排版“更多”中开启并互换方向；仅阅读正文时生效，打开菜单、搜索、目录、选区工具条或大图后恢复系统音量。
+- EPUB增加对齐、缩进、粗斜体、标题、居中、分隔线、图片、ruby注音和内嵌字体。书籍CSS与内嵌字体受「采用书籍样式」控制；图片、语义样式与注音始终显示。图片点击可放大并缩放/平移。完整CSS不在范围内。
+
+### 目标与当前结果
+
+每版在CI外手动跑两台真机，记录系统版本、内存配置、刷新率、电源/温度条件和原始Perfetto/JSON。固定默认18sp、平移翻页；测试期间关闭省电模式、保持相同刷新率，避免充电发热或后台负载改变比较条件。
+
+| 机型 | 定位 | 翻页 frameDurationCpuMs P95 | 10MiB TXT冷打开（正文首帧） | 搜索首条绘制 | 0.3实测 |
+|---|---|---|---|---|---|
+| OPPO Find X9 Pro | 基准机 | ≤16.7ms | <1500ms | <1000ms | 未测：本环境没有连接设备 |
+| Redmi A3 **4GB** | 固定下限机 | ≤25ms | <3000ms | <1000ms | 未测：本环境没有连接设备 |
+
+帧时间用FrameTimingMetric的原始帧分布算P95；冷打开和搜索各5轮，报告并校验最大值。冷打开清除解析与图片缓存，重启进程，使用恰好10MiB UTF-8 TXT（10,485,760字节）；终点为正文首帧的reportFullyDrawn，包含启动/读取/解析/首屏排版，不把骨架帧当作正文。搜索唯一关键词在6MiB处，trace包含输入处理、防抖、扫描与首条结果绘制。页面帧测5轮，每轮30次正常动画翻页。AndroidX指标定义见 [Macrobenchmark metrics](https://developer.android.com/topic/performance/benchmarking/macrobenchmark-metrics)。
+
+```bash
+export JAVA_HOME=/home/box/jdk17 ANDROID_HOME=/home/box/Android
+# 无设备也可编译应用、宏基准测试APK与debug集成测试APK：
+./gradlew assembleDebug test :app:assembleBenchmark :macrobenchmark:assembleBenchmark :app:assembleDebugAndroidTest
+
+# 接上OPPO Find X9 Pro；多设备时先设 ANDROID_SERIAL：
+TIER=reference scripts/run-benchmarks.sh
+# 接上Redmi A3 4GB：
+TIER=entry scripts/run-benchmarks.sh
+
+# debug APK，am kill与前台force-stop各20次（约15分钟，视设备而定）：
+scripts/kill-test.sh
+```
+
+宏基准使用独立包 `com.lyric.reader.benchmark`（release衍生、不可调试、shell profileable），不访问正式包的数据。准备10MiB夹具、导入及清缓存在计时外，打开/翻页/搜索走实际ReaderScreen。Macrobenchmark需要API29+真机；不会默认压制设备配置错误。脚本输出到 `benchmark-results/时间戳/`，保存设备属性、测试报告、原始JSON和Perfetto trace，并自动判定门限；运行后将两台实测数值和报告路径回填本表。
+
+kill脚本安装debug包，不清库，添加明确命名的本地夹具，仅给夹具书设置音量键翻页。debug专用Provider读取实时Locator、会话秒数与Room快照；每轮真实翻页、等待进行中checkpoint，然后杀进程。am kill先按Home（该命令只杀后台进程），force-stop在前台执行；确认进程退出后比对落盘与重开锚点，要求完全一致且时长损失0–15秒。结果逐轮写JSON；任一失败返回非零。探针不会进入release或benchmark APK。
+
+没有实机数据的门限、触控选区及20本真实EPUB阅读巡检均不标为通过。20个生成EPUB解析样例与JVM渲染测试只能提供自动化回归证据。
+
 ## 架构
 
 ```text
@@ -48,15 +90,15 @@ SAF URI / 文件 ContentSource
 ```
 
 - `core/`：与 Android 无关的模型、编码、解析器。TXT 保留规范化后的全部字符；只将 CRLF/CR 转为 LF、去除 BOM，不插入排版字符。默认检测「第…章 / 卷 / 回 / 节 / 部 / 篇」与 Chapter（含罗马数字）；无标题按 10,000 UTF-16 字符切段，并保护代理对。自定义规则按整行匹配，仅检查短行。
-- EPUB：zip + Jsoup，遵循 OPF spine 顺序；优先 EPUB 3 Nav，回退 EPUB 2 NCX，支持锚点字符定位；去除脚本和样式节点，不执行活动内容。限制归档条目数和解压大小，拒绝越界路径。正文转换为纯文本。书籍样式仅读取基础 serif/sans、数值行距及缩进提示。
+- EPUB：zip + Jsoup，遵循 OPF spine 顺序；优先 EPUB 3 Nav，回退 EPUB 2 NCX，支持锚点字符定位；去除脚本和样式节点，不执行活动内容。限制归档条目数和解压大小，拒绝越界路径。正文和样式/图片/ruby范围分开存储；仅解析文档内与本地链接的CSS子集，不执行活动内容或加载远程资源。内嵌字体与图片离线读取。
 - `reader/`：`ReaderEngine.open/goTo/currentLocator/settings`；`ReaderSession` 根据内容类型创建引擎。`Typesetter` 在 Default dispatcher 排版，使用 StaticLayout 的真实行边界分页，单次最多排版 12,000 字符，超长章节按窗口继续。覆盖和平移仅在翻页反馈时运行 280ms 动画；无动画直接切换；滚动使用惯性滚动。排版 spans 与缓存窗口均不改变原文偏移。
-- `data/`：Room v2 存书架、进度（外键级联）、书签、独立的阅读会话与读完记录；移出书架不会清除足迹与摘录。v1 → v2 使用真实 Migration，导出 schema 位于 `app/schemas/`。SHA-256 流式哈希去重，重导入同一文件会修复来源 URI，不丢失进度。SAF 只申请并持久化读取权限；不申请广泛存储权限。原始文件不复制到书架目录、不写入或删除。解析后原子写入私有 JSON 缓存，内存仅保留最近两本。每次打开和回到书架都检查原文件访问能力，失效时标记并显示错误。
+- `data/`：Room v3 存书架、进度（外键级联）、书签、独立的阅读会话与读完记录；移出书架不会清除足迹与摘录。v1 → v2 → v3 使用真实 Migration，v3增加书籍/进度/书签内容修订号，以一次性重映射旧EPUB锚点；原摘录、ID和时间保留。导出 schema 位于 `app/schemas/`。SHA-256 流式哈希去重，重导入同一文件会修复来源 URI，不丢失进度。SAF 只申请并持久化读取权限；不申请广泛存储权限。原始文件不复制到书架目录、不写入或删除。解析后原子写入私有 JSON 缓存，内存仅保留最近两本。每次打开和回到书架都检查原文件访问能力，失效时标记并显示错误。
 - DataStore：仅存发生变化的设置字段，按默认值 → 全局 → 内容类型 → 本书合并。书架视图与排序也持久化。编码 / 章节规则记在 Room 的书籍记录中。
 - `ui/`：单 Activity + Navigation Compose、ViewModel + StateFlow、生命周期感知收集、手动 DI。导入在 Application scope 的 IO dispatcher 执行，离开书架不会中断；每本书分别反馈成功 / 重复 / 失败。全文搜索是可取消的后台 Flow，首条结果立即发出，再分批更新 UI，最多显示 2,000 条。
 
 定位不依赖页码：文字为 `chapterIndex + charOffset`（章节规范文本中的 UTF-16 offset），漫画为 `chapterIndex + page`。调整字体、页边距、翻页方式不修改定位。进度按字符数计算；漫画按图片页数计算，已有序列化与定位测试。V2 新增漫画 ContentSource / Parser 和 ImageReaderEngine / 视图即可，书架、Room 进度和书签表无需变更。书签摘录通过内容类型统一生成。当前未提供漫画导入或渲染引擎。
 
-进度在翻页 / 滚动停顿后 450ms 防抖保存；退出、Activity 暂停 / 停止时立即提交到应用协程。字体变化保留原文锚点，显示包含该锚点的新页。重设编码 / 章节规则时按全书绝对字符位置重映射进度与书签（编码更正若改变字符数，只能尽力接近原位置）。
+进度在翻页后立即提交到应用级串行 IO writer，不再防抖；滚动只合并未开始的写入。退出、Activity 暂停 / 停止会等待最终进度与会话写入完成。字体变化保留原文锚点，显示包含该锚点的新页。重设编码 / 章节规则时按全书绝对字符位置重映射进度与书签（编码更正若改变字符数，只能尽力接近原位置）。
 
 ## 验收状态
 
@@ -66,10 +108,10 @@ SAF URI / 文件 ContentSource
 | 2 导入 | 功能完成 | SAF 多文件与递归文件夹、持久读取授权、SHA-256 去重、逐本进度、失效来源处理。导入不使用前台服务；进程被杀后需重新选择未完成的批次，已导入项保留。 |
 | 3 编码 | 完成 | UTF-8/BOM、UTF-16 LE/BE、GBK/GB18030、Big5；juniversalchardet 加 BOM、UTF-8 验证和 UTF-16 零字节特征；提供每书覆盖。无 BOM 的短文本存在固有歧义，可手动更正。 |
 | 4 章节 / 目录 | 功能完成，设备时延待量测 | 默认 / 自定义 TXT 正则、无标题 10k 回退、EPUB Nav/NCX/锚点、缓存和当前目录高亮。主机 JVM 约 13.9MB TXT 解析约 230ms；这不是 Android 设备上的性能保证。 |
-| 5 翻页 | 功能完成，60fps 待实机量测 | 覆盖 / 平移 / 垂直滚动 / 无动画、点击区与左右互换、模式切换保留锚点。覆盖是平面遮盖，不是拟真卷纸。分页数量显示当前章节窗口；不预排整书。 |
-| 6 排版 | 部分 | 字号、行段距、边距、缩进、两端对齐、TTF/OTF、实时预览；EPUB 的「书籍样式」仅基础提示，不支持完整 CSS、复杂嵌套排版、ruby、内嵌字体和图片渲染。 |
+| 5 翻页 | 功能完成，60fps 待实机量测 | 覆盖 / 平移 / 垂直滚动 / 无动画、点击区与左右互换、模式切换保留锚点。覆盖是平面遮盖，不是拟真卷纸。优先排可见窗口与邻章，后台完成整书分页边界；当前章未排完时页码明确标注窗口。 |
+| 6 排版 | 部分 | 字号、行段距、边距、缩进、两端对齐、TTF/OTF、实时预览；0.3增加EPUB样式子集、ruby、内嵌字体和图片；完整CSS仍不支持，20本真实EPUB巡检待设备验证。 |
 | 7 主题 | 完成 | 日间 / 纸张 / 青苔 / 夜间 / 深绿 / 纯黑 / 自定背景与字色、系统深色、窗口亮度与额外遮光、沉浸系统栏。 |
-| 8 进度 / 书签 | 完成 | 稳定字符定位、字符百分比、退出 / 后台保存、摘录 / 时间 / 跳转 / 删除。系统强制结束可能丢失最后一段未提交的防抖位置。 |
+| 8 进度 / 书签 | 完成 | 稳定字符定位、字符百分比、退出 / 后台保存、摘录 / 时间 / 跳转 / 删除。立即串行写入进度；每15秒更新会话。kill/force-stop各20次及≤1秒落盘指标待设备验证。 |
 | 9 搜索 | 功能完成，设备时延待量测 | 后台流式搜索、即时首条、章节 / 上下文、点击跳转与原文高亮、可取消；冷启动需先加载解析缓存，不宣称任意设备均 <1s。 |
 
 「我的」增量验收（详细证据见 [逐项表](docs/me-page-implementation.md)）：
@@ -84,12 +126,12 @@ SAF URI / 文件 ContentSource
 | P1 热力图 | 功能完成，设备绘制时延待量测 | 26 周、4 档单色、留白、日期书籍明细；一年数据准备主机测试 <100ms。 |
 | P1 每日目标 | 完成 | 默认关闭、细环动画，无通知 / 打卡弹窗。 |
 | P1 存储 | 完成 | 缓存 / 导入字体 / 封面分项，缓存重建与原文件保护测试通过。 |
-| Room v1→v2 | 完成 | 导出两版 schema，从真实 v1 SQLite 文件升级并由 Room 校验，保留旧数据。 |
+| Room v1→v2→v3 | 完成 | 导出三版schema；真实v1/v2 SQLite升级由Room校验，保留旧数据，旧EPUB锚点一次性升级。 |
 | P2 WebDAV | 未做，按要求跳过 | 页面明确标注未实现。 |
 
 ## 验证
 
-已通过 `./gradlew assembleDebug test lintDebug`。37 项单元测试在 debug / release 各运行一次（74 次，0 失败），包括：
+0.3通过构建、单测与基准模块编译；最终验证明细见 [v0.3验收状态](docs/v0.3-status.md)。现有与新增回归覆盖包括：
 
 - UTF-8/BOM、GBK/GB18030 扩展字、UTF-16 双字节序、Big5、人工覆盖、换行规范化；
 - 中英章节、定制 / 错误正则、10k 回退与代理对、13.9MB 解析时限；

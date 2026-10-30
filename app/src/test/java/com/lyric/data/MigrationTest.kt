@@ -25,7 +25,7 @@ class MigrationTest {
         val name = "migration-${System.nanoTime()}.db"
         val schema = Json.parseToJsonElement(File("schemas/com.lyric.data.LibraryDatabase/1.json").readText()).jsonObject["database"]!!.jsonObject
         // Equivalent to MigrationTestHelper: create from the exported v1 SQL, then let
-        // Room open/migrate/validate the file against the generated v2 schema.
+        // Room open/migrate/validate the file against the generated v3 schema.
         val helper = FrameworkSQLiteOpenHelperFactory().create(SupportSQLiteOpenHelper.Configuration.builder(context)
             .name(name).callback(object : SupportSQLiteOpenHelper.Callback(1) {
                 override fun onCreate(db: SupportSQLiteDatabase) {
@@ -43,9 +43,9 @@ class MigrationTest {
         old.execSQL("INSERT INTO progress VALUES ('hash',0,42,3,123)")
         old.execSQL("INSERT INTO bookmarks (id,bookId,chapterIndex,charOffset,page,excerpt,chapterTitle,createdAt) VALUES (7,'hash',0,12,1,'保留这句话','章',456)")
         helper.close()
-        val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(MIGRATION_1_2).allowMainThreadQueries().build()
+        val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3).allowMainThreadQueries().build()
         try {
-            assertEquals(2, db.openHelper.writableDatabase.version)
+            assertEquals(3, db.openHelper.writableDatabase.version)
             val dao = db.library()
             assertEquals("原书", dao.book("hash")!!.title)
             assertEquals(42, dao.progress("hash")!!.charOffset)
@@ -63,4 +63,49 @@ class MigrationTest {
             db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
         } finally { db.close(); context.deleteDatabase(name) }
     }
+    @Test fun realV2SchemaMigratesAndRollingSessionsUpsertWithoutDoubleCounting() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val name = "migration-v2-${System.nanoTime()}.db"
+        val schema = Json.parseToJsonElement(File("schemas/com.lyric.data.LibraryDatabase/2.json").readText()).jsonObject["database"]!!.jsonObject
+        val helper = FrameworkSQLiteOpenHelperFactory().create(SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(name).callback(object : SupportSQLiteOpenHelper.Callback(2) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    schema["entities"]!!.jsonArray.forEach { element ->
+                        val e = element.jsonObject
+                        db.execSQL(e["createSql"]!!.jsonPrimitive.content.replace("\u0024{TABLE_NAME}", e["tableName"]!!.jsonPrimitive.content))
+                        e["indices"]!!.jsonArray.forEach { db.execSQL(it.jsonObject["createSql"]!!.jsonPrimitive.content.replace("\u0024{TABLE_NAME}", e["tableName"]!!.jsonPrimitive.content)) }
+                    }
+                    schema["views"]!!.jsonArray.forEach { db.execSQL(it.jsonObject["createSql"]!!.jsonPrimitive.content.replace("\u0024{VIEW_NAME}", it.jsonObject["viewName"]!!.jsonPrimitive.content)) }
+                    schema["setupQueries"]!!.jsonArray.forEach { db.execSQL(it.jsonPrimitive.content) }
+                }
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            }).build())
+        helper.writableDatabase.apply {
+            execSQL("INSERT INTO books (id,uri,name,title,author,extension,contentType,totalChars,chapterCount,encoding,addedAt,lastRead,invalid,excerpt,chapterTitle,percent) VALUES ('epub','file:///old.epub','old.epub','原书','作者','epub','TEXT',100,1,'UTF-8',1,2,0,'摘录','章',0.4)")
+            execSQL("INSERT INTO progress VALUES ('epub',0,42,3,123)")
+            execSQL("INSERT INTO bookmarks (id,bookId,chapterIndex,charOffset,page,excerpt,chapterTitle,createdAt,bookTitle) VALUES (7,'epub',0,12,1,'保留这句话','章',456,'原书')")
+            execSQL("INSERT INTO reading_sessions VALUES ('session','epub',1000,16000,15,20)")
+            execSQL("INSERT INTO finished_books VALUES ('old','已读',1000)")
+        }
+        helper.close()
+        val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name)
+            .addMigrations(MIGRATION_2_3).allowMainThreadQueries().build()
+        try {
+            assertEquals(3, db.openHelper.writableDatabase.version)
+            val dao = db.library()
+            assertEquals(0, dao.book("epub")!!.contentRevision)
+            assertEquals(0, dao.progress("epub")!!.contentRevision)
+            assertEquals(42, dao.progress("epub")!!.charOffset)
+            assertEquals(123L, dao.progress("epub")!!.updatedAt)
+            assertEquals(0, dao.allBookmarks().single().contentRevision)
+            assertEquals(7L, dao.allBookmarks().single().id)
+            dao.checkpointSession(ReadingSession("session", "epub", 1000, 31000, 30, 50))
+            dao.checkpointSession(ReadingSession("session", "epub", 1000, 35000, 34, 60))
+            assertEquals(1, dao.sessions().size)
+            assertEquals(34L, dao.dailyStats().single().durationSec)
+            assertEquals(1, dao.finished().size)
+            db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
+        } finally { db.close(); context.deleteDatabase(name) }
+    }
+
 }

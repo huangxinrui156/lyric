@@ -275,13 +275,17 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                     update(prefs.copy(tapRight = 1f - it))
                 }
                 SettingToggle("左右翻页互换", prefs.reverseTaps) { update(prefs.copy(reverseTaps = it)) }
+                SettingToggle("音量键翻页", prefs.volumeKeys) { update(prefs.copy(volumeKeys = it)) }
+                SettingToggle("音量键方向互换", prefs.swapVolumeKeys) { update(prefs.copy(swapVolumeKeys = it)) }
+                Text("阅读信息栏", fontFamily = Serif, fontSize = 17.sp)
+                ReaderInfoToggles(prefs, ::update)
                 if (state.row?.extension == "epub") {
                     HorizontalDivider(Modifier.padding(vertical = 16.dp))
-                    SettingToggle("采用书籍基础样式", prefs.useBookStyle) {
+                    SettingToggle("采用书籍样式", prefs.useBookStyle) {
                         update(prefs.copy(useBookStyle = it))
                     }
                     Text(
-                        "读取书中基础字体、行距与缩进，其余使用当前排版。",
+                        "采用书中字体、对齐、缩进及字号。图片与注音始终显示。",
                         fontSize = 11.sp,
                         color = Stone,
                         lineHeight = 20.sp,
@@ -421,4 +425,13 @@ private fun ColorField(label: String, value: Long, change: (Long) -> Unit) {
         singleLine = true,
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
     )
+}
+
+@Composable
+fun ReaderInfoToggles(prefs: com.lyric.core.ReaderSettings, update: (com.lyric.core.ReaderSettings) -> Unit) {
+    SettingToggle("章节名", prefs.showChapter) { update(prefs.copy(showChapter = it)) }
+    SettingToggle("页码", prefs.showPage) { update(prefs.copy(showPage = it)) }
+    SettingToggle("百分比", prefs.showPercent) { update(prefs.copy(showPercent = it)) }
+    SettingToggle("时间", prefs.showTime) { update(prefs.copy(showTime = it)) }
+    SettingToggle("电量", prefs.showBattery) { update(prefs.copy(showBattery = it)) }
 }

@@ -80,6 +80,8 @@ fun SettingsScreen(vm: MeViewModel, section: String, back: () -> Unit) {
                     SettingSlider("右区宽", 1 - prefs.tapRight, .1f.. .4f, "${((1 - prefs.tapRight) * 100).toInt()}%") { vm.update(prefs.copy(tapRight = 1 - it)) }
                     SettingToggle("左右翻页互换", prefs.reverseTaps) { vm.update(prefs.copy(reverseTaps = it)) }
                     SettingToggle("音量键翻页", prefs.volumeKeys) { vm.update(prefs.copy(volumeKeys = it)) }
+                    SettingToggle("音量键方向互换", prefs.swapVolumeKeys) { vm.update(prefs.copy(swapVolumeKeys = it)) }
+                    ReaderInfoToggles(prefs) { vm.update(it) }
                     SettingToggle("阅读时保持屏幕常亮", prefs.keepScreenOn) { vm.update(prefs.copy(keepScreenOn = it)) }
                     ChoiceRow("方向", listOf("跟随系统", "竖屏", "横屏"), listOf("system", "portrait", "landscape").indexOf(prefs.orientation)) {
                         vm.update(prefs.copy(orientation = listOf("system", "portrait", "landscape")[it]))

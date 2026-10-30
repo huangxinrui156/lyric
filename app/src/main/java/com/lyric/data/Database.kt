@@ -28,6 +28,7 @@ data class ShelfBook(
     val chapterTitle: String = "未读",
     val percent: Float = 0f,
     val coverPath: String? = null,
+    @ColumnInfo(defaultValue = "0") val contentRevision: Int = 0,
 )
 
 @Entity(
@@ -49,6 +50,7 @@ data class ProgressRow(
     val charOffset: Int,
     val page: Int = 0,
     val updatedAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val contentRevision: Int = 0,
 )
 
 @Serializable
@@ -63,6 +65,7 @@ data class BookmarkRow(
     val chapterTitle: String,
     val createdAt: Long = System.currentTimeMillis(),
     @ColumnInfo(defaultValue = "''") val bookTitle: String = "",
+    @ColumnInfo(defaultValue = "0") val contentRevision: Int = 0,
 )
 
 @Serializable
@@ -106,6 +109,9 @@ interface LibraryDao {
     suspend fun dayBooks(from: Long, to: Long): List<DayBook>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun addSession(session: ReadingSession)
+    @Upsert suspend fun checkpointSession(session: ReadingSession)
+    @Query("UPDATE reading_sessions SET endAt = :endAt, durationSec = :seconds, chars = :chars WHERE id = :id AND endAt < :endAt")
+    suspend fun extendSession(id: String, endAt: Long, seconds: Long, chars: Long)
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun finish(book: FinishedBook)
     @Query("SELECT * FROM reading_sessions") suspend fun sessions(): List<ReadingSession>
     @Query("SELECT * FROM finished_books") suspend fun finished(): List<FinishedBook>
@@ -143,6 +149,8 @@ interface LibraryDao {
     fun bookmarks(id: String): Flow<List<BookmarkRow>>
 
     @Insert suspend fun addBookmark(bookmark: BookmarkRow)
+    @Update suspend fun updateBookmark(bookmark: BookmarkRow)
+    @Query("SELECT * FROM bookmarks WHERE id = :id") suspend fun bookmark(id: Long): BookmarkRow?
 
     @Query("DELETE FROM bookmarks WHERE id = :id") suspend fun deleteBookmark(id: Long)
 }
@@ -150,7 +158,7 @@ interface LibraryDao {
 @Database(
     entities = [ShelfBook::class, ProgressRow::class, BookmarkRow::class, ReadingSession::class, FinishedBook::class],
     views = [DailyStat::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -171,5 +179,14 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         db.execSQL("ALTER TABLE bookmarks_new RENAME TO bookmarks")
         db.execSQL("CREATE INDEX index_bookmarks_bookId ON bookmarks(bookId)")
         db.execSQL("CREATE VIEW `daily_stats` AS SELECT date(startAt / 1000, 'unixepoch', 'localtime') AS day, SUM(durationSec) AS durationSec, SUM(chars) AS chars FROM reading_sessions GROUP BY day")
+    }
+}
+
+/** Marks books whose stored EPUB anchors still use the v0.2 plain-text representation. */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE books ADD COLUMN contentRevision INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE progress ADD COLUMN contentRevision INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE bookmarks ADD COLUMN contentRevision INTEGER NOT NULL DEFAULT 0")
     }
 }

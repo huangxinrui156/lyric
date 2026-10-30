@@ -13,8 +13,9 @@ class SessionTrackerTest {
         fun advance(ms: Long) { wall += ms; elapsed += ms }
     }
     private val clock = Clock()
-    private val rows = mutableListOf<ReadingSession>()
-    private val tracker = SessionTracker("book", clock, ZoneId.of("UTC"), rows::add)
+    private val stored = linkedMapOf<String, ReadingSession>()
+    private val rows get() = stored.values.toList()
+    private val tracker = SessionTracker("book", clock, ZoneId.of("UTC"), { stored[it.id] = it })
 
     @Test fun foregroundWithoutNavigationDoesNotCount() {
         tracker.onResume(); clock.advance(90_000); tracker.onPause()
@@ -68,4 +69,32 @@ class SessionTrackerTest {
         assertEquals(20L, rows.sumOf { it.chars })
         assertEquals(rows.first().endAt, rows.last().startAt)
     }
+    @Test fun rollingCheckpointUpdatesSameRowEveryFifteenSeconds() {
+        tracker.onResume(); tracker.onActivity(10)
+        clock.advance(14_999); tracker.tick(); assertTrue(rows.isEmpty())
+        clock.advance(1); tracker.tick()
+        val id = rows.single().id
+        assertEquals(15L, rows.single().durationSec)
+        clock.advance(9_000); tracker.onActivity(20)
+        clock.advance(6_000); tracker.tick()
+        assertEquals(id, rows.single().id)
+        assertEquals(30L, rows.single().durationSec)
+        assertEquals(30L, rows.single().chars)
+        clock.advance(4_000); tracker.onPause(); tracker.onStop()
+        assertEquals(34L, rows.single().durationSec)
+        assertEquals(34_000L, rows.single().endAt - rows.single().startAt)
+    }
+    @Test fun midnightCheckpointsUpsertWithoutDuplicatingEarlierDay() {
+        clock.wall = Instant.parse("2026-10-30T23:59:55Z").toEpochMilli()
+        tracker.onResume(); tracker.onActivity(40)
+        clock.advance(15_000); tracker.tick()
+        assertEquals(listOf(5L, 10L), rows.map { it.durationSec })
+        clock.advance(5_000); tracker.onActivity(20)
+        clock.advance(10_000); tracker.tick()
+        assertEquals(listOf(5L, 25L), rows.map { it.durationSec })
+        assertEquals(60L, rows.sumOf { it.chars })
+        tracker.onStop()
+        assertEquals(30L, rows.sumOf { it.durationSec })
+    }
+
 }

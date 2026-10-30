@@ -70,7 +70,7 @@ class LibraryRepository(
         )
 
     private fun cacheFile(row: ShelfBook): File {
-        val options = "${row.encodingOverride.orEmpty()}\u0000${row.chapterRegex.orEmpty()}"
+        val options = "layout-v03:${row.encodingOverride.orEmpty()}\u0000${row.chapterRegex.orEmpty()}"
         val fingerprint =
             MessageDigest.getInstance("SHA-256").digest(options.toByteArray()).take(8).joinToString(
                 ""
@@ -203,6 +203,7 @@ class LibraryRepository(
                     chapterCount = parsed.chapters.size,
                     encoding = parsed.encoding,
                     excerpt = parsed.chapters.first().text.take(80),
+                    contentRevision = 3,
                 )
             parseLock.withLock { writeCache(row, parsed) }
             dao.insert(row)
@@ -223,14 +224,18 @@ class LibraryRepository(
     suspend fun load(id: String, force: Boolean = false): Pair<ShelfBook, Book> =
         withContext(Dispatchers.IO) {
             parseLock.withLock {
-                val row = dao.book(id) ?: error("书籍已移出书架")
+                var row = dao.book(id) ?: error("书籍已移出书架")
+                val oldProgress = dao.progress(id)
+                val oldMarks = if (row.extension == "epub") dao.bookmarks(id).first() else emptyList()
+                val upgrade = row.extension == "epub" && (row.contentRevision < 3 ||
+                    (oldProgress != null && oldProgress.contentRevision < 3) || oldMarks.any { it.contentRevision < 3 })
                 try {
                     // Even with a parsed cache, check the source so revoked/missing files are
                     // explicit.
                     UriSource(context, Uri.parse(row.uri), row.name).open().use {}
                     val key = cacheFile(row).name
                     val parsed =
-                        if (!force)
+                        if (!force && !upgrade)
                             memory[key]
                                 ?: runCatching {
                                         json.decodeFromString(
@@ -250,6 +255,27 @@ class LibraryRepository(
                                     row.chapterRegex,
                                 )
                                 .also { writeCache(row, it) }
+                    if (upgrade) {
+                        val upgraded = row.copy(contentRevision = 3, totalChars = book.totalChars,
+                            chapterCount = book.chapters.size)
+                        fun translate(chapter: Int, offset: Int): Locator {
+                            val c = chapter.coerceIn(0, book.chapters.lastIndex)
+                            return book.clamp(Locator(c, book.chapters[c].upgradeLegacyOffset(offset)))
+                        }
+                        db.withTransaction {
+                            dao.progress(id)?.takeIf { it.contentRevision < 3 }?.let { old ->
+                                val at = translate(old.chapterIndex, old.charOffset)
+                                // Preserve timestamps so backup conflict resolution is unchanged.
+                                dao.saveProgress(old.copy(chapterIndex = at.chapterIndex, charOffset = at.charOffset, contentRevision = 3))
+                            }
+                            dao.bookmarks(id).first().filter { it.contentRevision < 3 }.forEach { old ->
+                                val at = translate(old.chapterIndex, old.charOffset)
+                                dao.updateBookmark(old.copy(chapterIndex = at.chapterIndex, charOffset = at.charOffset, contentRevision = 3))
+                            }
+                            dao.update(upgraded)
+                        }
+                        row = upgraded
+                    }
                     memory[key] = book
                     dao.invalid(id, false)
                     row to book
@@ -318,7 +344,7 @@ class LibraryRepository(
                         totalChars = parsed.totalChars,
                     )
                 )
-                dao.saveProgress(ProgressRow(id, loc.chapterIndex, loc.charOffset))
+                dao.saveProgress(ProgressRow(id, loc.chapterIndex, loc.charOffset, contentRevision = 3))
                 // Remap bookmarks using their absolute character offset as well.
                 val marks = dao.bookmarks(id).first()
                 marks.forEach { mark ->
@@ -333,13 +359,12 @@ class LibraryRepository(
                         ci++
                     }
                     val m = parsed.clamp(Locator(ci, offset))
-                    dao.deleteBookmark(mark.id)
-                    dao.addBookmark(
+                    dao.updateBookmark(
                         mark.copy(
-                            id = 0,
                             chapterIndex = m.chapterIndex,
                             charOffset = m.charOffset,
                             chapterTitle = parsed.chapters[m.chapterIndex].title,
+                            contentRevision = 3,
                         )
                     )
                 }
@@ -353,7 +378,7 @@ class LibraryRepository(
             val chapter = book.chapters[loc.chapterIndex]
             db.withTransaction {
                 if (dao.book(id) != null) {
-                    dao.saveProgress(ProgressRow(id, loc.chapterIndex, loc.charOffset, loc.page))
+                    dao.saveProgress(ProgressRow(id, loc.chapterIndex, loc.charOffset, loc.page, contentRevision = 3))
                     if (book.percent(loc) >= .99f) dao.finish(FinishedBook(id, book.title, System.currentTimeMillis()))
                     dao.reading(
                         id,

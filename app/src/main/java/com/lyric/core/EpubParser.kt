@@ -52,45 +52,23 @@ class EpubParser : BookParser {
                 val path = resolve(item.attr("href"))
                 val html =
                     Jsoup.parse(String(files[path] ?: error("EPUB 缺少章节 $path"), Charsets.UTF_8))
-                html.select("script,style,noscript").remove()
-                val out = StringBuilder()
-                fun walk(e: org.jsoup.nodes.Node) {
-                    when (e) {
-                        is org.jsoup.nodes.TextNode -> out.append(e.text())
-                        is Element -> {
-                            val block =
-                                e.tagName() in
-                                    setOf(
-                                        "p",
-                                        "div",
-                                        "section",
-                                        "h1",
-                                        "h2",
-                                        "h3",
-                                        "li",
-                                        "blockquote",
-                                        "br",
-                                        "hr",
-                                    )
-                            if (block && out.isNotEmpty() && out.last() != '\n') out.append('\n')
-                            if (e.id().isNotEmpty())
-                                anchors["$path#${e.id()}"] = Locator(index, out.length)
-                            if (e.tagName() == "img")
-                                out.append("［插图：${e.attr("alt").ifBlank { "图片" }}］")
-                            e.childNodes().forEach(::walk)
-                            if (block && out.isNotEmpty() && out.last() != '\n') out.append('\n')
-                        }
-                    }
+                val dir = path.substringBeforeLast('/', "")
+                fun relative(href: String) = normalize((if (dir.isEmpty()) "" else "$dir/") + href.substringBefore('#'))
+                val chapterCss = html.select("link[rel=stylesheet]").joinToString("\n") {
+                    files[relative(it.attr("href"))]?.toString(Charsets.UTF_8).orEmpty()
+                } + "\n" + html.select("style").joinToString("\n") { it.data().ifBlank { it.html() } }
+                val extracted = EpubLayout.extract(html.body(), chapterCss, ::relative) { id, offset ->
+                    anchors["$path#$id"] = Locator(index, offset)
                 }
-                walk(html.body())
-                val text = out.toString().ifBlank { "本节为图片内容，文字阅读暂不支持。" }
+                val text = extracted.text
                 Chapter(
                     index,
                     html.selectFirst("h1,h2,h3,title")?.text()?.ifBlank { null }
                         ?: "第 ${index + 1} 章",
                     text,
                     path,
-                )
+                    styles = extracted.styles,
+                ).also { it.legacyOffsets = extracted.legacyOffsets }
             }
         require(chapters.isNotEmpty()) { "EPUB 没有可阅读的章节" }
         fun locate(path: String, href: String): Locator? {
@@ -143,12 +121,36 @@ class EpubParser : BookParser {
                 ?.groupValues
                 ?.get(1)
                 ?.toFloatOrNull()
+        val fonts = mutableMapOf<String, String>()
+        val fontSheets = files.filterKeys { it.endsWith(".css") }.map { it.key to it.value.toString(Charsets.UTF_8) } +
+            spine.map { item ->
+                val path = resolve(item.attr("href"))
+                path to Jsoup.parse(files.getValue(path).toString(Charsets.UTF_8)).select("style")
+                    .joinToString("\n") { it.data().ifBlank { it.html() } }
+            }
+        fontSheets.forEach { (cssPath, sheet) ->
+            Regex("@font-face\\s*\\{([^}]+)}", RegexOption.IGNORE_CASE).findAll(sheet).forEach { face ->
+                val props = EpubLayout.declarations(face.groupValues[1])
+                val family = props["font-family"]?.trim()?.trim('\'', '"')
+                val src = Regex("url\\(['\"]?([^)'\"]+)").find(props["src"].orEmpty())?.groupValues?.get(1)
+                if (family != null && src != null) {
+                    val resolved = normalize(cssPath.substringBeforeLast('/', "").let { if (it.isEmpty()) src else "$it/$src" })
+                    if (files.containsKey(resolved)) fonts[family] = resolved
+                }
+            }
+        }
+        val imagePaths = manifest.values.filter { it.attr("media-type").startsWith("image/") }.map { resolve(it.attr("href")) }.toSet()
+        val resources = files.filterKeys { path ->
+            path in imagePaths || path in fonts.values || path.substringAfterLast('.').lowercase() in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "avif")
+        }.mapValues { java.util.Base64.getEncoder().encodeToString(it.value) }
         return Book(
             opf.getElementsByTag("dc:title").firstOrNull()?.text()?.ifBlank { null }
                 ?: source.displayName.substringBeforeLast('.'),
             opf.getElementsByTag("dc:creator").firstOrNull()?.text()?.ifBlank { null } ?: "佚名",
             chapters,
             toc.ifEmpty { chapters.map { TocEntry(it.title, it.index) } },
+            resources = resources,
+            embeddedFonts = fonts,
             suggestedStyle =
                 BookStyle(
                     !css.contains("sans-serif"),

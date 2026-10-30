@@ -9,6 +9,8 @@ import com.lyric.core.*
 import com.lyric.data.*
 import com.lyric.reader.ReaderSession
 import com.lyric.reader.SessionTracker
+import com.lyric.reader.ProgressWriter
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -68,17 +70,51 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
     val searching = MutableStateFlow(false)
     val highlight = MutableStateFlow("")
     val notice = MutableStateFlow<String?>(null)
-    private val tracker = SessionTracker(id) { session ->
-        app.applicationScope.launch(Dispatchers.IO) { repository.dao.addSession(session) }
+    private var closed = false
+    private val sessionWrites = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val sessionWriter = app.applicationScope.launch(Dispatchers.IO) {
+        for (write in sessionWrites) {
+            try { write() } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                notice.value = "阅读记录保存失败：${e.localizedMessage}"
+            }
+        }
+    }
+    private val progressWriter = ProgressWriter<Pair<Book, Locator>>(app.applicationScope) {
+        repository.save(id, it.first, it.second)
+    }
+    internal val tracker = SessionTracker(id) { session ->
+        check(sessionWrites.trySend { repository.dao.checkpointSession(session) }.isSuccess)
     }
     private val tickJob = viewModelScope.launch {
         while (isActive) { delay(1000); tracker.tick() }
     }
     private var pendingJump: Locator? = null
+    private var pendingBookmark = 0L
 
     fun readingGesture() = tracker.onActivity()
     fun resume() = tracker.onResume()
-    fun pause() { tracker.onPause(); flush() }
+    fun pause() {
+        if (closed) return
+        tracker.onPause()
+        // Lifecycle must not return while its final durable snapshots are still queued.
+        // The writers run on IO, so this barrier does not depend on the main dispatcher.
+        val book = state.value.book
+        runBlocking(Dispatchers.IO) {
+            try {
+                if (book != null) progressWriter.flush(book to locator.value)
+            } catch (e: Exception) {
+                notice.value = "阅读进度保存失败：${e.localizedMessage}"
+            }
+            val barrier = CompletableDeferred<Unit>()
+            sessionBarrier(barrier)
+            barrier.await()
+        }
+    }
+    private suspend fun sessionBarrier(done: CompletableDeferred<Unit>) {
+        // A checkpoint drain shares the same FIFO as the rolling writes.
+        sessionWrites.send { done.complete(Unit); Unit }
+    }
     fun readingActivity(next: Locator) {
         val book = state.value.book ?: return
         val old = locator.value
@@ -88,6 +124,7 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
             tracker.onActivity(kotlin.math.abs(b - a))
         }
         engine.goTo(next)
+        flush()
     }
     private var finishedRecorded = false
     fun finished() {
@@ -96,37 +133,37 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
         finishedRecorded = true
         viewModelScope.launch { repository.dao.finish(FinishedBook(id, book.title, System.currentTimeMillis())) }
     }
-    fun jump(locator: Locator) {
-        if (state.value.book == null) pendingJump = locator else goTo(locator)
+    fun jump(locator: Locator, bookmarkId: Long = 0L) {
+        if (state.value.book == null) {
+            pendingJump = locator
+            pendingBookmark = bookmarkId
+        } else if (bookmarkId != 0L) viewModelScope.launch {
+            // Resolve by ID after EPUB upgrades, rather than using a stale navigation offset.
+            val mark = repository.dao.bookmark(bookmarkId)
+            goTo(mark?.let { Locator(it.chapterIndex, it.charOffset, it.page) } ?: locator)
+        } else goTo(locator)
     }
     private var searchJob: Job? = null
-    private var saveJob: Job? = null
     private var settingsJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            locator.drop(1).collect {
-                saveJob?.cancel()
-                saveJob = launch {
-                    delay(450)
-                    save()
-                }
-            }
-        }
         reload()
     }
 
     fun reload() {
+        com.lyric.reader.ReaderMetrics.beginOpen()
         viewModelScope.launch {
             state.value = ReaderState()
             try {
                 val (row, book) = repository.load(id)
                 val p = repository.dao.progress(id)
+                val requestedMark = if (pendingBookmark != 0L) repository.dao.bookmark(pendingBookmark) else null
                 engine.open(
                     book,
-                    pendingJump ?: p?.let { Locator(it.chapterIndex, it.charOffset, it.page) } ?: Locator(),
+                    requestedMark?.let { Locator(it.chapterIndex, it.charOffset, it.page) } ?: pendingJump ?: p?.let { Locator(it.chapterIndex, it.charOffset, it.page) } ?: Locator(),
                 )
                 pendingJump = null
+                pendingBookmark = 0L
                 settingsJob?.cancel()
                 settingsJob =
                     viewModelScope.launch {
@@ -145,6 +182,7 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
 
     fun goTo(locator: Locator) {
         engine.goTo(locator)
+        flush()
     }
 
     fun updateSettings(scope: SettingsScope, next: ReaderSettings) {
@@ -159,17 +197,18 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
         viewModelScope.launch { repository.settings.reset(scope, id, engine.contentType) }
     }
 
-    fun bookmark() {
+    fun bookmark(at: Locator = locator.value, excerpt: String? = null) {
         val b = state.value.book ?: return
-        val l = locator.value
+        val l = b.clamp(at)
         viewModelScope.launch {
             repository.dao.addBookmark(
                 BookmarkRow(
                     bookId = id,
                     chapterIndex = l.chapterIndex,
                     charOffset = l.charOffset,
-                    excerpt = b.excerpt(l, 80),
+                    excerpt = excerpt ?: b.excerpt(l, 80),
                     bookTitle = b.title,
+                    contentRevision = 3,
                     chapterTitle = b.chapters[l.chapterIndex].title,
                 )
             )
@@ -182,6 +221,8 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
     }
 
     fun search(query: String) {
+        com.lyric.reader.ReaderMetrics.endSearch()
+        if (query.isNotBlank()) com.lyric.reader.ReaderMetrics.beginSearch()
         searchJob?.cancel()
         hits.value = emptyList()
         highlight.value = query
@@ -238,20 +279,22 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
     }
 
     private suspend fun save() {
-        state.value.book?.let { repository.save(id, it, locator.value) }
+        state.value.book?.let { progressWriter.flush(it to locator.value) }
     }
 
     fun flush() {
-        saveJob?.cancel()
+        if (closed) return
         val book = state.value.book ?: return
         val at = locator.value
-        app.applicationScope.launch { repository.save(id, book, at) }
+        progressWriter.submit(book to at)
     }
 
     override fun onCleared() {
-        tracker.onPause()
+        pause()
+        closed = true
+        sessionWrites.close()
+        progressWriter.close()
         tickJob.cancel()
-        flush()
         super.onCleared()
     }
 }

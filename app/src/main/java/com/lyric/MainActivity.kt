@@ -8,9 +8,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.*
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import com.lyric.ui.*
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ReaderActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -26,22 +28,24 @@ class MainActivity : ComponentActivity() {
                         ShelfScreen(vm, me = { MeScreen(me) { nav.navigate(it) } }) { nav.navigate("reader/$it/-1/0/0") }
                     }
                     composable("bookmarks") {
-                        BookmarksScreen(me, { nav.popBackStack() }) { id, loc ->
-                            nav.navigate("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}")
+                        BookmarksScreen(me, { nav.popBackStack() }) { id, loc, bookmarkId ->
+                            nav.navigate("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}?bookmark=$bookmarkId")
                         }
                     }
                     composable("stats") { StatsScreen(me) { nav.popBackStack() } }
                     composable("settings/{section}") { entry ->
                         SettingsScreen(me, entry.arguments?.getString("section").orEmpty()) { nav.popBackStack() }
                     }
-                    composable("reader/{id}/{chapter}/{offset}/{page}") { entry ->
+                    composable("reader/{id}/{chapter}/{offset}/{page}?bookmark={bookmark}",
+                        arguments = listOf(navArgument("bookmark") { type = NavType.LongType; defaultValue = 0L })) { entry ->
                         val id = requireNotNull(entry.arguments?.getString("id"))
                         val vm: ReaderViewModel = viewModel(key = id, factory = LyricFactory(app, id))
                         LaunchedEffect(entry) {
                             val chapter = entry.arguments?.getString("chapter")?.toIntOrNull() ?: -1
                             if (chapter >= 0) vm.jump(com.lyric.core.Locator(chapter,
                                 entry.arguments?.getString("offset")?.toIntOrNull() ?: 0,
-                                entry.arguments?.getString("page")?.toIntOrNull() ?: 0))
+                                entry.arguments?.getString("page")?.toIntOrNull() ?: 0),
+                                entry.arguments?.getLong("bookmark") ?: 0L)
                         }
                         ReaderScreen(vm) { vm.pause(); nav.popBackStack() }
                     }

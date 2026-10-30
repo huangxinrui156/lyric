@@ -128,4 +128,32 @@ class BackupManagerTest {
             assertTrue(db.library().all().isEmpty())
         } finally { db.close(); scope.cancel() }
     }
+    @Test fun restoringRollingCheckpointKeepsLongestSnapshotAndDeduplicatesRebasedExcerpt() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val db = Room.inMemoryDatabaseBuilder(context, LibraryDatabase::class.java).allowMainThreadQueries().build()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val settings = SettingsStore(context, PreferenceDataStoreFactory.create(scope = scope) {
+            File(context.filesDir, "rolling-${System.nanoTime()}.preferences_pb")
+        })
+        try {
+            val dao = db.library()
+            val id = "a".repeat(64)
+            val row = ShelfBook(id, "", "a.epub", "a", "author", "epub", totalChars = 100,
+                chapterCount = 1, encoding = "UTF-8", contentRevision = 3)
+            dao.insert(row)
+            val mark = BookmarkRow(bookId = id, chapterIndex = 0, charOffset = 10, excerpt = "同一句", chapterTitle = "章", createdAt = 100, contentRevision = 3)
+            dao.addBookmark(mark)
+            val manager = BackupManager(context, db, settings)
+            fun backup(seconds: Long) = BackupPreview(BackupData(books = listOf(row), progress = emptyList(),
+                bookmarks = listOf(mark.copy(charOffset = 20, contentRevision = 0)),
+                sessions = listOf(ReadingSession("rolling", id, 0, seconds * 1000, seconds, 30)),
+                finished = emptyList()), emptyMap(), 0)
+            manager.restore(backup(15)); manager.restore(backup(30)); manager.restore(backup(15))
+            assertEquals(1, dao.sessions().size)
+            assertEquals(30L, dao.sessions().single().durationSec)
+            assertEquals(1, dao.allBookmarks().size)
+            assertEquals(10, dao.allBookmarks().single().charOffset)
+        } finally { db.close(); scope.cancel() }
+    }
+
 }

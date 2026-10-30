@@ -151,12 +151,15 @@ class BackupManager(private val context: Context, private val db: LibraryDatabas
                 data.progress.forEach { p ->
                     if (dao.book(p.bookId) != null && (dao.progress(p.bookId)?.updatedAt ?: -1) < p.updatedAt) dao.saveProgress(p)
                 }
-                val keys = bookmarks.map { Triple(it.bookId, it.createdAt, "${it.chapterIndex}:${it.charOffset}:${it.excerpt}") }.toMutableSet()
+                val keys = bookmarks.map { Triple(it.bookId, it.createdAt, "${it.chapterIndex}:${it.excerpt}") }.toMutableSet()
                 data.bookmarks.forEach { m ->
-                    if (keys.add(Triple(m.bookId, m.createdAt, "${m.chapterIndex}:${m.charOffset}:${m.excerpt}")))
+                    if (keys.add(Triple(m.bookId, m.createdAt, "${m.chapterIndex}:${m.excerpt}")))
                         dao.addBookmark(m.copy(id = 0))
                 }
-                data.sessions.forEach { dao.addSession(it) }
+                data.sessions.forEach {
+                    dao.addSession(it)
+                    dao.extendSession(it.id, it.endAt, it.durationSec, it.chars)
+                }
                 data.finished.forEach { dao.finish(it) }
             }
             settings.restore(data.settings.copy(strings = strings))

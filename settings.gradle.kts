@@ -16,4 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Lyric"
 
-include(":app")
+include(":app", ":macrobenchmark")

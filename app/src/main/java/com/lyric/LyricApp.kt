@@ -17,7 +17,7 @@ class LyricApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        val database = Room.databaseBuilder(this, LibraryDatabase::class.java, "lyric.db").addMigrations(MIGRATION_1_2).build()
+        val database = Room.databaseBuilder(this, LibraryDatabase::class.java, "lyric.db").addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
         repository = LibraryRepository(this, database, SettingsStore(this))
         backup = BackupManager(this, database, repository.settings)
         storage = StorageInspector(this, repository)

@@ -29,6 +29,8 @@ class SessionTracker(
     private var wallStart = 0L
     private var lastActivity = 0L
     private var chars = 0L
+    private var sessionId = ""
+    private var lastCheckpoint = 0L
 
     fun onResume() { foreground = true }
 
@@ -39,6 +41,8 @@ class SessionTracker(
         if (start == null) {
             start = now
             wallStart = clock.wallMillis()
+            sessionId = UUID.randomUUID().toString()
+            lastCheckpoint = now
         }
         lastActivity = now
         chars += characters.coerceAtLeast(0)
@@ -47,6 +51,8 @@ class SessionTracker(
     fun tick() {
         if (start != null && clock.elapsedMillis() - lastActivity >= IDLE_MS) {
             finish(lastActivity + IDLE_MS)
+        } else if (start != null && clock.elapsedMillis() - lastCheckpoint >= CHECKPOINT_MS) {
+            checkpoint(clock.elapsedMillis())
         }
     }
 
@@ -55,10 +61,21 @@ class SessionTracker(
         if (start != null) finish(minOf(clock.elapsedMillis(), lastActivity + IDLE_MS))
     }
 
+    fun onStop() = onPause()
+    fun activeDurationSec(): Long = start?.let {
+        (minOf(clock.elapsedMillis(), lastActivity + IDLE_MS) - it).coerceAtLeast(0) / 1000
+    } ?: 0L
+
     private fun finish(endElapsed: Long) {
+        checkpoint(endElapsed)
+        start = null
+        chars = 0
+    }
+
+    private fun checkpoint(endElapsed: Long) {
         val began = start ?: return
         val seconds = ((endElapsed - began).coerceAtLeast(0) / 1000)
-        start = null
+        lastCheckpoint = clock.elapsedMillis()
         if (seconds >= MIN_SECONDS) {
             // Split at local midnights so today's totals never include yesterday's time.
             // Records have whole-second precision, avoiding rounding loss at midnight.
@@ -71,16 +88,16 @@ class SessionTracker(
                 val stop = minOf(end, midnight)
                 val duration = (stop - cursor) / 1000
                 val partChars = if (stop == end) chars - assignedChars else chars * duration / seconds
-                if (duration > 0) record(ReadingSession(UUID.randomUUID().toString(), bookId,
+                if (duration > 0) record(ReadingSession("$sessionId:$cursor", bookId,
                     cursor, stop, duration, partChars))
                 assignedChars += partChars
                 cursor = stop
             }
         }
-        chars = 0
     }
 
     companion object {
+        const val CHECKPOINT_MS = 15_000L
         const val IDLE_MS = 30_000L
         const val MIN_SECONDS = 10L
     }

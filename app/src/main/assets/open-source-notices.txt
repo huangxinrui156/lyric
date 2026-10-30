@@ -2,7 +2,8 @@ Lyric uses these open-source components:
 
 Kotlin, kotlinx.coroutines, kotlinx.serialization — JetBrains, Apache License 2.0.
 AndroidX (Activity, Compose, Material 3, Lifecycle, Navigation, Room, DataStore, DocumentFile, Core, SQLite) — Android Open Source Project, Apache License 2.0.
-Coil 2 — Coil contributors, Apache License 2.0.
+Coil 2 (including coil-svg) — Coil contributors, Apache License 2.0.
+AndroidSVG 1.4 — Paul LeBeau, Apache License 2.0.
 jsoup — Jonathan Hedley and contributors, MIT License.
 juniversalchardet — Shy Shalom, Kohei Takeda, Alban Fernandez and contributors, Mozilla Public License 1.1 (alternative GNU GPL 3.0 / LGPL 3.0).
 Noto Serif CJK SC — Adobe and Google, SIL Open Font License 1.1.
@@ -102,7 +103,7 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
 
-Apache License 2.0 — AndroidX, Kotlin, coroutines, serialization, Coil
+Apache License 2.0 — AndroidX, Kotlin, coroutines, serialization, Coil, AndroidSVG
 
 
                                  Apache License

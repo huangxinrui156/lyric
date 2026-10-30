@@ -115,7 +115,7 @@ internal fun MePage(title: String, back: () -> Unit, content: @Composable (Paddi
 }
 
 @Composable
-fun BookmarksScreen(vm: MeViewModel, back: () -> Unit, open: (String, Locator) -> Unit) {
+fun BookmarksScreen(vm: MeViewModel, back: () -> Unit, open: (String, Locator, Long) -> Unit) {
     val marks by vm.bookmarks.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     var filtered by remember { mutableStateOf<List<BookmarkSummary>>(emptyList()) }
@@ -151,7 +151,7 @@ fun BookmarksScreen(vm: MeViewModel, back: () -> Unit, open: (String, Locator) -
                         val mark = item.mark
                         val color = if (item.unavailable) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .6f) else MaterialTheme.colorScheme.onSurface
                         Column(Modifier.fillMaxWidth().clickable(enabled = !item.unavailable) {
-                            open(mark.bookId, Locator(mark.chapterIndex, mark.charOffset, mark.page))
+                            open(mark.bookId, Locator(mark.chapterIndex, mark.charOffset, mark.page), mark.id)
                         }.padding(vertical = 16.dp)) {
                             Text(mark.chapterTitle, fontSize = 12.sp, color = color)
                             Text(mark.excerpt, fontFamily = Serif, fontSize = 16.sp, lineHeight = 28.sp,

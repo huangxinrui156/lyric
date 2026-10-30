@@ -33,7 +33,11 @@ data class Chapter(
     val text: String = "",
     val href: String = "",
     val content: List<ContentUnit> = emptyList(),
+    val styles: List<TextStyleRange> = emptyList(),
 ) {
+    @kotlinx.serialization.Transient
+    var legacyOffsets: List<OffsetMapping> = emptyList()
+
     val units: List<ContentUnit>
         get() = content.ifEmpty { listOf(ContentUnit.TextSpan(text)) }
 }
@@ -50,6 +54,8 @@ data class Book(
     val encoding: String = "UTF-8",
     val contentType: ContentType = ContentType.TEXT,
     val suggestedStyle: BookStyle? = null,
+    val resources: Map<String, String> = emptyMap(),
+    val embeddedFonts: Map<String, String> = emptyMap(),
 ) {
     val totalChars: Long
         get() = chapters.sumOf { it.text.length.toLong() }
@@ -96,7 +102,13 @@ data class ReaderSettings(
     val accentColor: Int = 0,
     val dailyGoalMin: Int = 20,
     val goalEnabled: Boolean = false,
-    val volumeKeys: Boolean = true,
+    val volumeKeys: Boolean = false,
+    val swapVolumeKeys: Boolean = false,
+    val showChapter: Boolean = true,
+    val showPage: Boolean = false,
+    val showPercent: Boolean = true,
+    val showTime: Boolean = false,
+    val showBattery: Boolean = false,
     val keepScreenOn: Boolean = false,
     val orientation: String = "system",
     val fontSize: Float = 18f,
@@ -177,6 +189,37 @@ fun Book.percent(locator: Locator): Float {
 fun Book.excerpt(locator: Locator, length: Int = 90): String {
     val p = clamp(locator)
     return if (contentType == ContentType.TEXT)
-        chapters[p.chapterIndex].text.drop(p.charOffset).take(length).replace('\n', ' ')
+        chapters[p.chapterIndex].text.let { it.substring(p.charOffset, minOf(p.charOffset + length, it.length)).replace('\n', ' ') }
     else "${chapters[p.chapterIndex].title} · 第 ${p.page + 1} 页"
+}
+
+/** Ranges always refer to canonical UTF-16 text; ruby readings are metadata, not text. */
+@Serializable
+data class TextStyleRange(
+    val start: Int,
+    val end: Int,
+    val bold: Boolean = false,
+    val italic: Boolean = false,
+    val sizeEm: Float? = null,
+    val align: String? = null,
+    val indentEm: Float? = null,
+    val fontFamily: String? = null,
+    val resource: String? = null,
+    val ruby: String? = null,
+    val rule: Boolean = false,
+    val bookStyle: Boolean = false,
+)
+
+/** A monotonic mapping from v0.2 EPUB text to v0.3 canonical text. Kept only while upgrading. */
+data class OffsetMapping(val oldStart: Int, val oldEnd: Int, val start: Int, val end: Int)
+
+fun Chapter.upgradeLegacyOffset(offset: Int): Int {
+    val segment = legacyOffsets.lastOrNull { it.oldStart <= offset }
+    val mapped = if (segment == null) 0 else if (offset <= segment.oldEnd)
+        segment.start + (offset - segment.oldStart).coerceAtMost(segment.end - segment.start)
+    else {
+        val next = legacyOffsets.firstOrNull { it.oldStart > offset }
+        (segment.end + offset - segment.oldEnd).coerceAtMost(next?.start ?: text.length)
+    }
+    return mapped.coerceIn(0, text.lastIndex.coerceAtLeast(0))
 }
