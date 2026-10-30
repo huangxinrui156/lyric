@@ -44,7 +44,8 @@ class BackupManagerTest {
             dao.insert(a); dao.insert(b)
             dao.saveProgress(ProgressRow(a.id, 0, 10, updatedAt = 100))
             dao.saveProgress(ProgressRow(b.id, 0, 25, updatedAt = 200))
-            dao.addBookmark(BookmarkRow(bookId = b.id, chapterIndex = 0, charOffset = 25, excerpt = "雨", chapterTitle = "章", bookTitle = b.title))
+            dao.addBookmark(BookmarkRow(bookId = b.id, chapterIndex = 0, charOffset = 25, excerpt = "雨", chapterTitle = "章", bookTitle = b.title, note = "书签备注"))
+            dao.addHighlight(HighlightRow(bookId = b.id, chapterIndex = 0, start = 3, end = 6, text = "雨落在", note = "想法"))
             dao.addSession(ReadingSession("session", b.id, 10000, 30000, 20, 12))
             dao.finish(FinishedBook(b.id, b.title, 30000))
             aSettings.update(SettingsScope.GLOBAL, "", ReaderSettings(), ReaderSettings(fontSize = 24f, appTheme = "dark", accentColor = 2))
@@ -67,6 +68,8 @@ class BackupManagerTest {
             assertTrue(target.library().book(b.id)!!.invalid)
             assertTrue(target.library().observeAllBookmarks().first().single().unavailable)
             assertEquals(1, target.library().allBookmarks().size)
+            assertEquals("书签备注", target.library().allBookmarks().single().note)
+            assertEquals("想法", target.library().allHighlights().single().note) // restored twice, kept once
             assertEquals(1, target.library().sessions().size)
             assertEquals(1, target.library().finished().size)
             assertEquals(24f, bSettings.global.first().fontSize)
@@ -78,6 +81,38 @@ class BackupManagerTest {
             assertFalse(target.library().book(b.id)!!.invalid)
             assertEquals(25, target.library().progress(b.id)!!.charOffset)
             assertFalse(target.library().observeAllBookmarks().first().single().unavailable)
+            // 0.5.1: removing from the shelf keeps progress/bookmarks/highlights and the file; re-import restores them.
+            repo.remove(b.id)
+            assertNull(target.library().book(b.id)); assertTrue(missingFile.exists())
+            assertEquals(25, target.library().progress(b.id)!!.charOffset)
+            repo.importUris(listOf(Uri.fromFile(missingFile)))
+            val back = target.library().book(b.id)!!
+            assertTrue(back.lastRead > 0 && back.percent > 0f)
+            assertEquals(25, target.library().progress(b.id)!!.charOffset)
+            assertEquals("书签备注", target.library().allBookmarks().single().note)
+            assertEquals(1, target.library().allHighlights().size)
+            // A pre-0.5.1 (version 1) backup without highlights or notes still restores.
+            val legacyJson = java.util.zip.ZipInputStream(ByteArrayInputStream(zip)).use { z ->
+                generateSequence { z.nextEntry }.first { it.name == "database.json" }; z.readBytes().toString(Charsets.UTF_8)
+            }.let { raw ->
+                val o = kotlinx.serialization.json.Json.parseToJsonElement(raw) as kotlinx.serialization.json.JsonObject
+                val marks = (o["bookmarks"] as kotlinx.serialization.json.JsonArray).map { m -> kotlinx.serialization.json.JsonObject((m as kotlinx.serialization.json.JsonObject).filterKeys { it != "note" }) }
+                kotlinx.serialization.json.JsonObject(o.filterKeys { it != "highlights" } + mapOf("version" to kotlinx.serialization.json.JsonPrimitive(1), "bookmarks" to kotlinx.serialization.json.JsonArray(marks))).toString()
+            }
+            val legacy = ByteArrayOutputStream().also { bytes -> ZipOutputStream(bytes).use { z ->
+                z.putNextEntry(ZipEntry("database.json")); z.write(legacyJson.toByteArray()); z.closeEntry()
+                val settingsRaw = java.util.zip.ZipInputStream(ByteArrayInputStream(zip)).use { zi ->
+                    generateSequence { zi.nextEntry }.first { it.name == "settings.json" }; zi.readBytes() }
+                z.putNextEntry(ZipEntry("settings.json")); z.write(settingsRaw); z.closeEntry()
+            } }.toByteArray()
+            val fresh = Room.inMemoryDatabaseBuilder(context, LibraryDatabase::class.java).allowMainThreadQueries().build()
+            try {
+                val m = BackupManager(context, fresh, settings())
+                m.restore(m.preview(ByteArrayInputStream(legacy)))
+                assertEquals(1, fresh.library().allBookmarks().size)
+                assertEquals("", fresh.library().allBookmarks().single().note)
+                assertEquals(0, fresh.library().allHighlights().size)
+            } finally { fresh.close() }
         } finally { source.close(); target.close(); scope.cancel(); file.delete(); missingFile.delete() }
     }
 

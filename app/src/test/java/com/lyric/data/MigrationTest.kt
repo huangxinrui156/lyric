@@ -43,9 +43,9 @@ class MigrationTest {
         old.execSQL("INSERT INTO progress VALUES ('hash',0,42,3,123)")
         old.execSQL("INSERT INTO bookmarks (id,bookId,chapterIndex,charOffset,page,excerpt,chapterTitle,createdAt) VALUES (7,'hash',0,12,1,'保留这句话','章',456)")
         helper.close()
-        val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).allowMainThreadQueries().build()
+        val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).allowMainThreadQueries().build()
         try {
-            assertEquals(4, db.openHelper.writableDatabase.version)
+            assertEquals(5, db.openHelper.writableDatabase.version)
             val dao = db.library()
             assertEquals("原书", dao.book("hash")!!.title)
             assertEquals(42, dao.progress("hash")!!.charOffset)
@@ -55,7 +55,7 @@ class MigrationTest {
             assertEquals(20L, dao.dailyStats().single().durationSec)
             assertEquals(1, dao.observeTotals().first().finished)
             dao.remove("hash")
-            assertNull(dao.progress("hash"))
+            assertEquals(42, dao.progress("hash")!!.charOffset) // v5: progress survives shelf removal
             assertEquals(20L, dao.sessions().single().durationSec)
             assertEquals(1, dao.finished().size)
             assertTrue(dao.observeAllBookmarks().first().single().unavailable)
@@ -89,9 +89,9 @@ class MigrationTest {
         }
         helper.close()
         val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name)
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).allowMainThreadQueries().build()
         try {
-            assertEquals(4, db.openHelper.writableDatabase.version)
+            assertEquals(5, db.openHelper.writableDatabase.version)
             val dao = db.library()
             assertEquals(0, dao.book("epub")!!.contentRevision)
             assertEquals(0, dao.progress("epub")!!.contentRevision)
@@ -134,9 +134,9 @@ class MigrationTest {
         }
         helper.close()
         val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name)
-            .addMigrations(MIGRATION_3_4).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5).allowMainThreadQueries().build()
         try {
-            assertEquals(4, db.openHelper.writableDatabase.version)
+            assertEquals(5, db.openHelper.writableDatabase.version)
             val dao = db.library()
             val mark = dao.allBookmarks().single()
             assertEquals("保留这句话", mark.excerpt); assertEquals("", mark.note)
@@ -146,6 +146,47 @@ class MigrationTest {
             dao.highlightNote(id, "想起高中")
             assertEquals("想起高中", dao.highlights("epub").first().single().note)
             assertEquals(42, dao.progress("epub")!!.charOffset)
+            db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
+        } finally { db.close(); context.deleteDatabase(name) }
+    }
+
+    @Test fun realV4SchemaMigratesToV5AndProgressSurvivesRemoval() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val name = "migration-v4-${System.nanoTime()}.db"
+        val schema = Json.parseToJsonElement(File("schemas/com.lyric.data.LibraryDatabase/4.json").readText()).jsonObject["database"]!!.jsonObject
+        val helper = FrameworkSQLiteOpenHelperFactory().create(SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(name).callback(object : SupportSQLiteOpenHelper.Callback(4) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    schema["entities"]!!.jsonArray.forEach { element ->
+                        val e = element.jsonObject
+                        db.execSQL(e["createSql"]!!.jsonPrimitive.content.replace("\u0024{TABLE_NAME}", e["tableName"]!!.jsonPrimitive.content))
+                        e["indices"]!!.jsonArray.forEach { db.execSQL(it.jsonObject["createSql"]!!.jsonPrimitive.content.replace("\u0024{TABLE_NAME}", e["tableName"]!!.jsonPrimitive.content)) }
+                    }
+                    schema["views"]!!.jsonArray.forEach { db.execSQL(it.jsonObject["createSql"]!!.jsonPrimitive.content.replace("\u0024{VIEW_NAME}", it.jsonObject["viewName"]!!.jsonPrimitive.content)) }
+                    schema["setupQueries"]!!.jsonArray.forEach { db.execSQL(it.jsonPrimitive.content) }
+                }
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+            }).build())
+        helper.writableDatabase.apply {
+            execSQL("INSERT INTO books (id,uri,name,title,author,extension,contentType,totalChars,chapterCount,encoding,addedAt,lastRead,invalid,excerpt,chapterTitle,percent) VALUES ('epub','file:///old.epub','old.epub','原书','作者','epub','TEXT',100,1,'UTF-8',1,2,0,'摘录','章',0.4)")
+            execSQL("INSERT INTO progress (bookId,chapterIndex,charOffset,page,updatedAt) VALUES ('epub',0,42,3,123)")
+            execSQL("INSERT INTO bookmarks (id,bookId,chapterIndex,charOffset,page,excerpt,chapterTitle,createdAt,bookTitle,note) VALUES (7,'epub',0,12,1,'保留这句话','章',456,'原书','备注')")
+            execSQL("INSERT INTO reading_sessions VALUES ('session','epub',1000,16000,15,20)")
+            execSQL("INSERT INTO finished_books VALUES ('old','已读',1000)")
+            execSQL("INSERT INTO highlights (bookId,chapterIndex,start,`end`,text,note,chapterTitle,bookTitle,createdAt) VALUES ('epub',0,3,8,'窗外的雨','想起高中','章','原书',5)")
+        }
+        helper.close()
+        val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name)
+            .addMigrations(MIGRATION_4_5).allowMainThreadQueries().build()
+        try {
+            assertEquals(5, db.openHelper.writableDatabase.version)
+            val dao = db.library()
+            assertEquals(42, dao.progress("epub")!!.charOffset)
+            dao.remove("epub")
+            assertEquals(42, dao.progress("epub")!!.charOffset)
+            assertEquals("备注", dao.allBookmarks().single().note)
+            assertEquals("想起高中", dao.allHighlights().single().note)
+            dao.saveProgress(ProgressRow("ghost", 1, 2)) // no foreign key any more
             db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
         } finally { db.close(); context.deleteDatabase(name) }
     }

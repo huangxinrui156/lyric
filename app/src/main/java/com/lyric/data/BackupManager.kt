@@ -17,13 +17,15 @@ import kotlinx.serialization.json.*
 
 @Serializable
 data class BackupData(
-    val version: Int = 1,
+    /** 1 = up to 0.5.0; 2 adds highlights (bookmark notes ride on BookmarkRow). */
+    val version: Int = 2,
     val books: List<ShelfBook>,
     val progress: List<ProgressRow>,
     val bookmarks: List<BookmarkRow>,
     val sessions: List<ReadingSession>,
     val finished: List<FinishedBook>,
     val settings: SettingsSnapshot = SettingsSnapshot(),
+    val highlights: List<HighlightRow> = emptyList(),
 )
 
 data class BackupPreview(val data: BackupData, val fonts: Map<String, ByteArray>, val matched: Int) {
@@ -45,7 +47,7 @@ class BackupManager(private val context: Context, private val db: LibraryDatabas
         val data = db.withTransaction {
             BackupData(books = dao.all().map { it.copy(uri = "", coverPath = null) },
                 progress = dao.allProgress(), bookmarks = dao.allBookmarks(), sessions = dao.sessions(),
-                finished = dao.finished(), settings = snapshot)
+                finished = dao.finished(), settings = snapshot, highlights = dao.allHighlights())
         }
         ZipOutputStream(output).use { zip ->
             zip.putNextEntry(ZipEntry("database.json"))
@@ -98,7 +100,7 @@ class BackupManager(private val context: Context, private val db: LibraryDatabas
         require(rawSettings != null || "settings" in json.parseToJsonElement(database).jsonObject) { "缺少设置 JSON" }
         val decoded = json.decodeFromString<BackupData>(database)
         val data = rawSettings?.let { decoded.copy(settings = json.decodeFromString<SettingsSnapshot>(it)) } ?: decoded
-        require(data.version == 1) { "不支持的备份版本" }
+        require(data.version in 1..2) { "不支持的备份版本" }
         settings.validate(data.settings)
         require(data.books.map { it.id }.distinct().size == data.books.size) { "书籍哈希重复" }
         require(data.books.all { Regex("[a-f0-9]{64}").matches(it.id) }) { "书籍哈希无效" }
@@ -155,6 +157,17 @@ class BackupManager(private val context: Context, private val db: LibraryDatabas
                 data.bookmarks.forEach { m ->
                     if (keys.add(Triple(m.bookId, m.createdAt, "${m.chapterIndex}:${m.excerpt}")))
                         dao.addBookmark(m.copy(id = 0))
+                    else if (m.note.isNotBlank()) bookmarks.firstOrNull {
+                        it.bookId == m.bookId && it.createdAt == m.createdAt && it.chapterIndex == m.chapterIndex && it.excerpt == m.excerpt && it.note.isBlank()
+                    }?.let { dao.bookmarkNote(it.id, m.note) }
+                }
+                val localHighlights = dao.allHighlights()
+                val hkeys = localHighlights.map { Triple(it.bookId, it.chapterIndex, "${it.start}:${it.end}") }.toMutableSet()
+                data.highlights.forEach { h ->
+                    if (hkeys.add(Triple(h.bookId, h.chapterIndex, "${h.start}:${h.end}"))) dao.addHighlight(h.copy(id = 0))
+                    else if (h.note.isNotBlank()) localHighlights.firstOrNull {
+                        it.bookId == h.bookId && it.chapterIndex == h.chapterIndex && it.start == h.start && it.end == h.end && it.note.isBlank()
+                    }?.let { dao.highlightNote(it.id, h.note) }
                 }
                 data.sessions.forEach {
                     dao.addSession(it)

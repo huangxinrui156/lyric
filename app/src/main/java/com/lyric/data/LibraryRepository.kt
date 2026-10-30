@@ -376,7 +376,15 @@ class LibraryRepository(
             try {
                 retain()
                 ImportTrace.stage("写入解析缓存") { parseLock.withLock { writeCache(row, parsed) } }
-                ImportTrace.stage("Room/插入书架") { dao.insert(row) }
+                ImportTrace.stage("Room/插入书架") {
+                    // 0.5.1: a removed book's progress survives; re-import puts it back on the shelf where it was.
+                    val kept = dao.progress(id)
+                    dao.insert(kept?.let {
+                        val at = parsed.clamp(com.lyric.core.Locator(it.chapterIndex, it.charOffset, it.page))
+                        row.copy(lastRead = it.updatedAt, percent = parsed.percent(at),
+                            chapterTitle = parsed.chapters[at.chapterIndex].title, excerpt = parsed.excerpt(at, 80))
+                    } ?: row)
+                }
             } catch (e: Exception) {
                 if (e !is CancellationException) {
                     cacheFile(row).delete()

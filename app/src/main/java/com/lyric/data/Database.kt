@@ -31,18 +31,8 @@ data class ShelfBook(
     @ColumnInfo(defaultValue = "0") val contentRevision: Int = 0,
 )
 
-@Entity(
-    tableName = "progress",
-    foreignKeys =
-        [
-            ForeignKey(
-                entity = ShelfBook::class,
-                parentColumns = ["id"],
-                childColumns = ["bookId"],
-                onDelete = ForeignKey.CASCADE,
-            )
-        ],
-)
+/** No foreign key since v5: removing a book from the shelf keeps where the reader was. */
+@Entity(tableName = "progress")
 @Serializable
 data class ProgressRow(
     @PrimaryKey val bookId: String,
@@ -183,7 +173,7 @@ interface LibraryDao {
 @Database(
     entities = [ShelfBook::class, ProgressRow::class, BookmarkRow::class, ReadingSession::class, FinishedBook::class, HighlightRow::class],
     views = [DailyStat::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -222,5 +212,15 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         db.execSQL("ALTER TABLE bookmarks ADD COLUMN note TEXT NOT NULL DEFAULT ''")
         db.execSQL("CREATE TABLE IF NOT EXISTS `highlights` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `bookId` TEXT NOT NULL, `chapterIndex` INTEGER NOT NULL, `start` INTEGER NOT NULL, `end` INTEGER NOT NULL, `text` TEXT NOT NULL, `note` TEXT NOT NULL, `chapterTitle` TEXT NOT NULL, `bookTitle` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)")
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_highlights_bookId` ON `highlights` (`bookId`)")
+    }
+}
+
+/** v0.5.1: progress outlives shelf removal (drops the ON DELETE CASCADE foreign key). */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE `progress_new` (`bookId` TEXT NOT NULL, `chapterIndex` INTEGER NOT NULL, `charOffset` INTEGER NOT NULL, `page` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `contentRevision` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`bookId`))")
+        db.execSQL("INSERT INTO progress_new SELECT bookId, chapterIndex, charOffset, page, updatedAt, contentRevision FROM progress")
+        db.execSQL("DROP TABLE progress")
+        db.execSQL("ALTER TABLE progress_new RENAME TO progress")
     }
 }

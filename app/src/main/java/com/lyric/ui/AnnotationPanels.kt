@@ -2,6 +2,8 @@ package com.lyric.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -118,10 +120,11 @@ fun BookmarkPanel(marks: List<BookmarkRow>, go: (BookmarkRow) -> Unit, note: (Bo
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HighlightPanel(rows: List<HighlightRow>, go: (HighlightRow) -> Unit, note: (HighlightRow) -> Unit, delete: (HighlightRow) -> Unit) {
     if (rows.isEmpty()) {
-        Text("还没有划线\n长按选中文字，点「划线」或「笔记」。", lineHeight = 25.sp, color = Stone, fontSize = 13.sp, modifier = Modifier.padding(24.dp))
+        Text("还没有划线\n长按选中文字，点「划线」或「笔记」。\n长按一条划线可以写想法或删除。", lineHeight = 25.sp, color = Stone, fontSize = 13.sp, modifier = Modifier.padding(24.dp))
         return
     }
     val groups = remember(rows) { rows.groupBy { it.chapterIndex }.toSortedMap() }
@@ -132,17 +135,23 @@ fun HighlightPanel(rows: List<HighlightRow>, go: (HighlightRow) -> Unit, note: (
                     modifier = Modifier.padding(start = 24.dp, top = 14.dp, bottom = 4.dp))
             }
             items(list, key = { it.id }) { h ->
-                Row(Modifier.fillMaxWidth().clickable { go(h) }.padding(start = 24.dp, top = 6.dp, bottom = 6.dp, end = 4.dp)) {
-                    Row(Modifier.weight(1f).height(IntrinsicSize.Min)) {
+                var actions by remember { mutableStateOf(false) }
+                Box {
+                    Row(
+                        Modifier.fillMaxWidth().height(IntrinsicSize.Min)
+                            .combinedClickable(onClick = { go(h) }, onLongClick = { actions = true })
+                            .padding(start = 24.dp, end = 20.dp, top = 7.dp, bottom = 7.dp)
+                    ) {
                         Box(Modifier.width(2.dp).fillMaxHeight().background(Vermilion))
                         Column(Modifier.padding(start = 10.dp)) {
                             Text(h.text, fontFamily = Serif, fontSize = 14.sp, lineHeight = 22.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
                             NoteLine(h.note)
-                            Text(if (h.note.isBlank()) "写想法" else "改想法", fontSize = 11.sp, color = Moss,
-                                modifier = Modifier.padding(top = 4.dp).clickable { note(h) })
                         }
                     }
-                    IconButton(onClick = { delete(h) }) { Icon(Icons.Outlined.Close, "删除划线", Modifier.size(18.dp), tint = Stone) }
+                    DropdownMenu(expanded = actions, onDismissRequest = { actions = false }) {
+                        DropdownMenuItem(text = { Text(if (h.note.isBlank()) "写想法" else "改想法") }, onClick = { actions = false; note(h) })
+                        DropdownMenuItem(text = { Text("删除划线") }, onClick = { actions = false; delete(h) })
+                    }
                 }
             }
         }

@@ -218,13 +218,13 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                                     Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
+                                    ShelfSortChips(sortMode, vm::sort)
+                                    Spacer(Modifier.weight(1f))
                                     Text(
                                         "${visible.size} 本书",
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 11.sp,
                                     )
-                                    Spacer(Modifier.weight(1f))
-                                    ShelfSortChips(sortMode, vm::sort)
                                 }
                                 if (status.running) ImportProgress(status)
                             }
@@ -620,12 +620,13 @@ private fun ShelfSortChips(mode: Int, pick: (Int) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         listOf("最近阅读", "导入时间", "书名").forEachIndexed { i, label ->
             val on = i == mode
-            Text(
-                label, fontSize = 11.sp,
-                color = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.background(if (on) Moss else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
-                    .clickable { pick(i) }.padding(horizontal = 10.dp, vertical = 4.dp),
-            )
+            Box(
+                Modifier.height(28.dp).background(if (on) Moss else MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(14.dp))
+                    .clickable { pick(i) }.padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(label, fontSize = 12.sp, color = if (on) Paper else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }
