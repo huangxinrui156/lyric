@@ -70,8 +70,7 @@ class ReaderCanvas(context: Context) : View(context) {
     private val paperPaint = Paint()
     private val scroller = OverScroller(context)
     private var selection: TextSelection? = null
-    private var actionMode: ActionMode? = null
-    val selectionMenuOpen: Boolean get() = actionMode != null
+    val selectionMenuOpen: Boolean get() = selectionPopup != null
     private var draggingHandle = 0
     private val startHandle = PointF()
     private val endHandle = PointF()
@@ -426,6 +425,8 @@ class ReaderCanvas(context: Context) : View(context) {
 
     fun turn(step: Int) {
         if (pendingKey != null || curlRunning) return
+        // A page turn dismisses the selection menu (except the edge-turn while dragging a handle).
+        if (selection != null && draggingHandle == 0) clearSelection()
         val next =
             target(step)
                 ?: run {
@@ -568,49 +569,98 @@ class ReaderCanvas(context: Context) : View(context) {
         invalidate()
     }
 
+    /** design §6 custom popup: 复制 / 摘录 / 分享 on the theme's menu colours (replaces system ActionMode). */
+    internal var selectionPopup: android.widget.PopupWindow? = null
+        private set
+    internal var selectionMenuView: android.widget.LinearLayout? = null
+        private set
+    internal var popupPosition: android.graphics.Point? = null
+        private set
+
+    internal fun selectionAction(id: Int) {
+        val selected = selection ?: return
+        val b = book ?: return
+        val text = selected.text(b)
+        when (id) {
+            1 -> (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                .setPrimaryClip(ClipData.newPlainText(b.title, text))
+            2 -> onExcerpt(selected.locator(b), text)
+            3 -> context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }, "分享摘录").apply { if (context !is android.app.Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+        }
+        clearSelection()
+    }
+
+    private fun hideSelectionMenu() {
+        selectionPopup?.setOnDismissListener(null)
+        selectionPopup?.dismiss()
+        selectionPopup = null; selectionMenuView = null; popupPosition = null
+    }
+
     private fun showSelectionMenu() {
-        if (actionMode != null) { actionMode?.invalidate(); return }
-        actionMode = startActionMode(object : ActionMode.Callback2() {
-            override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
-                menu.clear()
-                menu.add(0, 1, 0, "复制")
-                menu.add(0, 2, 1, "存为书签摘录")
-                menu.add(0, 3, 2, "分享")
-                return true
+        hideSelectionMenu()
+        val colors = palette()
+        val d = density
+        val menu = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setPadding((14 * d).toInt(), (8 * d).toInt(), (14 * d).toInt(), (8 * d).toInt())
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 10 * d; setColor(colors.menuBg)
             }
-            override fun onPrepareActionMode(mode: ActionMode, menu: Menu) = false
-            override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
-                val selected = selection ?: return false
-                val b = book ?: return false
-                val text = selected.text(b)
-                when (item.itemId) {
-                    1 -> (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                        .setPrimaryClip(ClipData.newPlainText(b.title, text))
-                    2 -> onExcerpt(selected.locator(b), text)
-                    3 -> context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, text)
-                    }, "分享摘录"))
-                    else -> return false
-                }
-                mode.finish()
-                return true
+            elevation = 14 * d
+            listOf(1 to "复制", 2 to "摘录", 3 to "分享").forEachIndexed { i, (id, label) ->
+                addView(android.widget.TextView(context).apply {
+                    text = label; textSize = 13f; setTextColor(colors.menuInk)
+                    minHeight = (32 * d).toInt(); gravity = android.view.Gravity.CENTER
+                    setPadding(if (i == 0) 0 else (9 * d).toInt(), 0, if (i == 2) 0 else (9 * d).toInt(), 0)
+                    contentDescription = label
+                    setOnClickListener { selectionAction(id) }
+                })
             }
-            override fun onDestroyActionMode(mode: ActionMode) {
-                actionMode = null
-                selection = null
-                invalidate()
-            }
-            override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) {
-                outRect.set((width * .2f).toInt(), minOf(startHandle.y, endHandle.y).toInt().coerceIn(0, height),
-                    (width * .8f).toInt(), maxOf(startHandle.y, endHandle.y).toInt().coerceIn(0, height))
-            }
-        }, ActionMode.TYPE_FLOATING)
+            measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        }
+        val pos = popupPlacement(menu.measuredWidth, menu.measuredHeight)
+        selectionMenuView = menu
+        popupPosition = pos
+        val popup = android.widget.PopupWindow(menu, menu.measuredWidth, menu.measuredHeight, false).apply {
+            isOutsideTouchable = true
+            isTouchable = true
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
+            elevation = 14 * d
+            // Tap outside (anywhere, including the page) dismisses the menu and the selection.
+            setOnDismissListener { selectionPopup = null; if (draggingHandle == 0) clearSelection() }
+        }
+        selectionPopup = popup
+        if (windowToken != null) {
+            val origin = IntArray(2).also { getLocationInWindow(it) }
+            popup.showAtLocation(this, android.view.Gravity.NO_GRAVITY, origin[0] + pos.x, origin[1] + pos.y)
+            menu.alpha = 0f; menu.scaleX = .96f; menu.scaleY = .96f
+            menu.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(160).start()
+        }
+    }
+
+    /** 8dp above the selection's top line, or below its bottom when there is no room; inside insets. */
+    internal fun popupPlacement(w: Int, h: Int): android.graphics.Point {
+        val d = density
+        val insets = rootWindowInsets?.let {
+            androidx.core.view.WindowInsetsCompat.toWindowInsetsCompat(it, this).getInsets(
+                androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+        } ?: androidx.core.graphics.Insets.NONE
+        val lineHeight = typeset?.layout?.let { it.height.toFloat() / it.lineCount.coerceAtLeast(1) } ?: (prefs.fontSize * 2 * d)
+        val top = minOf(startHandle.y, endHandle.y) - lineHeight
+        val bottom = maxOf(startHandle.y, endHandle.y) + 12 * d
+        val gap = 8 * d
+        val minY = insets.top + gap
+        val y = if (top - gap - h >= minY) top - gap - h else (bottom + gap).coerceAtMost(height - insets.bottom - h - gap)
+        val cx = (startHandle.x + endHandle.x) / 2
+        val x = (cx - w / 2).coerceIn(insets.left + gap, (width - insets.right - w - gap).coerceAtLeast(insets.left + gap))
+        return android.graphics.Point(x.toInt(), y.toInt())
     }
 
     private fun clearSelection() {
-        actionMode?.finish()
-        actionMode = null
+        hideSelectionMenu()
         selection = null
         draggingHandle = 0
         edgeStep = 0
@@ -659,7 +709,6 @@ class ReaderCanvas(context: Context) : View(context) {
         }
         handle(selected.start, startHandle)
         handle(selected.end, endHandle)
-        actionMode?.invalidateContentRect()
     }
 
     /** design §6: 12dp teardrop; the point sits on the text edge, the bulb hangs below. */
@@ -704,7 +753,7 @@ class ReaderCanvas(context: Context) : View(context) {
                     draggingHandle = when { near(startHandle) -> 1; near(endHandle) -> 2; else -> 0 }
                     if (draggingHandle != 0) {
                         parent?.requestDisallowInterceptTouchEvent(true)
-                        actionMode?.hide(Long.MAX_VALUE)
+                        hideSelectionMenu()
                         return true
                     }
                     clearSelection()
@@ -737,7 +786,6 @@ class ReaderCanvas(context: Context) : View(context) {
                 edgeStep = 0
                 if (draggingHandle != 0 || longPressed) {
                     draggingHandle = 0
-                    actionMode?.hide(0)
                     showSelectionMenu()
                     return true
                 }
@@ -856,7 +904,7 @@ class ReaderCanvas(context: Context) : View(context) {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             val step = VolumeNavigation.step(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN,
-                prefs.volumeKeys, prefs.swapVolumeKeys, controlsOpen || actionMode != null)
+                prefs.volumeKeys, prefs.swapVolumeKeys, controlsOpen || selectionPopup != null)
                 ?: return super.onKeyDown(keyCode, event)
             if (event?.repeatCount == 0) turn(step)
             return true
