@@ -99,4 +99,62 @@ class ReaderNavigationTest {
             assertTrue(anchor.charOffset - visible!!.charOffset < 150)
         } finally { Dispatchers.resetMain() }
     }
+    @Test fun curlFollowsMovesPreviewsWithoutSavingAndCancelRestoresAcrossChapterBoundary() {
+        val dispatcher = StandardTestDispatcher()
+        Dispatchers.setMain(dispatcher)
+        try {
+            val view = ReaderCanvas(ApplicationProvider.getApplicationContext<Application>())
+            view.layout(0, 0, 320, 240)
+            var visible: Locator? = null
+            var canonical = Locator(1)
+            var commits = 0
+            var starts = 0
+            var moves = 0
+            var releaseVelocity = 0f
+            var interactive = false
+            view.onLocator = { canonical = it; commits++ }
+            view.onVisibleLocator = { visible = it }
+            view.onCurl = { _, dragging, _, _ -> starts++; interactive = dragging; view.prepareCurlTarget() }
+            view.onCurlMove = { _, _ -> moves++ }
+            view.onCurlRelease = { _, speed -> releaseVelocity = speed }
+            view.bind(book, canonical, ReaderSettings(pageMode = PageMode.CURL), 0xff222222.toInt(), 0xffeeeeee.toInt(), "")
+            awaitPage(view, dispatcher.scheduler) { visible != null }
+            fun event(action: Int, x: Float, time: Long) = MotionEvent.obtain(0, time, action, x, 120f, 0).also {
+                view.onTouchEvent(it); it.recycle()
+            }
+            event(MotionEvent.ACTION_DOWN, 20f, 0)
+            event(MotionEvent.ACTION_MOVE, 170f, 150)
+            awaitPage(view, dispatcher.scheduler) { visible?.chapterIndex == 0 }
+            assertEquals(0, commits)
+            assertTrue(interactive)
+            assertEquals(1, starts)
+            // A Compose rebind of the still-committed origin must not undo the preview.
+            view.bind(book, canonical, ReaderSettings(pageMode = PageMode.CURL), 0xff222222.toInt(), 0xffeeeeee.toInt(), "")
+            assertEquals(0, visible!!.chapterIndex)
+            event(MotionEvent.ACTION_MOVE, 200f, 200)
+            assertTrue(moves > 0)
+            event(MotionEvent.ACTION_CANCEL, 200f, 250)
+            assertTrue(releaseVelocity.isNaN())
+            var restored = false
+            view.finishCurl(false) { restored = true }
+            awaitPage(view, dispatcher.scheduler) { visible?.chapterIndex == 1 }
+            assertTrue(restored)
+            assertEquals(Locator(1), canonical)
+            assertEquals(0, commits)
+            view.turn(-1)
+            assertFalse(interactive)
+            awaitPage(view, dispatcher.scheduler) { visible?.chapterIndex == 0 }
+            view.finishCurl(true) { }
+            assertEquals(1, commits)
+            assertEquals(0, canonical.chapterIndex)
+            assertFalse(view.curlRunning)
+            view.onKeyDown(android.view.KeyEvent.KEYCODE_VOLUME_UP,
+                android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_VOLUME_UP))
+            assertEquals(3, starts)
+            assertFalse(interactive)
+            view.abortCurl()
+            assertEquals(1, commits)
+        } finally { Dispatchers.resetMain() }
+    }
+
 }

@@ -27,7 +27,13 @@ class ReaderCanvas(context: Context) : View(context) {
     var onReadingActivity: () -> Unit = {}
     var onPageInfo: (String) -> Unit = {}
     var onVisibleLocator: (Locator) -> Unit = {}
-    var onCurl: (Bitmap, Int) -> Unit = { _, _ -> }
+    var onCurl: ((Int, Boolean, Float, Float) -> Unit)? = null
+    var onCurlMove: (Float, Float) -> Unit = { _, _ -> }
+    var onCurlRelease: (Float, Float) -> Unit = { _, _ -> }
+    private var curlOrigin: Locator? = null
+    private var curlDestination: Locator? = null
+    private var curlDragging = false
+    private var curlRestored: (() -> Unit)? = null
     var onCurlReady: () -> Unit = {}
     var onCurlCancel: () -> Unit = {}
     var curlRunning = false
@@ -122,11 +128,15 @@ class ReaderCanvas(context: Context) : View(context) {
         paper: Int,
         highlight: String,
     ) {
+        if (curlOrigin != null && (this.book !== book || (locator != curlOrigin && locator != curlDestination))) abortCurl()
         if (this.book !== book) { clearSelection(); contentReported = false }
         val oldLoc = this.locator
         val oldMode = this.prefs.pageMode
         val changedBook = this.book !== book
         this.book = book
+        // While previewing, Compose still owns the committed origin. Do not let its
+        // header/footer recompositions reset the uncommitted destination page.
+        val locator = if (curlOrigin == locator) curlDestination ?: locator else locator
         this.locator = locator
         this.prefs = settings
         this.ink = ink
@@ -261,9 +271,7 @@ class ReaderCanvas(context: Context) : View(context) {
         oldBitmap?.recycle()
         oldBitmap = null
         animOffset = 0f
-        curlAwaitingDraw = false
-        curlRunning = false
-        onCurlCancel()
+        abortCurl()
     }
 
     private fun pageInfo() {
@@ -352,7 +360,14 @@ class ReaderCanvas(context: Context) : View(context) {
         canvas.restore()
         if (curlAwaitingDraw) {
             curlAwaitingDraw = false
-            post { if (curlRunning) onCurlReady() }
+            handler.post {
+                val restored = curlRestored
+                if (restored != null) {
+                    curlRestored = null
+                    curlRunning = false
+                    restored()
+                } else if (curlRunning) onCurlReady()
+            }
         }
         if (selection != null) drawHandles(canvas, currentTop)
         if (moving && prefs.pageMode == PageMode.SLIDE)
@@ -417,12 +432,9 @@ class ReaderCanvas(context: Context) : View(context) {
                     return
                 }
         cancelAnimation()
-        if (prefs.pageMode == PageMode.CURL && width > 0 && height > 0) {
-            val snapshot = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            draw(Canvas(snapshot))
-            curlRunning = true
-            curlAwaitingDraw = true
-            onCurl(snapshot, step)
+        if (prefs.pageMode == PageMode.CURL && onCurl != null && width > 0 && height > 0) {
+            startCurl(step, false, if (step > 0) width * .95f else width * .05f, height * .9f)
+            return
         }
         if (
             prefs.pageMode in listOf(PageMode.SLIDE, PageMode.COVER) &&
@@ -460,6 +472,57 @@ class ReaderCanvas(context: Context) : View(context) {
         if (b != null && set != null && chapter == b.chapters.lastIndex &&
             next.chapterIndex == chapter && set.sourceEnd == b.chapters[chapter].text.length &&
             next.charOffset >= set.sourceStart + set.pages.last().start) onEndReached()
+    }
+
+    private fun startCurl(step: Int, dragging: Boolean, x: Float, y: Float): Boolean {
+        if (pendingKey != null || curlRunning || onCurl == null) return false
+        val next = target(step) ?: return false
+        curlOrigin = locator
+        curlDestination = next
+        curlDragging = dragging
+        curlRunning = true
+        handler.removeCallbacks(longPress)
+        onCurl?.invoke(step, dragging, x, y)
+        return true
+    }
+
+    /** Called after the entire old surface has been captured, without committing progress. */
+    fun prepareCurlTarget() {
+        val next = curlDestination ?: return
+        val b = book ?: return
+        curlAwaitingDraw = true
+        bind(b, next, prefs, ink, paper, highlight)
+    }
+
+    fun finishCurl(commit: Boolean, restored: () -> Unit) {
+        val original = curlOrigin ?: run { restored(); return }
+        val destination = curlDestination ?: original
+        curlOrigin = null
+        curlDestination = null
+        curlDragging = false
+        if (commit) {
+            curlRunning = false
+            checkCompletionAfterNavigation = true
+            navigate(destination)
+            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            restored()
+        } else {
+            curlRestored = restored
+            curlAwaitingDraw = true
+            book?.let { bind(it, original, prefs, ink, paper, highlight) }
+        }
+    }
+
+    fun abortCurl() {
+        val original = curlOrigin
+        curlOrigin = null
+        curlDestination = null
+        curlDragging = false
+        curlAwaitingDraw = false
+        curlRestored = null
+        curlRunning = false
+        if (original != null) book?.let { bind(it, original, prefs, ink, paper, highlight) }
+        onCurlCancel()
     }
 
     private fun visibleTop(): Float = if (prefs.pageMode == PageMode.SCROLL) scroll
@@ -596,7 +659,21 @@ class ReaderCanvas(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (controlsOpen || curlRunning) return false
+        if (controlsOpen) return false
+        if (curlRunning) {
+            if (curlDragging) {
+                velocity?.addMovement(event)
+                if (event.actionMasked == MotionEvent.ACTION_MOVE) onCurlMove(event.x, event.y)
+                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    velocity?.computeCurrentVelocity(1000)
+                    onCurlMove(event.x, event.y)
+                    onCurlRelease(event.x, if (event.actionMasked == MotionEvent.ACTION_CANCEL) Float.NaN else velocity?.xVelocity ?: 0f)
+                    curlDragging = false
+                    velocity?.recycle(); velocity = null
+                }
+            }
+            return true
+        }
         lastX = event.x
         lastY = if (event.actionMasked == MotionEvent.ACTION_DOWN) event.y else lastY
         when (event.actionMasked) {
@@ -667,6 +744,9 @@ class ReaderCanvas(context: Context) : View(context) {
                 velocity?.addMovement(event)
                 if (abs(event.x - downX) > 12 * density || abs(event.y - downY) > 12 * density)
                     moved = true
+                if (prefs.pageMode == PageMode.CURL && moved && abs(event.x - downX) > abs(event.y - downY)) {
+                    if (startCurl(if (event.x < downX) 1 else -1, true, event.x, event.y)) return true
+                }
                 if (prefs.pageMode == PageMode.SCROLL && moved) {
                     scroll = (scroll + lastY - event.y).coerceIn(0f, maxScroll())
                     emitScroll()

@@ -5,6 +5,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
 
 /** Sources are handles; the shelf never owns or deletes the user's original document. */
+interface FileContentSource : ContentSource {
+    val file: java.io.File
+}
+
 interface ContentSource {
     val displayName: String
     val extension: String
@@ -56,6 +60,7 @@ data class Book(
     val suggestedStyle: BookStyle? = null,
     val resources: Map<String, String> = emptyMap(),
     val embeddedFonts: Map<String, String> = emptyMap(),
+    val coverResource: String? = null,
 ) {
     val totalChars: Long
         get() = chapters.sumOf { it.text.length.toLong() }

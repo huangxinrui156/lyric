@@ -36,8 +36,8 @@ class ShelfViewModel(private val app: LyricApp) : ViewModel() {
         viewModelScope.launch { repository.settings.shelf(sortTitle = value) }
     }
 
-    fun import(uris: List<Uri>, folder: Boolean = false) {
-        app.applicationScope.launch { repository.importUris(uris, folder) }
+    fun import(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null) {
+        app.applicationScope.launch { repository.importUris(uris, folder, grantFlags) }
     }
 
     fun remove(id: String) {

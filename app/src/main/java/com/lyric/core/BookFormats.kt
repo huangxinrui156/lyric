@@ -2,7 +2,8 @@ package com.lyric.core
 
 /** SAF providers often report a generic MIME type or omit the display-name suffix. */
 object BookFormats {
-    val pickerMimeTypes = arrayOf("text/plain", "application/epub+zip", "application/octet-stream")
+    val pickerMimeTypes = arrayOf("text/plain", "application/epub+zip", "application/octet-stream",
+        "application/zip", "application/x-zip", "application/x-zip-compressed", "application/x-epub+zip")
 
     fun extension(name: String): String? = name.substringAfterLast('.', "").lowercase()
         .takeIf { it == "txt" || it == "epub" }

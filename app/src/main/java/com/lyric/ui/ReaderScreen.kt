@@ -1,4 +1,5 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    androidx.compose.ui.ExperimentalComposeUiApi::class)
 
 package com.lyric.ui
 
@@ -10,6 +11,14 @@ import coil.compose.AsyncImage
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.layout.ContentScale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -70,10 +80,14 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
     var canvas by remember { mutableStateOf<ReaderCanvas?>(null) }
     var visibleLocator by remember(state.book) { mutableStateOf(locator) }
     var curlFrame by remember { mutableStateOf<CurlFrame?>(null) }
-    var curlReady by remember { mutableStateOf(false) }
+    val pageLayer = rememberGraphicsLayer()
+    var pageOrigin by remember { mutableStateOf(Offset.Zero) }
+    var bodyOrigin by remember { mutableStateOf(Offset.Zero) }
+    var curlCapture by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     LaunchedEffect(state.book, prefs.pageMode, prefs.fontSize, prefs.margin, prefs.orientation) {
+        curlCapture?.cancel()
         curlFrame = null
-        canvas?.curlRunning = false
+        canvas?.abortCurl()
     }
     var enlargedImage by remember { mutableStateOf<String?>(null) }
     val (clock, battery) = readerClockAndBattery()
@@ -81,11 +95,19 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snack = remember { SnackbarHostState() }
+    DisposableEffect(Unit) {
+        onDispose { curlCapture?.cancel(); canvas?.abortCurl(); curlFrame = null }
+    }
     val lifecycle = LocalLifecycleOwner.current
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) vm.resume()
-            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) vm.pause()
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                curlCapture?.cancel()
+                canvas?.abortCurl()
+                curlFrame = null
+                vm.pause()
+            }
         }
         lifecycle.lifecycle.addObserver(observer)
         if (lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) vm.resume()
@@ -211,16 +233,14 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
             if (drawer.isOpen && drawerTab == 0) tocScroll.scrollToItem(currentToc)
         }
         ModalNavigationDrawer(
-            modifier = Modifier.fillMaxSize().background(bg).windowInsetsPadding(
-                WindowInsets.systemBarsIgnoringVisibility.union(WindowInsets.displayCutout)
-            ),
+            modifier = Modifier.fillMaxSize().background(bg),
             drawerState = drawer,
             gesturesEnabled = drawer.isOpen,
             drawerContent = {
                 ModalDrawerSheet(
                     modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * .85f).coerceAtMost(360f).dp)
                         .fillMaxHeight(),
-                    windowInsets = WindowInsets(0, 0, 0, 0),
+                    windowInsets = WindowInsets.safeDrawing,
                     drawerContainerColor = MaterialTheme.colorScheme.background,
                 ) {
                     Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
@@ -358,51 +378,100 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                 }
             },
         ) {
-            Box(Modifier.fillMaxSize().background(bg).paperGrain()) {
-                Column(Modifier.fillMaxSize().padding(top = 8.dp, bottom = 8.dp)) {
-                    if (prefs.showChapter) Text(
-                        book.chapters[locator.chapterIndex].title,
-                        color = meta,
-                        fontFamily = Serif,
-                        fontSize = (prefs.fontSize * .7f).sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier =
-                            Modifier.padding(horizontal = prefs.margin.dp).padding(bottom = 8.dp),
-                    )
-                    Box(Modifier.fillMaxWidth().weight(1f)) {
-                        AndroidView(
-                            factory = { context -> ReaderCanvas(context).also { canvas = it } },
-                            update = { view ->
-                                view.onContentReady = { activity.reportFullyDrawn() }
-                                view.controlsOpen = controls
-                                view.curlRunning = curlFrame != null
-                                view.onExcerpt = { at, text -> vm.bookmark(at, text) }
-                                view.onImage = { enlargedImage = it }
-                                view.onLocator = vm::readingActivity
-                                view.onEndReached = vm::finished
-                                view.onReadingActivity = vm::readingGesture
-                                view.onMenu = { menu = !menu }
-                                view.onPageInfo = { pageInfo = it }
-                                view.onVisibleLocator = { visibleLocator = it }
-                                view.onCurl = { bitmap, direction ->
-                                    curlReady = false
-                                    curlFrame = CurlFrame(bitmap, direction)
+            Box(Modifier.fillMaxSize().onGloballyPositioned { pageOrigin = it.positionInRoot() }
+                .pointerInteropFilter { event ->
+                    val view = canvas
+                    if (prefs.pageMode != PageMode.CURL || controls || view == null) false
+                    else {
+                        val local = android.view.MotionEvent.obtain(event)
+                        local.offsetLocation(-bodyOrigin.x, -bodyOrigin.y)
+                        try { view.onTouchEvent(local) } finally { local.recycle() }
+                    }
+                }) {
+                Box(Modifier.fillMaxSize().drawWithContent {
+                    pageLayer.record { this@drawWithContent.drawContent() }
+                    drawLayer(pageLayer)
+                }.background(bg).paperGrain()) {
+                    Column(Modifier.fillMaxSize().windowInsetsPadding(
+                        WindowInsets.systemBarsIgnoringVisibility.union(WindowInsets.displayCutout)
+                    ).padding(top = 8.dp, bottom = 8.dp)) {
+                        if (prefs.showChapter) Text(
+                            book.chapters[visibleLocator.chapterIndex.coerceIn(book.chapters.indices)].title,
+                            color = meta,
+                            fontFamily = Serif,
+                            fontSize = (prefs.fontSize * .7f).sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier =
+                                Modifier.padding(horizontal = prefs.margin.dp).padding(bottom = 8.dp),
+                        )
+                        Box(Modifier.fillMaxWidth().weight(1f)) {
+                            AndroidView(
+                                factory = { context -> ReaderCanvas(context).also { canvas = it } },
+                                update = { view ->
+                                    view.onContentReady = { activity.reportFullyDrawn() }
+                                    view.controlsOpen = controls
+                                    view.onExcerpt = { at, text -> vm.bookmark(at, text) }
+                                    view.onImage = { enlargedImage = it }
+                                    view.onLocator = vm::readingActivity
+                                    view.onEndReached = vm::finished
+                                    view.onReadingActivity = vm::readingGesture
+                                    view.onMenu = { menu = !menu }
+                                    view.onPageInfo = { pageInfo = it }
+                                    view.onVisibleLocator = { visibleLocator = it }
+                                    view.onCurl = { direction, dragging, x, y ->
+                                        val point = Offset(x + bodyOrigin.x, y + bodyOrigin.y)
+                                        val frame = CurlFrame(direction, point.y < pageLayer.size.height / 2f,
+                                            point, automatic = !dragging)
+                                        curlFrame = frame
+                                        curlCapture?.cancel()
+                                        curlCapture = scope.launch {
+                                            try {
+                                                frame.current = pageLayer.toImageBitmap().asAndroidBitmap()
+                                                if (curlFrame === frame) view.prepareCurlTarget()
+                                            } catch (e: Exception) {
+                                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                                android.util.Log.e("LyricCurl", "页面截图失败", e)
+                                                view.abortCurl()
+                                                vm.notice.value = "翻页截图失败：${e.javaClass.simpleName}: ${e.message}"
+                                            }
+                                        }
                                 }
-                                view.onCurlReady = { curlReady = true }
-                                view.onCurlCancel = { curlFrame = null }
+                                view.onCurlMove = { x, y -> curlFrame?.touch = Offset(x + bodyOrigin.x, y + bodyOrigin.y) }
+                                view.onCurlRelease = { x, velocity ->
+                                    curlFrame?.let { frame ->
+                                        frame.release = !velocity.isNaN() && curlShouldComplete(frame.direction,
+                                            x + bodyOrigin.x, pageLayer.size.width.toFloat(), velocity)
+                                    }
+                                }
+                                view.onCurlReady = {
+                                    val frame = curlFrame
+                                    if (frame != null && frame.target == null) {
+                                        curlCapture?.cancel()
+                                        curlCapture = scope.launch {
+                                            try {
+                                                // Let Compose record the destination chapter title and footer too.
+                                                withFrameNanos { }; withFrameNanos { }
+                                                if (curlFrame === frame) frame.target = pageLayer.toImageBitmap().asAndroidBitmap()
+                                            } catch (e: Exception) {
+                                                if (e is kotlinx.coroutines.CancellationException) throw e
+                                                android.util.Log.e("LyricCurl", "页面截图失败", e)
+                                                view.abortCurl()
+                                                vm.notice.value = "翻页截图失败：${e.message}"
+                                            }
+                                        }
+                                    }
+                                }
+                                view.onCurlCancel = {
+                                    curlCapture?.cancel()
+                                    curlFrame = null
+                                }
                                 view.bind(book, locator, prefs, ink.toArgb(), bg.toArgb(), highlight)
                             },
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize().onGloballyPositioned {
+                                bodyOrigin = it.positionInRoot() - pageOrigin
+                            },
                         )
-                        curlFrame?.let { frame ->
-                            PageCurl(frame, curlReady, bg, Modifier.fillMaxSize()) {
-                                if (curlFrame === frame) {
-                                    curlFrame = null
-                                    canvas?.curlRunning = false
-                                }
-                            }
-                        }
                     }
                     Row(
                         Modifier.fillMaxWidth()
@@ -415,6 +484,14 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                         if (prefs.showPercent) Text(readingPercentLabel(book.percent(visibleLocator)), color = meta, fontSize = infoSize)
                         if (prefs.showTime) Text(clock, color = meta, fontSize = infoSize)
                         if (prefs.showBattery) Text(battery, color = meta, fontSize = infoSize)
+                    }
+                }
+                }
+                curlFrame?.let { frame ->
+                    PageCurl(frame, bg, Modifier.fillMaxSize().testTag("page-curl")) { commit ->
+                        canvas?.finishCurl(commit) {
+                            if (curlFrame === frame) curlFrame = null
+                        }
                     }
                 }
                 enlargedImage?.let { path ->
@@ -448,7 +525,7 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                         }
                     }
                 }
-                AnimatedVisibility(visible = menu, modifier = Modifier.align(Alignment.TopCenter)) {
+                AnimatedVisibility(visible = menu, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()) {
                     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
                         Row(
                             Modifier.fillMaxWidth(),
@@ -474,7 +551,7 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                 }
                 AnimatedVisibility(
                     visible = menu,
-                    modifier = Modifier.align(Alignment.BottomCenter),
+                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
                 ) {
                     Surface(
                         color = MaterialTheme.colorScheme.surface,

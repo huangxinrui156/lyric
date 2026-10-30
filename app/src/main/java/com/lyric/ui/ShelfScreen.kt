@@ -6,7 +6,8 @@
 package com.lyric.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -44,6 +45,19 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
     LaunchedEffect(status.running, status.message) {
         if (!status.running && status.message.isNotBlank()) snackbar.showSnackbar(status.message)
     }
+    val clipboard = LocalClipboardManager.current
+    var dismissedErrorBatch by remember { mutableLongStateOf(-1L) }
+    if (!status.running && status.errors.isNotEmpty() && status.batchId != dismissedErrorBatch) {
+        AlertDialog(
+            onDismissRequest = { dismissedErrorBatch = status.batchId },
+            title = { Text("导入失败") },
+            text = { Text(status.errors.joinToString("\n\n"), modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) },
+            confirmButton = { TextButton(onClick = {
+                clipboard.setText(AnnotatedString(status.errors.joinToString("\n\n")))
+            }) { Text("复制错误信息") } },
+            dismissButton = { TextButton(onClick = { dismissedErrorBatch = status.batchId }) { Text("关闭") } },
+        )
+    }
     val grid by vm.grid.collectAsStateWithLifecycle()
     val sortTitle by vm.sortTitle.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -51,12 +65,12 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
     var importer by remember { mutableStateOf(false) }
     var remove by remember { mutableStateOf<ShelfBook?>(null) }
     val filePicker =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) {
-            if (it.isNotEmpty()) vm.import(it)
+        rememberLauncherForActivityResult(ImportDocuments()) {
+            if (it.uris.isNotEmpty()) vm.import(it.uris, grantFlags = it.flags)
         }
     val folderPicker =
-        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {
-            it?.let { vm.import(listOf(it), true) }
+        rememberLauncherForActivityResult(ImportDocuments(tree = true)) {
+            if (it.uris.isNotEmpty()) vm.import(it.uris, folder = true, grantFlags = it.flags)
         }
     val lifecycle = LocalLifecycleOwner.current
     DisposableEffect(lifecycle) {
@@ -291,13 +305,11 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                             fontSize = 13.sp,
                         )
                         ImportOption(Icons.Outlined.InsertDriveFile, "选择文件", "一次导入多本 TXT / EPUB") {
-                            filePicker.launch(
-                                com.lyric.core.BookFormats.pickerMimeTypes
-                            )
+                            filePicker.launch(Unit)
                         }
                         Spacer(Modifier.height(16.dp))
                         ImportOption(Icons.Outlined.FolderOpen, "选择文件夹", "扫描所选文件夹及其子文件夹") {
-                            folderPicker.launch(null)
+                            folderPicker.launch(Unit)
                         }
                         Spacer(Modifier.height(28.dp))
                         Text(
@@ -323,15 +335,13 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                 Spacer(Modifier.height(20.dp))
                 ImportOption(Icons.Outlined.InsertDriveFile, "选择文件", "TXT / EPUB · 支持多选") {
                     importer = false
-                    filePicker.launch(
-                        com.lyric.core.BookFormats.pickerMimeTypes
-                    )
+                    filePicker.launch(Unit)
                 }
                 Spacer(Modifier.height(12.dp))
                 ImportOption(Icons.Outlined.FolderOpen, "选择文件夹", "扫描子文件夹，自动跳过重复书籍") {
                     importer = false
                     tab = 1
-                    folderPicker.launch(null)
+                    folderPicker.launch(Unit)
                 }
             }
         }

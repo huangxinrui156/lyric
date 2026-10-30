@@ -4,7 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
-import androidx.documentfile.provider.DocumentFile
+import android.provider.DocumentsContract
+import android.util.Log
 import androidx.room.withTransaction
 import com.lyric.core.*
 import java.io.File
@@ -27,7 +28,7 @@ class UriSource(
         else context.contentResolver.openInputStream(uri) ?: error("无法打开文件")
 }
 
-private class FileSource(private val file: File, override val displayName: String) : ContentSource {
+private class FileSource(override val file: File, override val displayName: String) : FileContentSource {
     override fun open() = file.inputStream()
 }
 
@@ -39,6 +40,8 @@ data class ImportStatus(
     val duplicates: Int = 0,
     val failures: Int = 0,
     val message: String = "",
+    val errors: List<String> = emptyList(),
+    val batchId: Long = 0,
 )
 
 data class SearchHit(
@@ -56,9 +59,14 @@ class LibraryRepository(
     val dao = db.library()
     val books = dao.observeBooks()
     val imports = MutableStateFlow(ImportStatus())
-    private val registry = ParserRegistry()
+    private val registry = ParserRegistry(listOf(TxtParser(), EpubParser(context.cacheDir)))
     private val json = Json { ignoreUnknownKeys = true }
     private val cache = File(context.filesDir, "parsed-v1").apply { mkdirs() }
+    // A FileProvider may grant only transient access. Retain a private source in that case,
+    // so clearing the parsed cache or restarting the process cannot break the imported book.
+    private val sources = File(context.filesDir, "sources-v1")
+    private fun source(row: ShelfBook): ContentSource = File(sources, row.id).takeIf { it.isFile }
+        ?.let { FileSource(it, row.name) } ?: UriSource(context, Uri.parse(row.uri), row.name)
     private val importLock = Mutex()
     private val parseLock = Mutex()
     private val memory =
@@ -80,61 +88,109 @@ class LibraryRepository(
         return File(cache, "${row.id}-$fingerprint.json")
     }
 
-    fun persist(uri: Uri): Boolean =
-        runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                )
+    fun persist(uri: Uri, grantFlags: Int? = null): Boolean {
+        if (uri.scheme == "file") return true
+        return try {
+            if (context.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }) return true
+            if (grantFlags != null && (grantFlags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION == 0 ||
+                    grantFlags and Intent.FLAG_GRANT_READ_URI_PERMISSION == 0)) {
+                Log.i(ImportTrace.TAG, "授权为临时读取，将保留私有源副本 authority=${uri.authority}")
+                false
+            } else {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                Log.i(ImportTrace.TAG, "已保留读取授权 authority=${uri.authority}")
                 true
             }
-            .getOrDefault(false)
+        } catch (e: SecurityException) {
+            Log.i(ImportTrace.TAG, "持久授权未授予，继续使用临时读取授权", e)
+            false
+        } catch (e: Exception) {
+            Log.e(ImportTrace.TAG, "持久授权失败，继续尝试读取", e)
+            false
+        }
+    }
 
-    private fun displayName(uri: Uri): String =
-        if (uri.scheme == "file") File(requireNotNull(uri.path)).name
-        else
-            context.contentResolver
-                .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "未命名"
+    private fun displayName(uri: Uri): String {
+        if (uri.scheme == "file") return File(requireNotNull(uri.path)).name
+        return try {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
+                ?.use { cursor ->
+                    if (!cursor.moveToFirst()) return@use null
+                    val nameColumn = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val sizeColumn = cursor.getColumnIndex(OpenableColumns.SIZE)
+                    val size = if (sizeColumn >= 0 && !cursor.isNull(sizeColumn)) cursor.getLong(sizeColumn) else "unknown"
+                    Log.i(ImportTrace.TAG, "元数据 authority=${uri.authority} size=$size")
+                    if (nameColumn >= 0 && !cursor.isNull(nameColumn)) cursor.getString(nameColumn)?.takeIf { it.isNotBlank() } else null
+                } ?: "未命名"
+        } catch (e: Exception) {
+            Log.e(ImportTrace.TAG, "元数据不可用，继续读取 authority=${uri.authority}", e)
+            "未命名"
+        }
+    }
 
-    suspend fun importUris(uris: List<Uri>, folder: Boolean = false) =
+    suspend fun importUris(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null) =
         withContext(Dispatchers.IO) {
             importLock.withLock {
-                imports.value = ImportStatus(running = true, message = "正在扫描本地文件…")
+                val batchId = System.nanoTime()
+                imports.value = ImportStatus(running = true, message = "正在扫描本地文件…", batchId = batchId)
                 try {
+                    Log.i(ImportTrace.TAG, "开始导入 count=${uris.size} tree=$folder flags=$grantFlags")
                     val files = mutableListOf<Uri>()
+                    val retained = mutableMapOf<Uri, Boolean>()
                     if (folder) {
                         uris.forEach { uri ->
-                            require(persist(uri)) { "无法保留文件夹访问权限，请重新选择" }
-                            val queue = ArrayDeque<DocumentFile>()
-                            DocumentFile.fromTreeUri(context, uri)?.let(queue::add)
-                            while (queue.isNotEmpty()) {
-                                currentCoroutineContext().ensureActive()
-                                queue.removeFirst().listFiles().forEach { f ->
-                                    if (f.isDirectory) queue.add(f)
-                                    else if (
-                                        BookFormats.extension(f.name.orEmpty()) != null ||
-                                        f.type in BookFormats.pickerMimeTypes
-                                    )
-                                        files += f.uri
+                            val durable = persist(uri, grantFlags)
+                            ImportTrace.stage("扫描文件夹") {
+                                val queue = ArrayDeque<String>()
+                                queue.add(DocumentsContract.getTreeDocumentId(uri))
+                                val visited = mutableSetOf<String>()
+                                while (queue.isNotEmpty()) {
+                                    currentCoroutineContext().ensureActive()
+                                    val directory = queue.removeFirst()
+                                    if (!visited.add(directory)) continue
+                                    require(visited.size <= 10_000) { "文件夹层级或数量过多" }
+                                    val children = DocumentsContract.buildChildDocumentsUriUsingTree(uri, directory)
+                                    val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                                        DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE)
+                                    val cursor = context.contentResolver.query(children, columns, null, null, null)
+                                        ?: error("文件夹提供者没有返回扫描结果")
+                                    cursor.use { c ->
+                                        val idCol = c.getColumnIndexOrThrow(columns[0])
+                                        val nameCol = c.getColumnIndex(columns[1])
+                                        val mimeCol = c.getColumnIndex(columns[2])
+                                        while (c.moveToNext()) {
+                                            currentCoroutineContext().ensureActive()
+                                            val childId = c.getString(idCol) ?: continue
+                                            val name = if (nameCol >= 0) c.getString(nameCol) else null
+                                            val mime = if (mimeCol >= 0) c.getString(mimeCol) else null
+                                            if (mime == DocumentsContract.Document.MIME_TYPE_DIR) queue.add(childId)
+                                            else if (BookFormats.extension(name.orEmpty()) != null ||
+                                                mime in BookFormats.pickerMimeTypes || mime == null || name.isNullOrBlank()) {
+                                                val child = DocumentsContract.buildDocumentUriUsingTree(uri, childId)
+                                                files += child
+                                                retained[child] = durable
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     } else {
-                        uris.forEach { if (it.scheme != "file") persist(it) }
+                        uris.forEach { retained[it] = persist(it, grantFlags) }
                         files += uris
                     }
                     var lastFailure: String? = null
-                    var status = ImportStatus(running = true, total = files.size)
+                    var status = ImportStatus(running = true, total = files.size, batchId = batchId)
                     files.forEach { uri ->
                         currentCoroutineContext().ensureActive()
                         val name = runCatching { displayName(uri) }.getOrDefault("未知文件")
                         status = status.copy(message = name)
                         imports.value = status
-                        val result = runCatching { importOne(uri, name) }
+                        val result = runCatching { importOne(uri, name, retainSource = retained[uri] == false) }
                         result.exceptionOrNull()?.let {
                             if (it is CancellationException) throw it
                             lastFailure = "$name：${it.localizedMessage ?: "解析失败"}"
+                            Log.e(ImportTrace.TAG, lastFailure, it)
                         }
                         status =
                             status.copy(
@@ -144,6 +200,7 @@ class LibraryRepository(
                                     status.duplicates + if (result.getOrNull() == false) 1 else 0,
                                 failures = status.failures + if (result.isFailure) 1 else 0,
                                 message = result.exceptionOrNull()?.localizedMessage ?: name,
+                                errors = status.errors + listOfNotNull(result.exceptionOrNull()?.let { "$name：${it.message}" }),
                             )
                         imports.value = status
                     }
@@ -159,46 +216,73 @@ class LibraryRepository(
                     throw e
                 } catch (e: Exception) {
                     imports.value =
-                        imports.value.copy(running = false, message = e.localizedMessage ?: "导入失败")
+                        imports.value.copy(running = false, failures = imports.value.failures + 1,
+                            message = e.localizedMessage ?: "导入失败",
+                            errors = imports.value.errors + (e.message ?: "[导入] ${e.javaClass.simpleName}"))
+                    Log.e(ImportTrace.TAG, "导入终止", e)
                 }
             }
         }
 
-    private suspend fun importOne(uri: Uri, name: String): Boolean {
-        val temp = File.createTempFile("import-", ".tmp", context.cacheDir)
+    private suspend fun importOne(uri: Uri, name: String, retainSource: Boolean = false): Boolean {
+        val temp = ImportTrace.stage("创建导入缓存") { File.createTempFile("import-", ".tmp", context.cacheDir) }
         try {
             val digest = MessageDigest.getInstance("SHA-256")
-            UriSource(context, uri, name).open().use { input ->
-                temp.outputStream().use { output ->
-                    val buf = ByteArray(65536)
-                    var n = input.read(buf)
-                    var size = 0L
-                    while (n >= 0) {
-                        size += n
-                        require(size <= 200L * 1024 * 1024) { "文件超过 200MB" }
-                        if (n > 0) {
-                            digest.update(buf, 0, n)
-                            output.write(buf, 0, n)
+            ImportTrace.stage("ContentResolver/读取并复制") {
+                UriSource(context, uri, name).open().use { input ->
+                    temp.outputStream().use { output ->
+                        val buffer = ByteArray(65536)
+                        var size = 0L
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            size += count
+                            require(size <= 200L * 1024 * 1024) { "文件超过 200MB" }
+                            if (count > 0) {
+                                digest.update(buffer, 0, count)
+                                output.write(buffer, 0, count)
+                            }
                         }
-                        n = input.read(buf)
                     }
                 }
             }
-            val extension = BookFormats.detect(
+            val extension = ImportTrace.stage("识别格式") { BookFormats.detect(
                 temp.inputStream().use { it.readBounded(4) }, name,
                 runCatching { context.contentResolver.getType(uri) }.getOrNull(),
                 uri.lastPathSegment.orEmpty(),
-            )
+            ) }
             val id = digest.digest().joinToString("") { "%02x".format(it) }
-            dao.book(id)?.let { old ->
+            fun retain() = ImportTrace.stage("保存临时授权源文件") {
+                if (retainSource) {
+                    check(sources.isDirectory || sources.mkdirs()) { "无法创建源文件目录" }
+                    val target = File(sources, id)
+                    val staging = File(sources, "$id.tmp")
+                    try { temp.copyTo(staging, overwrite = true); check(staging.renameTo(target)) { "无法保存源文件" } }
+                    finally { staging.delete() }
+                }
+            }
+            ImportTrace.stage("Room/查询重复") { dao.book(id) }?.let { old ->
+                retain()
                 // Re-import can repair a moved or revoked original without discarding its progress.
-                dao.update(old.copy(uri = uri.toString(), name = name, extension = extension, invalid = false))
+                ImportTrace.stage("Room/更新重复书籍") {
+                    dao.update(old.copy(uri = uri.toString(), name = name, extension = extension, invalid = false))
+                }
                 return false
             }
-            val parsed =
+            val parsed = ImportTrace.stage("解析书籍") {
                 registry
                     .parser(extension)
                     .parse(FileSource(temp, name))
+            }
+            val cover = ImportTrace.stage("保存封面") {
+                parsed.coverResource?.let { path -> parsed.resources[path]?.let { encoded ->
+                    val directory = File(context.filesDir, "covers").apply { check(isDirectory || mkdirs()) }
+                    File(directory, "$id.${path.substringAfterLast('.', "jpg")}").apply {
+                        writeBytes(java.util.Base64.getDecoder().decode(encoded))
+                    }.absolutePath
+                } }
+            }
             val row =
                 ShelfBook(
                     id,
@@ -213,9 +297,22 @@ class LibraryRepository(
                     encoding = parsed.encoding,
                     excerpt = parsed.chapters.first().text.take(80),
                     contentRevision = 3,
+                    coverPath = cover,
                 )
-            parseLock.withLock { writeCache(row, parsed) }
-            dao.insert(row)
+            try {
+                retain()
+                ImportTrace.stage("写入解析缓存") { parseLock.withLock { writeCache(row, parsed) } }
+                ImportTrace.stage("Room/插入书架") { dao.insert(row) }
+            } catch (e: Exception) {
+                if (e !is CancellationException) {
+                    cacheFile(row).delete()
+                    File(cacheFile(row).path + ".tmp").delete()
+                    File(sources, id).delete()
+                    cover?.let { File(it).delete() }
+                }
+                throw e
+            }
+            Log.i(ImportTrace.TAG, "导入完成 id=$id chapters=${parsed.chapters.size} chars=${parsed.totalChars}")
             return true
         } finally {
             temp.delete()
@@ -223,6 +320,7 @@ class LibraryRepository(
     }
 
     private fun writeCache(row: ShelfBook, book: Book) {
+        check(cache.isDirectory || cache.mkdirs()) { "无法创建解析缓存目录" }
         val file = cacheFile(row)
         val tmp = File(file.path + ".tmp")
         tmp.writeText(json.encodeToString(Book.serializer(), book))
@@ -241,7 +339,7 @@ class LibraryRepository(
                 try {
                     // Even with a parsed cache, check the source so revoked/missing files are
                     // explicit.
-                    UriSource(context, Uri.parse(row.uri), row.name).open().use {}
+                    ImportTrace.stage("打开阅读源") { source(row).open().use {} }
                     val key = cacheFile(row).name
                     val parsed =
                         if (!force && !upgrade)
@@ -259,7 +357,7 @@ class LibraryRepository(
                             ?: registry
                                 .parser(row.extension)
                                 .parse(
-                                    UriSource(context, Uri.parse(row.uri), row.name),
+                                    source(row),
                                     row.encodingOverride,
                                     row.chapterRegex,
                                 )
@@ -303,7 +401,7 @@ class LibraryRepository(
         withContext(Dispatchers.IO) {
             dao.all().forEach { row ->
                 val valid =
-                    runCatching { UriSource(context, Uri.parse(row.uri), row.name).open().use {} }
+                    runCatching { source(row).open().use {} }
                         .isSuccess
                 if (row.invalid == valid) dao.invalid(row.id, !valid)
             }
@@ -323,7 +421,7 @@ class LibraryRepository(
                 registry
                     .parser(candidate.extension)
                     .parse(
-                        UriSource(context, Uri.parse(candidate.uri), candidate.name),
+                        source(candidate),
                         candidate.encodingOverride,
                         candidate.chapterRegex,
                     )
@@ -403,6 +501,7 @@ class LibraryRepository(
     suspend fun remove(id: String) =
         withContext(Dispatchers.IO) {
             dao.remove(id)
+            File(sources, id).delete()
             cache
                 .listFiles()
                 ?.filter { it.name.startsWith("$id-") }
@@ -414,17 +513,19 @@ class LibraryRepository(
 
     @OptIn(coil.annotation.ExperimentalCoilApi::class)
     suspend fun clearCaches() = withContext(Dispatchers.IO) {
-        parseLock.withLock {
-            val protected = CacheFiles.protectedPaths(dao.all())
-            cache.listFiles()?.forEach { CacheFiles.clear(it, protected) }
-            CacheFiles.temporary(context).forEach { CacheFiles.clear(it, protected) }
-            memory.clear()
-            val images = coil.Coil.imageLoader(context)
-            images.memoryCache?.clear()
-            images.diskCache?.let { disk ->
-                val directory = disk.directory.toFile()
-                if (protected.none { it.startsWith(directory.canonicalPath + File.separator) }) disk.clear()
-                else directory.listFiles()?.forEach { CacheFiles.clear(it, protected) }
+        importLock.withLock {
+            parseLock.withLock {
+                val protected = CacheFiles.protectedPaths(dao.all())
+                cache.listFiles()?.forEach { CacheFiles.clear(it, protected) }
+                CacheFiles.temporary(context).forEach { CacheFiles.clear(it, protected) }
+                memory.clear()
+                val images = coil.Coil.imageLoader(context)
+                images.memoryCache?.clear()
+                images.diskCache?.let { disk ->
+                    val directory = disk.directory.toFile()
+                    if (protected.none { it.startsWith(directory.canonicalPath + File.separator) }) disk.clear()
+                    else directory.listFiles()?.forEach { CacheFiles.clear(it, protected) }
+                }
             }
         }
     }

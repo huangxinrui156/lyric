@@ -38,7 +38,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 0.3 阅读体验与真机基准
 
-版本 `0.3.0`（versionCode `3`）。完整逐条证据与待实机项目见 [docs/v0.3-status.md](docs/v0.3-status.md)，需求见 [docs/v0.3-spec.md](docs/v0.3-spec.md)。
+版本 `0.3.2`（versionCode `5`）。本次 EPUB 导入与整屏仿真翻页修复见 [docs/v0.3.2-changes.md](docs/v0.3.2-changes.md)。完整逐条证据与待实机项目见 [docs/v0.3-status.md](docs/v0.3-status.md)，需求见 [docs/v0.3-spec.md](docs/v0.3-spec.md)。
 
 - 翻页立即排队保存进度，滚动只合并尚未开始的写入；会话每15秒更新同一行，暂停/停止补写并等待落盘。继续保留30秒空闲封顶和少于10秒会话过滤。
 - 可见窗口、当前章及前后章先分页，其余后台计算；读取与重新分页时显示纸色骨架行。字体、边距、方向与模式变化保留原文锚点。
