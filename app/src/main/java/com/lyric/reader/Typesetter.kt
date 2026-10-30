@@ -40,8 +40,6 @@ object Typesetter {
         font: Typeface,
         chapter: Chapter? = null,
         assets: BookAssets? = null,
-        /** Page margin each side; standalone images are drawn across it, edge to edge. */
-        bleed: Int = 0,
     ): TypesetChapter {
         var from = at.coerceAtLeast(0) / WINDOW * WINDOW
         if (from > 0 && from < text.length && text[from].isLowSurrogate()) from--
@@ -104,8 +102,9 @@ object Typesetter {
                 style.resource?.let { path ->
                     // Standalone = the image is alone on its line (paragraph breaks or chapter edges around it).
                     val alone = (a == 0 || span[a - 1] == '\n') && (minOf(a + 1, b) >= span.length || span[minOf(a + 1, b)] == '\n')
-                    val extra = if (alone) bleed else 0
-                    apply(BookImageSpan(path, assets?.image(path, width + 2 * extra, height), width, (height * .85f).toInt(), extra), minOf(a + 1, b))
+                    // Standalone: body-text width (same margins as the text), 1em above and below.
+                    val em = if (alone) size.toInt() else 0
+                    apply(BookImageSpan(path, assets?.image(path, width, height), width, (height * .85f).toInt() - 2 * em, em, alone), minOf(a + 1, b))
                 }
                 if (style.rule) apply(RuleSpan(width), minOf(a + 1, b))
                 style.ruby?.let { apply(RubySpan(it)) }

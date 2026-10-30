@@ -169,7 +169,7 @@ class ReaderCanvas(context: Context) : View(context) {
                 paginator = PrePaginator(book, scope, { c, offset ->
                     Typesetter.layout(book.chapters[c].text, offset, textWidth, textHeight,
                         density, resources.displayMetrics.scaledDensity, effective(settings, book), font(settings.font, settings, book),
-                        book.chapters[c], assets, horizontal.toInt())
+                        book.chapters[c], assets)
                 }, { c -> if (c == chapter) pageInfo() })
             }
             val worker = paginator!!
@@ -314,8 +314,7 @@ class ReaderCanvas(context: Context) : View(context) {
         if (moving) canvas.translate(animOffset, 0f)
         paperPaint.color = paper
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paperPaint)
-        // Full width: standalone images bleed into the page margins (text never exceeds the layout width).
-        canvas.clipRect(0f, 0f, width.toFloat(), pageHeight)
+        canvas.clipRect(horizontal, 0f, width - horizontal, pageHeight)
         canvas.translate(horizontal, -currentTop)
         set.layout.paint.color = ink
         if (highlight.isNotBlank()) {
