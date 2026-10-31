@@ -12,6 +12,8 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -110,16 +112,17 @@ fun DeskScreen(
         Card(
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = CardPaper),
+            colors = CardDefaults.cardColors(containerColor = dCard),
+            border = dCardStroke,
             elevation = CardDefaults.cardElevation(0.dp),
         ) {
             Column(Modifier.padding(18.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("今日一句", fontSize = 12.sp, color = Stone)
+                    Text("今日一句", fontSize = 12.sp, color = dSub)
                     Text(
                         "换一句 ↻",
                         fontSize = 12.sp,
-                        color = Moss,
+                        color = dLink,
                         modifier = Modifier.clickable { vm.reshuffleQuote() },
                     )
                 }
@@ -129,7 +132,7 @@ fun DeskScreen(
                         fontFamily = Serif,
                         fontSize = 16.sp,
                         lineHeight = 28.sp,
-                        color = Stone,
+                        color = dSub,
                         modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
                     )
                 } else {
@@ -144,7 +147,7 @@ fun DeskScreen(
                             Modifier
                                 .width(2.dp)
                                 .fillMaxHeight()
-                                .background(Vermilion),
+                                .background(dBar),
                         )
                         Column(Modifier.padding(start = 12.dp)) {
                             Text(
@@ -152,12 +155,12 @@ fun DeskScreen(
                                 fontFamily = Serif,
                                 fontSize = 18.sp,
                                 lineHeight = (18 * 1.75).sp,
-                                color = Ink,
+                                color = dText,
                             )
                             Text(
                                 "— 《${quote!!.bookTitle.ifBlank { "未名" }}》 ${quote!!.chapterTitle}",
                                 fontSize = 12.sp,
-                                color = Moss,
+                                color = dLink,
                                 modifier = Modifier.padding(top = 10.dp),
                             )
                         }
@@ -171,11 +174,12 @@ fun DeskScreen(
         Card(
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = CardPaper),
+            colors = CardDefaults.cardColors(containerColor = dCard),
+            border = dCardStroke,
             elevation = CardDefaults.cardElevation(0.dp),
         ) {
             Column(Modifier.padding(18.dp)) {
-                Text("专注阅读", fontSize = 12.sp, color = Stone)
+                Text("专注阅读", fontSize = 12.sp, color = dSub)
                 val focusState by vm.focus.collectAsStateWithLifecycle()
                 // Only flips when a session starts/ends, not on every tick.
                 val active by remember { derivedStateOf { focusState.running } }
@@ -186,14 +190,14 @@ fun DeskScreen(
                             Modifier
                                 .weight(1f)
                                 .height(36.dp)
-                                .background(if (on) Moss else Paper, RoundedCornerShape(18.dp))
+                                .background(if (on) dSegOn else dSegOff, RoundedCornerShape(18.dp))
                                 .clickable { vm.planned(min) },
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 "$min 分钟",
                                 fontSize = 14.sp,
-                                color = if (on) Paper else Ink,
+                                color = if (on) dSegOnText else dSegOffText,
                             )
                         }
                     }
@@ -215,7 +219,7 @@ fun DeskScreen(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
                     )
-                    Text("更换 ›", fontSize = 13.sp, color = Stone)
+                    Text("更换 ›", fontSize = 13.sp, color = dSub)
                 }
                 FocusRunningRow(vm, openFocus, continueReading)
                 if (!active) Box(
@@ -223,11 +227,11 @@ fun DeskScreen(
                         .fillMaxWidth()
                         .padding(top = 12.dp)
                         .height(44.dp)
-                        .background(Ink, RoundedCornerShape(22.dp))
+                        .background(dPrimary, RoundedCornerShape(22.dp))
                         .clickable(enabled = book != null) { if (vm.startFocus()) openFocus() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("开始", fontSize = 15.sp, color = Paper)
+                    Text("开始", fontSize = 15.sp, color = dPrimaryText)
                 }
             }
         }
@@ -237,7 +241,8 @@ fun DeskScreen(
         Card(
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = CardPaper),
+            colors = CardDefaults.cardColors(containerColor = dCard),
+            border = dCardStroke,
             elevation = CardDefaults.cardElevation(0.dp),
         ) {
             Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
@@ -245,11 +250,11 @@ fun DeskScreen(
                     Modifier.fillMaxWidth().padding(top = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("笔记 · ${highlights.size} 条", fontSize = 12.sp, color = Stone)
+                    Text("笔记 · ${highlights.size} 条", fontSize = 12.sp, color = dSub)
                     Text(
                         "全部 ›",
                         fontSize = 12.sp,
-                        color = Moss,
+                        color = dLink,
                         modifier = Modifier.clickable(onClick = openNotes),
                     )
                 }
@@ -258,7 +263,7 @@ fun DeskScreen(
                         "划线与想法会汇集在这里。",
                         fontFamily = Serif,
                         fontSize = 14.sp,
-                        color = Stone,
+                        color = dSub,
                         modifier = Modifier.padding(vertical = 16.dp),
                     )
                 } else {
@@ -281,13 +286,13 @@ fun DeskScreen(
                             Text(
                                 "${h.bookTitle.ifBlank { "未名" }} · ${DeskViewModel.relativeDay(h.createdAt)}",
                                 fontSize = 11.sp,
-                                color = Stone,
+                                color = dSub,
                                 modifier = Modifier.padding(top = 3.dp),
                             )
                             if (index < preview.lastIndex) {
                                 HorizontalDivider(
                                     Modifier.padding(top = 10.dp),
-                                    color = Color(0xFFDDD5C6),
+                                    color = dDivider,
                                 )
                             }
                         }
@@ -311,7 +316,7 @@ private fun BookPickSheet(vm: DeskViewModel, dismiss: () -> Unit) {
         Text("选择一本书", fontFamily = Serif, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 24.dp))
         LazyColumn(Modifier.padding(bottom = 28.dp)) {
             if (readable.isEmpty()) {
-                item { Text("书架还是空的。", Modifier.padding(24.dp), color = Stone) }
+                item { Text("书架还是空的。", Modifier.padding(24.dp), color = dSub) }
             }
             items(readable, key = { it.id }) { book ->
                 Row(
@@ -324,7 +329,7 @@ private fun BookPickSheet(vm: DeskViewModel, dismiss: () -> Unit) {
                     BookCover(book, Modifier.width(36.dp).height(48.dp))
                     Column(Modifier.padding(start = 14.dp)) {
                         Text(book.title, fontFamily = Serif, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(book.chapterTitle, fontSize = 11.sp, color = Stone)
+                        Text(book.chapterTitle, fontSize = 11.sp, color = dSub)
                     }
                 }
             }
@@ -470,18 +475,18 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
             TopAppBar(
                 title = { Text("笔记", fontFamily = Serif) },
                 navigationIcon = {
-                    TextButton(onClick = back) { Text("返回", color = Moss) }
+                    TextButton(onClick = back) { Text("返回", color = dLink) }
                 },
                 actions = {
                     TextButton(onClick = { byBook = !byBook }) {
-                        Text(if (byBook) "按书 ▾" else "按时间 ▾", fontSize = 12.sp, color = Stone)
+                        Text(if (byBook) "按书 ▾" else "按时间 ▾", fontSize = 12.sp, color = dSub)
                     }
                 },
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { scaffoldPadding ->
-        Column(Modifier.fillMaxSize().padding(scaffoldPadding).paperGrain()) {
+        Column(Modifier.fillMaxSize().padding(scaffoldPadding).paperGrain(deskDark())) {
             OutlinedTextField(
                 query,
                 { query = it },
@@ -492,7 +497,7 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
             Text(
                 "${filtered.size} 条",
                 fontSize = 12.sp,
-                color = Stone,
+                color = dSub,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 4.dp),
             )
             LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -501,7 +506,7 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
                         Text(
                             "还没有划线。",
                             fontFamily = Serif,
-                            color = Stone,
+                            color = dSub,
                             modifier = Modifier.padding(24.dp),
                         )
                     }
@@ -540,19 +545,19 @@ private fun DeskNoteRow(h: HighlightRow, open: () -> Unit) {
             .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 10.dp)
             .height(IntrinsicSize.Min),
     ) {
-        Box(Modifier.width(2.dp).fillMaxHeight().background(Vermilion))
+        Box(Modifier.width(2.dp).fillMaxHeight().background(dBar))
         Column(Modifier.padding(start = 10.dp)) {
             Text(h.text, fontFamily = Serif, fontSize = 14.sp, lineHeight = 22.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
             NoteLine(h.note)
             Text(
                 "${h.bookTitle.ifBlank { "未名" }} · ${h.chapterTitle} · ${DeskViewModel.relativeDay(h.createdAt)}",
                 fontSize = 11.sp,
-                color = Stone,
+                color = dSub,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(start = 32.dp))
+    HorizontalDivider(color = if (deskDark()) dDivider else MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(start = 32.dp))
 }
 
 
@@ -586,12 +591,12 @@ private fun FocusRunningRow(vm: DeskViewModel, openFocus: () -> Unit, continueRe
         Modifier
             .fillMaxWidth()
             .padding(top = 12.dp)
-            .background(Ink, RoundedCornerShape(18.dp))
+            .then(if (deskDark()) Modifier.border(1.dp, FocusBtnBorder, RoundedCornerShape(18.dp)) else Modifier.background(Ink, RoundedCornerShape(18.dp)))
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Text(
             "${if (focus.paused) "已暂停" else "专注中"} ${DeskViewModel.formatRemain(focus.remainSec)} · ${focus.bookTitle}",
-            color = Paper, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            color = if (deskDark()) FocusMuted else Paper, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
         Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -615,7 +620,7 @@ fun FocusRemainingLabel(vm: DeskViewModel, bookId: String) {
     if (!focus.running || focus.bookId != bookId) return
     Text(
         "${if (focus.paused) "已暂停" else "专注中"} · 剩余 ${DeskViewModel.formatRemain(focus.remainSec)}",
-        color = if (focus.paused) Stone else Vermilion,
+        color = if (focus.paused) dSub else if (deskDark()) FocusRing else dBar,
         fontSize = 12.sp,
         modifier = Modifier.padding(top = 6.dp),
     )
@@ -640,3 +645,19 @@ internal fun deskBookLabel(title: String, chapter: String): String {
     val junk = c.isEmpty() || c == "未读" || Regex("(?i)^(cover|封面|title ?page|扉页|目录|toc|contents)$").matches(c)
     return if (junk) title else "$title · $c"
 }
+
+// 0.8.4 美术设计 dark spec for 案头; light values are the 0.8.0 ones, unchanged.
+@Composable internal fun deskDark() = MaterialTheme.colorScheme.background.luminance() < .5f
+private val dCard @Composable get() = if (deskDark()) Color(0xFF1E1F23) else CardPaper
+private val dCardStroke @Composable get() = if (deskDark()) BorderStroke(1.dp, Color(0xFF2A2B2F)) else null
+private val dText @Composable get() = if (deskDark()) Color(0xFFD0CABE) else Ink
+private val dSub @Composable get() = if (deskDark()) Color(0xFF7D786E) else Stone
+private val dLink @Composable get() = if (deskDark()) Color(0xFFA3B38A) else Moss
+private val dBar @Composable get() = if (deskDark()) Color(0xFFE08A6E) else Vermilion
+private val dSegOn @Composable get() = if (deskDark()) Color(0xFFA3B38A) else Moss
+private val dSegOnText @Composable get() = if (deskDark()) Color(0xFF16171A) else Paper
+private val dSegOff @Composable get() = if (deskDark()) Color(0xFF2A2B2F) else Paper
+private val dSegOffText @Composable get() = if (deskDark()) Color(0xFFA8A296) else Ink
+private val dPrimary @Composable get() = if (deskDark()) Color(0xFFD0CABE) else Ink
+private val dPrimaryText @Composable get() = if (deskDark()) Color(0xFF16171A) else Paper
+private val dDivider @Composable get() = if (deskDark()) Color(0xFF2A2B2F) else Color(0xFFDDD5C6)

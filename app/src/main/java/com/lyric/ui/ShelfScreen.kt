@@ -125,8 +125,14 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
                     containerColor = MaterialTheme.colorScheme.background,
                     tonalElevation = 0.dp,
                     modifier =
-                        Modifier.border(BorderStroke(.5.dp, MaterialTheme.colorScheme.outlineVariant)),
+                        Modifier.border(BorderStroke(.5.dp, if (deskDark()) Color(0xFF2A2B2F) else MaterialTheme.colorScheme.outlineVariant)),
                 ) {
+                    val dark = deskDark()
+                    val navColors = if (dark) NavigationBarItemDefaults.colors(
+                        indicatorColor = Color.Transparent,
+                        selectedIconColor = Color(0xFFA3B38A), selectedTextColor = Color(0xFFA3B38A),
+                        unselectedIconColor = Color(0xFF7D786E), unselectedTextColor = Color(0xFF7D786E),
+                    ) else NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent)
                     listOf(
                             section.label to if (section == ShelfSection.COMIC) Icons.Outlined.Collections else Icons.Outlined.AutoStories,
                             "案头" to DeskNavIcon,
@@ -138,14 +144,13 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
                                 onClick = { if (!transition.running) tab = i },
                                 icon = { Icon(icon, label, modifier = Modifier.size(23.dp)) },
                                 label = { Text(label, fontSize = 11.sp) },
-                                colors =
-                                    NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent),
+                                colors = navColors,
                             )
                         }
                 }
             },
         ) { padding ->
-            Box(Modifier.fillMaxSize().padding(padding).paperGrain()) {
+            Box(Modifier.fillMaxSize().padding(padding).paperGrain(deskDark())) {
                 when (tab) {
                     0 -> ShelfTransition(transition) { shown ->
                         ShelfContent(vm, books, shown, grid, status,
