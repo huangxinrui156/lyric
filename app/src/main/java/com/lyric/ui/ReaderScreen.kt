@@ -70,6 +70,20 @@ import kotlinx.coroutines.launch
 @Composable
 fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, back: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
+    // Install before the comic/PDF branch so every reader resumes and drains its durable writers.
+    val lifecycle = LocalLifecycleOwner.current
+    DisposableEffect(lifecycle, vm) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.resume()
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) vm.pause()
+        }
+        lifecycle.lifecycle.addObserver(observer)
+        if (lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) vm.resume()
+        onDispose {
+            vm.pause()
+            lifecycle.lifecycle.removeObserver(observer)
+        }
+    }
     state.book?.takeIf { it.contentType == ContentType.COMIC }?.let { comic ->
         ComicReaderScreen(vm, comic, back)
         return
@@ -119,21 +133,16 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
     DisposableEffect(Unit) {
         onDispose { curlCapture?.cancel(); canvas?.abortCurl(); curlFrame = null }
     }
-    val lifecycle = LocalLifecycleOwner.current
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) vm.resume()
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
                 curlCapture?.cancel()
                 canvas?.abortCurl()
                 curlFrame = null
-                vm.pause()
             }
         }
         lifecycle.lifecycle.addObserver(observer)
-        if (lifecycle.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) vm.resume()
         onDispose {
-            vm.pause()
             lifecycle.lifecycle.removeObserver(observer)
         }
     }

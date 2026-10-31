@@ -61,6 +61,29 @@ class ComicParserTest {
         assertEquals(listOf("ch1", "ch2", "ch10"), book.chapters.map { it.title })
     }
 
+    @Test fun mixedZipSeparatorsKeepLiteralResourcesButShareChapterAndMetadataRules() {
+        val png = tinyPng(3, 4)
+        val file = cbz(listOf(
+            "第10话\\1.png" to png, "第2话/10.png" to png, "第2话\\2.png" to png,
+            "__MACOSX\\cover.png" to png, "第2话\\.hidden.png" to png,
+            "meta\\ComicInfo.xml" to "<ComicInfo><Title>混合路径</Title><Manga>No</Manga></ComicInfo>".toByteArray(),
+        ), charset("GBK"))
+        val book = parse(file)
+        assertEquals(listOf("第2话", "第10话"), book.chapters.map { it.title })
+        assertEquals(listOf("第2话\\2.png", "第2话/10.png"),
+            book.chapters.first().units.map { (it as ContentUnit.ImagePage).resource })
+        assertEquals("第2话\\2.png", book.coverResource)
+        assertEquals("混合路径", book.title)
+        assertEquals("ltr", book.readingDirection)
+        java.util.zip.ZipFile(file, charset("GBK")).use { zip ->
+            book.chapters.flatMap { it.units }.forEach {
+                val entry = zip.getEntry((it as ContentUnit.ImagePage).resource)
+                assertNotNull(entry)
+                assertArrayEquals(png, zip.getInputStream(entry).use { stream -> stream.readBytes() })
+            }
+        }
+    }
+
     @Test fun gbkNamesAndJpegHeaders() {
         val book = parse(cbz(listOf("漫画/第1页.jpg" to tinyJpeg(123, 77)), charset("GBK")))
         val page = book.chapters.single().units.single() as ContentUnit.ImagePage

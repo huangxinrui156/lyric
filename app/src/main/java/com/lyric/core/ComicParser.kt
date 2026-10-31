@@ -28,7 +28,7 @@ class ComicParser : BookParser {
         val names = zip.entries().asSequence().filter { !it.isDirectory }.map { it.name }
             .filter { isImage(it) && !hidden(it) }.toList()
         require(names.isNotEmpty()) { "压缩包里没有可识别的图片（支持 jpg/png/webp/gif/bmp）" }
-        val sorted = names.sortedWith(NaturalOrder)
+        val sorted = names.sortedWith(compareBy(NaturalOrder) { path(it) })
         val groups = group(sorted)
         var done = 0
         val chapters = groups.mapIndexed { index, (title, entries) ->
@@ -38,7 +38,7 @@ class ComicParser : BookParser {
                 ContentUnit.ImagePage(name, size?.first, size?.second)
             })
         }
-        val info = zip.entries().asSequence().firstOrNull { it.name.substringAfterLast('/').equals("ComicInfo.xml", true) }
+        val info = zip.entries().asSequence().firstOrNull { path(it.name).substringAfterLast('/').equals("ComicInfo.xml", true) }
             ?.let { runCatching { zip.getInputStream(it).use { s -> String(s.readBounded(256 * 1024), Charsets.UTF_8) } }.getOrNull() }
         Book(info?.let { tag(it, "Title") }?.takeIf { it.isNotBlank() } ?: displayName.substringBeforeLast('.').ifBlank { "漫画" },
             info?.let { tag(it, "Writer") }.orEmpty(), chapters,
@@ -59,15 +59,17 @@ class ComicParser : BookParser {
         }
         private val imageExt = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
         fun isImage(name: String) = name.substringAfterLast('.', "").lowercase() in imageExt
-        private fun hidden(name: String) = name.split('/').any { it.startsWith(".") || it == "__MACOSX" }
+        // Normalize only for classification; page resources must retain literal ZIP entry names.
+        private fun path(name: String) = name.replace('\\', '/')
+        private fun hidden(name: String) = path(name).split('/').any { it.startsWith(".") || it == "__MACOSX" }
 
         /** Sub-folders become chapters; otherwise a shared filename prefix (e.g. "ch01_003") does. */
         fun group(sorted: List<String>): List<Pair<String, List<String>>> {
-            val byDir = sorted.groupBy { it.substringBeforeLast('/', "") }
+            val byDir = sorted.groupBy { path(it).substringBeforeLast('/', "") }
             if (byDir.size > 1) return byDir.entries.sortedWith(compareBy(NaturalOrder) { it.key })
                 .map { (dir, list) -> dir.substringAfterLast('/').ifBlank { "正文" } to list }
             val prefix = Regex("^(.*?(?:ch|chapter|第|vol|v|c)[ _.-]?\\d+)[ _.\\-]+\\d+", RegexOption.IGNORE_CASE)
-            val byPrefix = sorted.groupBy { prefix.find(it.substringAfterLast('/'))?.groupValues?.get(1) }
+            val byPrefix = sorted.groupBy { prefix.find(path(it).substringAfterLast('/'))?.groupValues?.get(1) }
             if (byPrefix.size > 1 && null !in byPrefix.keys) return byPrefix.entries.map { it.key!! to it.value }
             return listOf("正文" to sorted)
         }

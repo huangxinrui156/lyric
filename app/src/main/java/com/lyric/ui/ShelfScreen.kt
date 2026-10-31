@@ -444,6 +444,9 @@ fun BookCover(book: ShelfBook, modifier: Modifier = Modifier) {
                     .precision(Precision.INEXACT)
                     .crossfade(false)
                     .memoryCacheKey("cover:${book.coverPath}:${book.contentRevision}:${book.addedAt}")
+                    .apply {
+                        if (book.coverPath.endsWith(".svg", true)) decoderFactory(coil.decode.SvgDecoder.Factory())
+                    }
                     .build()
             }
             AsyncImage(

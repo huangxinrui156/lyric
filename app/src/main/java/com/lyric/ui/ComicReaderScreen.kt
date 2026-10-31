@@ -144,7 +144,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
         controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         val bars = androidx.core.view.WindowInsetsCompat.Type.systemBars()
         controller.hide(bars)
-        val previousCutout = window.attributes.layoutInDisplayCutoutMode
+        val previousCutout = if (android.os.Build.VERSION.SDK_INT >= 28) window.attributes.layoutInDisplayCutoutMode else 0
         if (android.os.Build.VERSION.SDK_INT >= 28) window.attributes = window.attributes.apply {
             layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
