@@ -60,23 +60,12 @@ private val FocusBtnBorder = Color(0xFF3A3B40)
 fun DeskScreen(
     vm: DeskViewModel,
     openBook: (String, Locator) -> Unit,
+    openFocus: () -> Unit,
+    openNotes: () -> Unit,
 ) {
-    val focus by vm.focus.collectAsStateWithLifecycle()
-    var showNotes by rememberSaveable { mutableStateOf(false) }
+    // 0.8.1: timer and full notes are their own nav routes, so system Back always lands here.
+    // The 250ms timer tick is NOT collected at this level (only in FocusRunningRow).
     var pickingBook by rememberSaveable { mutableStateOf(false) }
-
-    if (focus.running) {
-        FocusTimerScreen(
-            vm = vm,
-            focus = focus,
-            openBook = { openBook(focus.bookId, Locator()) },
-        )
-        return
-    }
-    if (showNotes) {
-        DeskNotesScreen(vm, openBook) { showNotes = false }
-        return
-    }
 
     val summary by vm.summary.collectAsStateWithLifecycle()
     val quote by vm.quote.collectAsStateWithLifecycle()
@@ -85,14 +74,11 @@ fun DeskScreen(
     val highlights by vm.highlights.collectAsStateWithLifecycle()
     val preview = remember(highlights) { highlights.take(2) }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .paperGrain()
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = 24.dp),
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 24.dp),
     ) {
+      item(key = "header", contentType = "header") {
         Text(
             text = "",
             modifier = Modifier.padding(start = 20.dp, top = 28.dp, end = 20.dp),
@@ -119,7 +105,8 @@ fun DeskScreen(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
         )
 
-        // 今日一句
+      }
+      item(key = "quote", contentType = "quote") {
         Card(
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp),
             shape = RoundedCornerShape(20.dp),
@@ -179,7 +166,8 @@ fun DeskScreen(
             }
         }
 
-        // 专注阅读
+      }
+      item(key = "focus", contentType = "focus") {
         Card(
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp),
             shape = RoundedCornerShape(20.dp),
@@ -229,6 +217,7 @@ fun DeskScreen(
                     )
                     Text("更换 ›", fontSize = 13.sp, color = Stone)
                 }
+                FocusRunningRow(vm, openFocus)
                 // 屏蔽通知：默认关；打开时才申请勿扰权限
                 var mute by rememberSaveable { mutableStateOf(false) }
                 val context = LocalContext.current
@@ -269,7 +258,7 @@ fun DeskScreen(
                         .padding(top = 12.dp)
                         .height(44.dp)
                         .background(Ink, RoundedCornerShape(22.dp))
-                        .clickable(enabled = book != null) { vm.setMuteNotifications(mute); vm.startFocus() },
+                        .clickable(enabled = book != null) { vm.setMuteNotifications(mute); if (vm.startFocus()) openFocus() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text("开始", fontSize = 15.sp, color = Paper)
@@ -277,7 +266,8 @@ fun DeskScreen(
             }
         }
 
-        // 笔记预览
+      }
+      item(key = "notes", contentType = "notes") {
         Card(
             modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp),
             shape = RoundedCornerShape(20.dp),
@@ -294,7 +284,7 @@ fun DeskScreen(
                         "全部 ›",
                         fontSize = 12.sp,
                         color = Moss,
-                        modifier = Modifier.clickable { showNotes = true },
+                        modifier = Modifier.clickable(onClick = openNotes),
                     )
                 }
                 if (preview.isEmpty()) {
@@ -339,6 +329,7 @@ fun DeskScreen(
                 }
             }
         }
+      }
     }
 
     if (pickingBook) {
@@ -411,7 +402,7 @@ fun FocusTimerScreen(vm: DeskViewModel, focus: FocusUi, openBook: () -> Unit) {
         vm.focusPulse.collect { lightVibrate(context) }
     }
 
-    BackHandler { /* stay on timer; use 暂停 / abandon via long path */ }
+    // Back (incl. predictive gesture) is handled by the nav route: pops to 案头, session keeps running.
 
     Box(Modifier.fillMaxSize().background(FocusBg)) {
         Text(
@@ -631,3 +622,38 @@ private fun lightVibrate(context: Context) {
 
 /** Open-book line icon for the 案头 tab; stroke weight matches other Outlined nav icons. */
 val DeskNavIcon = Icons.AutoMirrored.Outlined.MenuBook
+
+/** Only this small row observes the ticking timer, so the desk list doesn't recompose 4×/s. */
+@Composable
+private fun FocusRunningRow(vm: DeskViewModel, openFocus: () -> Unit) {
+    val focus by vm.focus.collectAsStateWithLifecycle()
+    if (!focus.running) return
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .background(Ink, RoundedCornerShape(18.dp))
+            .clickable(onClick = openFocus)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "${if (focus.paused) "已暂停" else "专注中"} ${DeskViewModel.formatRemain(focus.remainSec)}",
+            color = Paper, fontSize = 13.sp, modifier = Modifier.weight(1f),
+        )
+        Text("回到计时 ›", color = FocusBtnFill, fontSize = 12.sp)
+    }
+}
+
+/** Full-screen route wrapper: collects focus here, closes itself when the session ends. */
+@Composable
+fun FocusRoute(vm: DeskViewModel, back: () -> Unit, openBook: (String) -> Unit) {
+    val focus by vm.focus.collectAsStateWithLifecycle()
+    var wasRunning by remember { mutableStateOf(false) }
+    LaunchedEffect(focus.running) {
+        if (focus.running) wasRunning = true
+        else if (wasRunning) back()
+    }
+    BackHandler(onBack = back)
+    FocusTimerScreen(vm, focus) { openBook(focus.bookId) }
+}

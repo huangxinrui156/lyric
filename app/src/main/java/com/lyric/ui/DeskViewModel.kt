@@ -115,9 +115,9 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
         focus.value = focus.value.copy(muteNotifications = on)
     }
 
-    fun startFocus() {
-        val book = selectedBook.value ?: return
-        if (focus.value.running) return
+    fun startFocus(): Boolean {
+        if (focus.value.running) return true
+        val book = selectedBook.value ?: return false
         val id = UUID.randomUUID().toString()
         focusId = id
         wallStart = System.currentTimeMillis()
@@ -138,6 +138,7 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
             )
         }
         tick()
+        return true
     }
 
     fun pauseFocus() {

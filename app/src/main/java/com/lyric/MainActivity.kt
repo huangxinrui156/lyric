@@ -20,21 +20,36 @@ class MainActivity : ReaderActivity() {
             val app = LocalContext.current.applicationContext as LyricApp
             val preferences by app.repository.settings.global.collectAsState(initial = com.lyric.core.ReaderSettings())
             val me: MeViewModel = viewModel(factory = MeViewModel.factory(app))
+            // Activity-scoped so the focus session survives shelf ↔ focus ↔ reader navigation.
+            val desk: DeskViewModel = viewModel(factory = DeskViewModel.factory(app))
             LyricTheme(preferences) {
                 val nav = rememberNavController()
                 NavHost(navController = nav, startDestination = "shelf") {
                     composable("shelf") {
                         val vm: ShelfViewModel = viewModel(factory = LyricFactory(app))
-                        val desk: DeskViewModel = viewModel(factory = DeskViewModel.factory(app))
                         ShelfScreen(
                             vm,
                             me = { MeScreen(me) { nav.navigate(it) } },
                             desk = {
-                                DeskScreen(desk) { id, loc ->
-                                    nav.navigate("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}")
-                                }
+                                DeskScreen(
+                                    desk,
+                                    openBook = { id, loc -> nav.navigate("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}") },
+                                    openFocus = { nav.navigate("focus") { launchSingleTop = true } },
+                                    openNotes = { nav.navigate("notes") { launchSingleTop = true } },
+                                )
                             },
                         ) { nav.navigate("reader/$it/-1/0/0") }
+                    }
+                    composable("focus") {
+                        FocusRoute(desk, back = { nav.popBackStack("shelf", inclusive = false) }) { id ->
+                            // Reader replaces the timer in the stack, so Back from reader lands on 案头.
+                            nav.navigate("reader/$id/-1/0/0") { popUpTo("focus") { inclusive = true } }
+                        }
+                    }
+                    composable("notes") {
+                        DeskNotesScreen(desk, { id, loc ->
+                            nav.navigate("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}")
+                        }) { nav.popBackStack() }
                     }
                     composable("bookmarks") {
                         BookmarksScreen(me, { nav.popBackStack() }) { id, loc, bookmarkId ->
