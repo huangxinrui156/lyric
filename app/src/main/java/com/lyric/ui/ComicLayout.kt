@@ -82,7 +82,7 @@ internal fun ComicLayoutSheet(prefs: ReaderSettings, vertical: Boolean, largeScr
                         checkedBorderColor = Color.Transparent, uncheckedBorderColor = Color.Transparent))
                 }
             }
-            toggle("双页", if (largeScreen) "横屏时自动开启" else "横屏时两页并排（手机默认单页）",
+            toggle("双页", if (largeScreen) "横屏时自动开启" else "横屏时可并排显示两页",
                 com.lyric.reader.Spreads.enabled(prefs.comicSpread, largeScreen), !vertical) { update(prefs.copy(comicSpread = it)) }
             HorizontalDivider(color = divider)
             toggle("页码偏移一页", "跨页大图对不齐时打开", prefs.comicOffset, !vertical) { update(prefs.copy(comicOffset = it)) }
