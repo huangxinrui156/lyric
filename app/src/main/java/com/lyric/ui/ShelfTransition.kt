@@ -119,11 +119,65 @@ private val figureSvg = listOf(
 
 private fun svgPath(d: String): Path = androidx.compose.ui.graphics.vector.PathParser().parsePathString(d).toPath()
 
+/**
+ * Hand jitter (美术设计 0.6.2): straight segments are cut into ~10dp pieces whose vertices move
+ * ±0.8dp along the segment normal; curve control points move ±0.5dp. [unit] = art units per dp.
+ * Fixed seed, built once, so every frame draws the same wobble.
+ */
+internal fun jitteredSvgPath(d: String, unit: Float, rnd: java.util.Random): Path {
+    fun r(maxDp: Float) = (rnd.nextFloat() * 2f - 1f) * maxDp * unit
+    val path = Path()
+    var cx = 0f; var cy = 0f; var sx = 0f; var sy = 0f
+    var lastCtrlX = 0f; var lastCtrlY = 0f
+    fun line(x: Float, y: Float) {
+        val dx = x - cx; val dy = y - cy
+        val len = kotlin.math.hypot(dx, dy)
+        val n = maxOf(1, (len / (10f * unit)).toInt())
+        val nx = if (len > 0f) -dy / len else 0f; val ny = if (len > 0f) dx / len else 0f
+        for (i in 1..n) {
+            val t = i.toFloat() / n
+            val o = if (i == n) 0f else r(.8f)
+            path.lineTo(cx + dx * t + nx * o, cy + dy * t + ny * o)
+        }
+        cx = x; cy = y
+    }
+    for (node in androidx.compose.ui.graphics.vector.PathParser().parsePathString(d).toNodes()) {
+        when (node) {
+            is androidx.compose.ui.graphics.vector.PathNode.MoveTo -> { cx = node.x; cy = node.y; sx = cx; sy = cy; path.moveTo(cx, cy) }
+            is androidx.compose.ui.graphics.vector.PathNode.RelativeMoveTo -> { cx += node.dx; cy += node.dy; sx = cx; sy = cy; path.moveTo(cx, cy) }
+            is androidx.compose.ui.graphics.vector.PathNode.LineTo -> line(node.x, node.y)
+            is androidx.compose.ui.graphics.vector.PathNode.RelativeLineTo -> line(cx + node.dx, cy + node.dy)
+            is androidx.compose.ui.graphics.vector.PathNode.QuadTo -> {
+                lastCtrlX = node.x1 + r(.5f); lastCtrlY = node.y1 + r(.5f)
+                path.quadraticTo(lastCtrlX, lastCtrlY, node.x2, node.y2); cx = node.x2; cy = node.y2
+            }
+            is androidx.compose.ui.graphics.vector.PathNode.ReflectiveQuadTo -> {
+                lastCtrlX = 2 * cx - lastCtrlX + r(.5f); lastCtrlY = 2 * cy - lastCtrlY + r(.5f)
+                path.quadraticTo(lastCtrlX, lastCtrlY, node.x, node.y); cx = node.x; cy = node.y
+            }
+            is androidx.compose.ui.graphics.vector.PathNode.RelativeArcTo -> {
+                // Small circles (heads): keep exact geometry.
+                val ex = cx + node.arcStartDx; val ey = cy + node.arcStartDy
+                val tmp = androidx.compose.ui.graphics.vector.PathParser().parsePathString(
+                    "M$cx $cy a${node.horizontalEllipseRadius} ${node.verticalEllipseRadius} ${node.theta} ${if (node.isMoreThanHalf) 1 else 0} ${if (node.isPositiveArc) 1 else 0} ${node.arcStartDx} ${node.arcStartDy}").toPath()
+                path.addPath(tmp); path.moveTo(ex, ey); cx = ex; cy = ey
+            }
+            is androidx.compose.ui.graphics.vector.PathNode.Close -> { line(sx, sy); path.close() }
+            else -> {}
+        }
+    }
+    return path
+}
+
 @Composable
 private fun ShelfMorph(time: () -> Float) {
-    val book = remember { bookSvg.map(::svgPath) }
-    val panels = remember { panelSvg.map(::svgPath) }
-    val figures = remember { figureSvg.map(::svgPath) }
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    val screenW = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp * density
+    // Art units per dp at the 64%-of-width scale; jitter is built once with a fixed seed.
+    val unit = density / (screenW * .64f / 240f)
+    val book = remember(unit) { val rnd = java.util.Random(0x1A7E); bookSvg.map { jitteredSvgPath(it, unit, rnd) } }
+    val panels = remember(unit) { val rnd = java.util.Random(0x2B2A); panelSvg.map { jitteredSvgPath(it, unit, rnd) } }
+    val figures = remember(unit) { val rnd = java.util.Random(0x3C3B); figureSvg.map { jitteredSvgPath(it, unit, rnd) } }
     val measure = remember { PathMeasure() }
     val segment = remember { Path() }
     val night = MaterialTheme.colorScheme.background.luminance() < .5f
@@ -131,8 +185,8 @@ private fun ShelfMorph(time: () -> Float) {
     Canvas(Modifier.fillMaxSize()) {
         val ms = time().coerceIn(0f, 1f) * 700f
         val fade = 1f - ((ms - 500f) / 200f).coerceIn(0f, 1f)
-        // Scale the 240×180 art to fit 72% of the width (and 40% of the height), centred.
-        val scale = minOf(size.width * .72f / 240f, size.height * .4f / 180f)
+        // 美术设计: art 64% of screen width, centred horizontally, its centre at 42% of the height.
+        val scale = size.width * .64f / 240f
         // Stroke stays 2dp on screen regardless of the art scale.
         val stroke = Stroke(2.dp.toPx() / scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
         fun draw(paths: List<Path>, progress: Float, alpha: Float) {
@@ -145,7 +199,7 @@ private fun ShelfMorph(time: () -> Float) {
                 drawPath(segment, ink, alpha = alpha, style = stroke)
             }
         }
-        translate((size.width - 240f * scale) / 2f, (size.height - 180f * scale) / 2f) {
+        translate((size.width - 240f * scale) / 2f, size.height * .42f - 90f * scale) {
             scale(scale, scale, pivot = androidx.compose.ui.geometry.Offset.Zero) {
                 draw(book, (ms / 250f).coerceIn(0f, 1f), (1f - ((ms - 250f) / 250f).coerceIn(0f, 1f)) * fade)
                 draw(panels, ((ms - 250f) / 150f).coerceIn(0f, 1f), fade)
