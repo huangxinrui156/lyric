@@ -64,6 +64,20 @@ class PageCurlTest {
         assertFalse(low.sameAs(high))
     }
 
+    @Test fun reusedDrawingMatchesFreshFramesAcrossDirectionsAndCorners() {
+        val current = page()
+        val target = page().apply { eraseColor(Color.BLUE) }
+        val drawing = CurlDrawing()
+        for (direction in listOf(1, -1, 1)) for (top in listOf(true, false)) {
+            val touch = Offset(120f, if (top) 80f else 240f)
+            fun frame(scratch: CurlDrawing) = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888).apply {
+                drawPageCurl(Canvas(this), current, target, 240f, 320f, touch, direction, top,
+                    Color.WHITE, drawing = scratch)
+            }
+            assertTrue(frame(CurlDrawing()).sameAs(frame(drawing)))
+        }
+    }
+
     @Test fun releaseUsesDistanceVelocityAndDirection() {
         assertTrue(curlShouldComplete(1, 80f, 240f, 0f))
         assertFalse(curlShouldComplete(1, 220f, 240f, 0f))

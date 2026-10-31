@@ -479,6 +479,7 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
     var query by rememberSaveable { mutableStateOf("") }
     var byBook by rememberSaveable { mutableStateOf(false) }
     val filtered = remember(highlights, query, byBook) { vm.filterNotes(highlights, query, byBook) }
+    val groups = remember(filtered, byBook) { if (byBook) filtered.groupBy { it.bookId } else emptyMap() }
     BackHandler(onBack = back)
     Scaffold(
         topBar = {
@@ -522,9 +523,8 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
                     }
                 }
                 if (byBook) {
-                    val groups = filtered.groupBy { it.bookId }
                     groups.forEach { (_, list) ->
-                        item(key = "book-${list.first().bookId}") {
+                        item(key = "book-${list.first().bookId}", contentType = "book-heading") {
                             Text(
                                 list.first().bookTitle.ifBlank { "未名" },
                                 fontFamily = Serif,
@@ -532,12 +532,12 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
                                 modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp),
                             )
                         }
-                        items(list, key = { it.id }) { h ->
+                        items(list, key = { it.id }, contentType = { "note" }) { h ->
                             DeskNoteRow(h) { openBook(h.bookId, vm.openLocator(h)) }
                         }
                     }
                 } else {
-                    items(filtered, key = { it.id }) { h ->
+                    items(filtered, key = { it.id }, contentType = { "note" }) { h ->
                         DeskNoteRow(h) { openBook(h.bookId, vm.openLocator(h)) }
                     }
                 }

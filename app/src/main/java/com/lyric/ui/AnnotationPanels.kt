@@ -32,17 +32,26 @@ import java.util.Locale
 
 /** Per-TOC-entry reading fraction (0..1) from absolute UTF-16 positions. */
 fun tocProgress(book: Book, at: Locator): List<Float> {
-    val prefix = LongArray(book.chapters.size + 1)
-    book.chapters.forEachIndexed { i, c -> prefix[i + 1] = prefix[i] + c.text.length }
-    fun abs(ch: Int, off: Int) = prefix[ch.coerceIn(0, book.chapters.size)] + off
-    val cur = abs(at.chapterIndex, at.charOffset)
-    return book.toc.mapIndexed { i, e ->
-        val start = abs(e.chapterIndex, e.charOffset)
-        val end = book.toc.getOrNull(i + 1)?.let { abs(it.chapterIndex, it.charOffset) } ?: prefix.last()
-        when {
-            end <= start -> if (cur >= start) 1f else 0f
-            else -> ((cur - start).toFloat() / (end - start)).coerceIn(0f, 1f)
-        }
+    val index = TocProgressIndex(book)
+    val position = index.position(at)
+    return book.toc.indices.map { index.fraction(it, position) }
+}
+
+/** Book geometry is built once; only visible TOC rows compute a fraction while reading. */
+internal class TocProgressIndex(book: Book) {
+    private val prefix = LongArray(book.chapters.size + 1).apply {
+        book.chapters.forEachIndexed { i, c -> this[i + 1] = this[i] + c.text.length }
+    }
+    private val starts = LongArray(book.toc.size) { i ->
+        val e = book.toc[i]
+        position(Locator(e.chapterIndex, e.charOffset))
+    }
+    fun position(at: Locator): Long = prefix[at.chapterIndex.coerceIn(0, prefix.lastIndex)] + at.charOffset
+    fun fraction(index: Int, position: Long): Float {
+        val start = starts[index]
+        val end = starts.getOrNull(index + 1) ?: prefix.last()
+        return if (end <= start) { if (position >= start) 1f else 0f }
+        else ((position - start).toFloat() / (end - start)).coerceIn(0f, 1f)
     }
 }
 
@@ -54,11 +63,12 @@ private val dateFmt get() = SimpleDateFormat("MM月dd日", Locale.CHINA)
 
 @Composable
 fun TocPanel(book: Book, locator: Locator, current: Int, state: LazyListState, go: (Locator) -> Unit) {
-    val progress = remember(book, locator) { tocProgress(book, locator) }
+    val progress = remember(book) { TocProgressIndex(book) }
+    val position = progress.position(locator)
     LazyColumn(state = state, contentPadding = PaddingValues(vertical = 8.dp)) {
         itemsIndexed(book.toc, key = { i, _ -> i }) { i, entry ->
             val on = i == current
-            val p = progress.getOrElse(i) { 0f }
+            val p = progress.fraction(i, position)
             Row(
                 Modifier.fillMaxWidth().height(IntrinsicSize.Min)
                     .background(if (on) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f) else Color.Transparent)
@@ -97,6 +107,7 @@ fun BookmarkPanel(marks: List<BookmarkRow>, go: (BookmarkRow) -> Unit, note: (Bo
         Text("还没有书签\n在喜欢的字句之间，夹一片叶子。", lineHeight = 25.sp, color = Stone, fontSize = 13.sp, modifier = Modifier.padding(24.dp))
         return
     }
+    val sorted = remember(marks, byChapter) { sortBookmarks(marks, byChapter) }
     Column {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = { byChapter = !byChapter }) {
@@ -104,7 +115,7 @@ fun BookmarkPanel(marks: List<BookmarkRow>, go: (BookmarkRow) -> Unit, note: (Bo
             }
         }
         LazyColumn {
-            items(sortBookmarks(marks, byChapter), key = { it.id }) { mark ->
+            items(sorted, key = { it.id }) { mark ->
                 Row(Modifier.fillMaxWidth().clickable { go(mark) }.padding(start = 24.dp, top = 12.dp, bottom = 12.dp, end = 4.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text("${mark.chapterTitle} · ${dateFmt.format(Date(mark.createdAt))}", fontSize = 11.sp, color = Stone)

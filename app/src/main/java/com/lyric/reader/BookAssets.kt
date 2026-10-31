@@ -59,6 +59,7 @@ class BookAssets(private val context: Context, private val book: Book) {
 /** [standalone]: an image alone on its line, scaled to the body-text width, centred, with [space] (1em) above and below. */
 class BookImageSpan(val resource: String, private val bitmap: Bitmap?, private val width: Int, height: Int,
                     private val space: Int = 0, private val standalone: Boolean = false) : ReplacementSpan() {
+    private val target = RectF()
     private val targetWidth: Int
     private val targetHeight: Int
     init {
@@ -73,7 +74,8 @@ class BookImageSpan(val resource: String, private val bitmap: Bitmap?, private v
     }
     override fun draw(canvas: Canvas, text: CharSequence, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
         val left = if (standalone) x + (width - targetWidth) / 2f else x
-        if (bitmap != null) canvas.drawBitmap(bitmap, null, RectF(left, (y - targetHeight).toFloat(), left + targetWidth, y.toFloat()), paint)
+        target.set(left, (y - targetHeight).toFloat(), left + targetWidth, y.toFloat())
+        if (bitmap != null) canvas.drawBitmap(bitmap, null, target, paint)
         else canvas.drawText("［图片不可用］", x, y.toFloat(), paint)
     }
 }
@@ -89,16 +91,20 @@ class RuleSpan(private val width: Int) : ReplacementSpan() {
 }
 
 class RubySpan(private val reading: String) : ReplacementSpan() {
+    private val rubyPaint = Paint()
+    private val metrics = Paint.FontMetrics()
+    private fun prepare(paint: Paint): Paint = rubyPaint.apply { set(paint); textSize *= .5f }
     override fun getSize(paint: Paint, text: CharSequence, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
         paint.getFontMetricsInt(fm)
         fm?.apply { ascent -= (paint.textSize * .65f).toInt(); top = ascent }
-        return maxOf(paint.measureText(text, start, end), Paint(paint).apply { textSize *= .5f }.measureText(reading)).toInt()
+        return maxOf(paint.measureText(text, start, end), prepare(paint).measureText(reading)).toInt()
     }
     override fun draw(canvas: Canvas, text: CharSequence, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
         val width = getSize(paint, text, start, end, null).toFloat()
-        val rubyPaint = Paint(paint).apply { textSize *= .5f }
+        val rubyPaint = prepare(paint)
+        paint.getFontMetrics(metrics)
         canvas.drawText(reading, x + (width - rubyPaint.measureText(reading)) / 2,
-            y + paint.fontMetrics.ascent - paint.textSize * .12f, rubyPaint)
+            y + metrics.ascent - paint.textSize * .12f, rubyPaint)
         canvas.drawText(text, start, end, x + (width - paint.measureText(text, start, end)) / 2, y.toFloat(), paint)
     }
 }

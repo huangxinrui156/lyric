@@ -20,20 +20,20 @@ const val PDF_PAGE_PREFIX = "pdf:"
 class PdfPageSource(file: File) : PageSource {
     private val fd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     private val renderer = try { PdfRenderer(fd) } catch (e: Exception) { fd.close(); throw IllegalStateException("PDF 无法打开（可能已加密或损坏）", e) }
-    private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).toInt()) {
+    private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).coerceAtMost(96L * 1024 * 1024).toInt()) {
         override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
     }
     val pageCount get() = renderer.pageCount
 
+    @Synchronized
     override fun page(entry: String, maxWidth: Int, maxHeight: Int): Bitmap {
+        check(!closed) { "Page source is closed" }
         val index = entry.removePrefix(PDF_PAGE_PREFIX).toIntOrNull() ?: error("页码无效：$entry")
-        val key = "$index@$maxWidth"
+        val key = "$index@$maxWidth:$maxHeight"
         cache.get(key)?.let { return it }
         val bmp = synchronized(renderer) {
             renderer.openPage(index).use { page ->
-                var w = maxWidth.coerceIn(64, 2400)
-                var h = (w.toLong() * page.height / page.width.coerceAtLeast(1)).toInt().coerceAtLeast(1)
-                if (w.toLong() * h * 4 > 48L * 1024 * 1024) { val s = Math.sqrt(48.0 * 1024 * 1024 / (w.toLong() * h * 4)); w = (w * s).toInt(); h = (h * s).toInt() }
+                val (w, h) = pdfPageSize(page.width, page.height, maxWidth, maxHeight)
                 Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also {
                     it.eraseColor(Color.WHITE)
                     page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
@@ -44,7 +44,10 @@ class PdfPageSource(file: File) : PageSource {
         return bmp
     }
 
-    override fun close() { cache.evictAll(); synchronized(renderer) { renderer.close() }; fd.close() }
+    private var closed = false
+    // Eviction only drops references: Compose may still be drawing an evicted bitmap.
+    @Synchronized
+    override fun close() { if (closed) return; closed = true; cache.evictAll(); synchronized(renderer) { renderer.close() }; fd.close() }
 
     companion object {
         fun thumbnail(file: File, maxWidth: Int): ByteArray? = runCatching {

@@ -8,6 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Serializable
 @Entity(tableName = "books")
+@androidx.compose.runtime.Immutable
 data class ShelfBook(
     @PrimaryKey val id: String,
     val uri: String,

@@ -80,7 +80,7 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
         return
     }
     val prefs by vm.settings.collectAsStateWithLifecycle()
-    val locator by vm.locator.collectAsStateWithLifecycle()
+    val locatorState = vm.locator.collectAsStateWithLifecycle()
     val marks by vm.bookmarks.collectAsStateWithLifecycle()
     val highlightRows by vm.highlights.collectAsStateWithLifecycle()
     var noteEdit by remember { mutableStateOf<Triple<Boolean, Long, String>?>(null) }
@@ -98,9 +98,9 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
     var menu by rememberSaveable { mutableStateOf(false) }
     var settings by rememberSaveable { mutableStateOf(false) }
     var search by rememberSaveable { mutableStateOf(false) }
-    var pageInfo by remember { mutableStateOf("") }
+    val pageInfo = remember { mutableStateOf("") }
     var canvas by remember { mutableStateOf<ReaderCanvas?>(null) }
-    var visibleLocator by remember(state.book) { mutableStateOf(locator) }
+    val visibleLocator = remember(state.book) { mutableStateOf(vm.locator.value) }
     var curlFrame by remember { mutableStateOf<CurlFrame?>(null) }
     val pageLayer = rememberGraphicsLayer()
     var pageOrigin by remember { mutableStateOf(Offset.Zero) }
@@ -112,7 +112,6 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
         canvas?.abortCurl()
     }
     var enlargedImage by remember { mutableStateOf<String?>(null) }
-    val (clock, battery) = readerClockAndBattery()
     var drawerTab by rememberSaveable { mutableIntStateOf(0) }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -157,7 +156,7 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
         DisposableEffect(activity) {
             onDispose { (activity as? ReaderActivity)?.readerVolumeHandler = null }
         }
-        SideEffect {
+        DisposableEffect(activity, prefs.volumeKeys, prefs.swapVolumeKeys, controls, canvas) {
             (activity as? ReaderActivity)?.readerVolumeHandler = { event ->
                 val step = VolumeNavigation.step(event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN,
                     prefs.volumeKeys, prefs.swapVolumeKeys, controls || canvas?.selectionMenuOpen == true)
@@ -166,6 +165,9 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
                     true
                 }
             }
+            onDispose { (activity as? ReaderActivity)?.readerVolumeHandler = null }
+        }
+        DisposableEffect(activity, controls, darkReader) {
             val controller =
                 WindowCompat.getInsetsController(activity.window, activity.window.decorView)
             controller.systemBarsBehavior =
@@ -174,10 +176,13 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
             else controller.hide(WindowInsetsCompat.Type.systemBars())
             controller.isAppearanceLightStatusBars = !darkReader
             controller.isAppearanceLightNavigationBars = !darkReader
-            activity.window.attributes =
-                activity.window.attributes.apply {
-                    screenBrightness = prefs.brightness.coerceIn(.01f, 1f)
-                }
+            onDispose { }
+        }
+        DisposableEffect(activity, prefs.brightness) {
+            activity.window.attributes = activity.window.attributes.apply {
+                screenBrightness = prefs.brightness.coerceIn(.01f, 1f)
+            }
+            onDispose { }
         }
         DisposableEffect(activity, prefs.keepScreenOn, prefs.orientation) {
             val originalOrientation = activity.requestedOrientation
@@ -240,25 +245,20 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
             }
             return@MaterialTheme
         }
-        val currentToc =
-            remember(book, locator) {
-                book.toc
-                    .indexOfLast {
-                        it.chapterIndex < locator.chapterIndex ||
-                            it.chapterIndex == locator.chapterIndex &&
-                                it.charOffset <= locator.charOffset
-                    }
-                    .coerceAtLeast(0)
-            }
-        val tocScroll = rememberLazyListState()
-        LaunchedEffect(drawer.isOpen) {
-            if (drawer.isOpen && drawerTab == 0) tocScroll.scrollToItem(currentToc)
-        }
         ModalNavigationDrawer(
             modifier = Modifier.fillMaxSize().background(bg),
             drawerState = drawer,
             gesturesEnabled = drawer.isOpen,
             drawerContent = {
+                val locator = locatorState.value
+                val currentToc = remember(book, locator) {
+                    book.toc.indexOfLast { it.chapterIndex < locator.chapterIndex ||
+                        it.chapterIndex == locator.chapterIndex && it.charOffset <= locator.charOffset }.coerceAtLeast(0)
+                }
+                val tocScroll = rememberLazyListState()
+                LaunchedEffect(drawer.isOpen) {
+                    if (drawer.isOpen && drawerTab == 0) tocScroll.scrollToItem(currentToc)
+                }
                 ModalDrawerSheet(
                     modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * .85f).coerceAtMost(360f).dp)
                         .fillMaxHeight(),
@@ -313,32 +313,25 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
                     }
                 }) {
                 Box(Modifier.fillMaxSize().drawWithContent {
-                    pageLayer.record { this@drawWithContent.drawContent() }
-                    drawLayer(pageLayer)
+                    // Capture only curl surfaces. Once both snapshots exist the overlay owns
+                    // the animation; recording the underlying reader again is wasted work.
+                    if (prefs.pageMode == PageMode.CURL && curlFrame?.target == null) {
+                        pageLayer.record { this@drawWithContent.drawContent() }
+                        drawLayer(pageLayer)
+                    } else drawContent()
                 }.background(bg).paperGrain()) {
                     Column(Modifier.fillMaxSize().windowInsetsPadding(
                         WindowInsets.systemBarsIgnoringVisibility.union(WindowInsets.displayCutout)
                     ).padding(top = 8.dp, bottom = 8.dp)) {
-                        if (prefs.showChapter) Text(
-                            book.chapters[visibleLocator.chapterIndex.coerceIn(book.chapters.indices)].title,
-                            color = meta,
-                            fontFamily = Serif,
-                            fontSize = (prefs.fontSize * .7f).sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier =
-                                Modifier.padding(horizontal = prefs.margin.dp).padding(bottom = 8.dp),
-                        )
+                        ReaderChapterHeading(book, prefs, meta, visibleLocator)
                         Box(Modifier.fillMaxWidth().weight(1f)) {
-                            AndroidView(
-                                factory = { context -> ReaderCanvas(context).also { canvas = it } },
-                                update = { view ->
+                            key(System.identityHashCode(book)) { AndroidView(
+                                factory = { context -> ReaderCanvas(context).also { view ->
+                                    canvas = view
                                     view.onContentReady = { activity.reportFullyDrawn() }
-                                    view.controlsOpen = controls
                                     view.onExcerpt = { at, text -> vm.bookmark(at, text) }
-                                    view.highlights = highlightRows
                                     view.onHighlightEdit = { hid, action, x, y ->
-                                        val row = highlightRows.firstOrNull { it.id == hid }
+                                        val row = view.highlights.firstOrNull { it.id == hid }
                                         when (action) {
                                             "color" -> vm.highlightColor(hid, x)
                                             "range" -> row?.let { vm.highlightRange(hid, it.chapterIndex, x, y) }
@@ -354,8 +347,8 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
                                     view.onEndReached = vm::finished
                                     view.onReadingActivity = vm::readingGesture
                                     view.onMenu = { menu = !menu }
-                                    view.onPageInfo = { pageInfo = it }
-                                    view.onVisibleLocator = { visibleLocator = it }
+                                    view.onPageInfo = { pageInfo.value = it }
+                                    view.onVisibleLocator = { visibleLocator.value = it }
                                     view.onCurl = { direction, dragging, x, y ->
                                         val point = Offset(x + bodyOrigin.x, y + bodyOrigin.y)
                                         val frame = CurlFrame(direction, point.y < pageLayer.size.height / 2f,
@@ -403,25 +396,18 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
                                     curlCapture?.cancel()
                                     curlFrame = null
                                 }
-                                view.bind(book, locator, prefs, ink.toArgb(), bg.toArgb(), highlight)
-                            },
+                                } },
+                                update = { view ->
+                                    view.controlsOpen = controls
+                                    view.highlights = highlightRows
+                                    view.bind(book, locatorState.value, prefs, ink.toArgb(), bg.toArgb(), highlight)
+                                },
                             modifier = Modifier.fillMaxSize().onGloballyPositioned {
                                 bodyOrigin = it.positionInRoot() - pageOrigin
                             },
-                        )
+                        ) }
                     }
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .padding(horizontal = prefs.margin.dp)
-                            .padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        val infoSize = (prefs.fontSize * .7f).sp
-                        if (prefs.showPage) Text(pageInfo, color = meta, fontSize = infoSize)
-                        if (prefs.showPercent) Text(readingPercentLabel(book.percent(visibleLocator)), color = meta, fontSize = infoSize)
-                        if (prefs.showTime) Text(clock, color = meta, fontSize = infoSize)
-                        if (prefs.showBattery) Text(battery, color = meta, fontSize = infoSize)
-                    }
+                    ReaderFooter(book, prefs, meta, pageInfo, visibleLocator)
                 }
                 }
                 curlFrame?.let { frame ->
@@ -509,6 +495,7 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
                             ),
                         shadowElevation = 6.dp,
                     ) {
+                        val locator = locatorState.value
                         Column(
                             Modifier.heightIn(max = (LocalConfiguration.current.screenHeightDp * .7f).dp)
                                 .verticalScroll(rememberScrollState())
@@ -621,6 +608,32 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
                 search = false
                 menu = false
             }
+    }
+}
+
+@Composable
+private fun ReaderChapterHeading(book: Book, prefs: ReaderSettings, meta: Color, visible: State<Locator>) {
+    if (prefs.showChapter) Text(
+        book.chapters[visible.value.chapterIndex.coerceIn(book.chapters.indices)].title,
+        color = meta, fontFamily = Serif, fontSize = (prefs.fontSize * .7f).sp,
+        maxLines = 1, overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(horizontal = prefs.margin.dp).padding(bottom = 8.dp),
+    )
+}
+
+@Composable
+private fun ReaderFooter(book: Book, prefs: ReaderSettings, meta: Color,
+                         pageInfo: State<String>, visible: State<Locator>) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = prefs.margin.dp).padding(top = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween) {
+        val infoSize = (prefs.fontSize * .7f).sp
+        if (prefs.showPage) Text(pageInfo.value, color = meta, fontSize = infoSize)
+        if (prefs.showPercent) Text(readingPercentLabel(book.percent(visible.value)), color = meta, fontSize = infoSize)
+        if (prefs.showTime || prefs.showBattery) {
+            val (clock, battery) = readerClockAndBattery()
+            if (prefs.showTime) Text(clock, color = meta, fontSize = infoSize)
+            if (prefs.showBattery) Text(battery, color = meta, fontSize = infoSize)
+        }
     }
 }
 

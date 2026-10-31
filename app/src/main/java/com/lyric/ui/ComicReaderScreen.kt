@@ -56,6 +56,7 @@ import com.lyric.reader.ComicArchive
 import com.lyric.reader.VolumeNavigation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -99,12 +100,21 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
     val rtl = dir == "rtl"
     val vertical = dir == "vertical"
     val pages = remember(book) { ComicPages(book) }
-    val archive = remember(vm.id) {
-        runCatching<com.lyric.reader.PageSource> {
-            if (isPdf) com.lyric.reader.PdfPageSource(vm.repository.comicFile(vm.id))
-            else ComicArchive(vm.repository.comicFile(vm.id), pages.pages.firstOrNull()?.unit?.resource) }
+    val sourceState by produceState<Result<com.lyric.reader.PageSource>?>(null, vm.id, isPdf) {
+        var source: com.lyric.reader.PageSource? = null
+        try {
+            value = withContext(Dispatchers.IO) {
+                runCatching<com.lyric.reader.PageSource> {
+                    if (isPdf) com.lyric.reader.PdfPageSource(vm.repository.comicFile(vm.id))
+                    else ComicArchive(vm.repository.comicFile(vm.id), pages.pages.firstOrNull()?.unit?.resource)
+                }.also { source = it.getOrNull() }
+            }
+            kotlinx.coroutines.awaitCancellation()
+        } finally {
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { source?.close() }
+        }
     }
-    DisposableEffect(archive) { onDispose { archive.getOrNull()?.close() } }
+    val archive = sourceState
     val pager = rememberPagerState(initialPage = pages.indexOf(locator)) { pages.pages.size }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = pages.indexOf(locator))
     var chrome by remember { mutableStateOf(false) }
@@ -137,15 +147,21 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
 
     // First open of a book: apply the direction the file declares (if any), otherwise RTL stays,
     // and show the hint bar with the three directions; untouched, it fades after 2.4s.
-    val hints = remember { context.getSharedPreferences("comic_hints", 0) }
+    val hints by produceState<android.content.SharedPreferences?>(null, context) {
+        value = withContext(Dispatchers.IO) {
+            context.getSharedPreferences("comic_hints", 0).also { it.contains("loaded") }
+        }
+    }
     // Per-book flag: has the reader picked a direction by hand? Until then the file's declared
     // direction wins (also for books opened in older builds) and the first-open hint shows once.
     val chosenKey = "chosen_${vm.id}"
     val hintKey = "hint_v3_${vm.id}"
-    var hint by remember { mutableStateOf(!hints.getBoolean(chosenKey, false) && !hints.getBoolean(hintKey, false)) }
+    var hint by remember { mutableStateOf(false) }
     fun apply(next: String) { if (next != prefs.comicDirection) vm.updateSettings(SettingsScope.BOOK, prefs.copy(comicDirection = next)) }
-    fun choose(next: String) { hints.edit().putBoolean(chosenKey, true).apply(); apply(next) }
-    LaunchedEffect(Unit) {
+    fun choose(next: String) { hints?.edit()?.putBoolean(chosenKey, true)?.apply(); apply(next) }
+    LaunchedEffect(hints) {
+        val hints = hints ?: return@LaunchedEffect
+        hint = !hints.getBoolean(chosenKey, false) && !hints.getBoolean(hintKey, false)
         if (!hints.getBoolean(chosenKey, false)) book.readingDirection?.takeIf { it in ComicDirections.all }?.let { apply(it) }
         if (hint) hints.edit().putBoolean(hintKey, true).apply()
     }
@@ -161,8 +177,24 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
     }
     val currentIndex = if (vertical) listState.firstVisibleItemIndex else pager.currentPage
 
-    Box(Modifier.fillMaxSize().background(if (isPdf) Color(prefs.theme.bg) else ComicBg).testTag("comic-reader")) {
-        if (pages.pages.isEmpty() || archive.isFailure) {
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
+    LaunchedEffect(archive, vertical, currentIndex, viewport) {
+        val source = archive?.getOrNull() ?: return@LaunchedEffect
+        if (!vertical || viewport.width <= 0) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            for (distance in 1..2) for (index in listOf(currentIndex + distance, currentIndex - distance)) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                pages.pages.getOrNull(index)?.let { ref ->
+                    runCatching { source.page(ref.unit.resource, viewport.width) }
+                }
+            }
+        }
+    }
+    Box(Modifier.fillMaxSize().onSizeChanged { viewport = it }
+        .background(if (isPdf) Color(prefs.theme.bg) else ComicBg).testTag("comic-reader")) {
+        if (archive == null) {
+            Box(Modifier.fillMaxSize().background(Skeleton))
+        } else if (pages.pages.isEmpty() || archive.isFailure) {
             ComicError(if (isPdf) "这份 PDF 没能打开" else "这本漫画没能打开", archive.exceptionOrNull()?.localizedMessage ?: "没有图片", null, null)
         } else if (vertical) {
             // 条漫: images fill the screen width, stacked without gaps.
@@ -316,7 +348,7 @@ private fun ComicStripPage(archive: com.lyric.reader.PageSource, ref: ComicPageR
     var width by remember { mutableIntStateOf(0) }
     var attempt by remember { mutableIntStateOf(0) }
     var result by remember(ref, attempt) { mutableStateOf<Result<Bitmap>?>(null) }
-    LaunchedEffect(ref, attempt, width) {
+    LaunchedEffect(archive, ref, attempt, width) {
         if (width > 0) result = withContext(Dispatchers.IO) { runCatching { archive.page(ref.unit.resource, width) } }
     }
     val ratio = ref.unit.width?.let { w -> ref.unit.height?.takeIf { it > 0 && w > 0 }?.let { w.toFloat() / it } } ?: (1 / 1.4f)
@@ -341,7 +373,7 @@ private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, o
     var result by remember(ref, attempt) { mutableStateOf<Result<Bitmap>?>(null) }
     var slow by remember(ref, attempt) { mutableStateOf(false) }
     var verySlow by remember(ref, attempt) { mutableStateOf(false) }
-    LaunchedEffect(ref, attempt, size.width) {
+    LaunchedEffect(archive, ref, attempt, size) {
         if (size.width == 0) return@LaunchedEffect
         launch { delay(300); slow = true; delay(700); verySlow = true }
         result = withContext(Dispatchers.IO) { runCatching { archive.page(ref.unit.resource, size.width * 2, size.height * 2) } }

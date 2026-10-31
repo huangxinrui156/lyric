@@ -79,7 +79,7 @@ class LibraryRepository(
     private val registry = ParserRegistry(listOf(TxtParser(), EpubParser(context.cacheDir), ComicParser(),
         com.lyric.core.DocxParser(context.cacheDir), com.lyric.core.MobiParser(), com.lyric.reader.PdfParser()))
     private val json = Json { ignoreUnknownKeys = true }
-    private val cache = File(context.filesDir, "parsed-v1").apply { mkdirs() }
+    private val cache = File(context.filesDir, "parsed-v1")
     // A FileProvider may grant only transient access. Retain a private source in that case,
     // so clearing the parsed cache or restarting the process cannot break the imported book.
     private val sources = File(context.filesDir, "sources-v1")

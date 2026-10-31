@@ -44,6 +44,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import coil.request.ImageRequest
+import coil.size.Precision
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import com.lyric.data.*
 import java.io.File
 import androidx.compose.ui.semantics.contentDescription
@@ -94,6 +99,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
     if (!transition.running && !status.running && status.folder && status.batchId != 0L && status.batchId != summaryShown && status.errors.isEmpty())
         FolderImportSheet(status) { summaryShown = status.batchId }
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    val tabState = rememberSaveableStateHolder()
     var importer by remember { mutableStateOf(false) }
     var importFilter by rememberSaveable { mutableStateOf(ImportFilter.ALL) }
     fun prepareImport() { importFilter = if (section == ShelfSection.COMIC) ImportFilter.COMIC else ImportFilter.ALL }
@@ -151,7 +157,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
             },
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding).paperGrain(deskDark())) {
-                when (tab) {
+                tabState.SaveableStateProvider(tab) { when (tab) {
                     0 -> ShelfTransition(transition) { shown ->
                         ShelfContent(vm, books, shown, grid, status,
                             switch = switch, open = { if (!transition.running) open(it) },
@@ -160,7 +166,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
                     }
                     1 -> desk()
                     2 -> me()
-                }
+                } }
             }
         }
         if (transition.running) Box(Modifier.fillMaxSize().pointerInput(Unit) {
@@ -426,14 +432,27 @@ fun BookCover(book: ShelfBook, modifier: Modifier = Modifier) {
             .paperGrain(),
         contentAlignment = Alignment.Center,
     ) {
-        if (book.coverPath != null)
+        if (book.coverPath != null) {
+            val context = LocalContext.current
+            var dimensions by remember { mutableStateOf(IntSize.Zero) }
+            val size = dimensions
+            val request = remember(context, book.coverPath, book.contentRevision, book.addedAt, size) {
+                if (size.width == 0 || size.height == 0) null else
+                ImageRequest.Builder(context)
+                    .data(File(book.coverPath))
+                    .size(size.width, size.height)
+                    .precision(Precision.INEXACT)
+                    .crossfade(false)
+                    .memoryCacheKey("cover:${book.coverPath}:${book.contentRevision}:${book.addedAt}")
+                    .build()
+            }
             AsyncImage(
-                File(book.coverPath),
+                request,
                 book.title,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().onSizeChanged { dimensions = it },
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             )
-        else {
+        } else {
             Box(
                 Modifier.align(Alignment.CenterStart)
                     .fillMaxHeight()

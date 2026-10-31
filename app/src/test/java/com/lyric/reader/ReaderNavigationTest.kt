@@ -69,6 +69,30 @@ class ReaderNavigationTest {
         } finally { Dispatchers.resetMain() }
     }
 
+    @Test fun controlsAndUnrelatedPreferencesReuseTheSameStaticLayout() {
+        val dispatcher = StandardTestDispatcher()
+        Dispatchers.setMain(dispatcher)
+        try {
+            val view = ReaderCanvas(ApplicationProvider.getApplicationContext<Application>())
+            view.layout(0, 0, 320, 240)
+            var visible: Locator? = null
+            view.onVisibleLocator = { visible = it }
+            val prefs = ReaderSettings(pageMode = PageMode.NONE)
+            view.bind(book, Locator(), prefs, 0xff222222.toInt(), 0xffeeeeee.toInt(), "")
+            awaitPage(view, dispatcher.scheduler) { visible != null }
+            val field = ReaderCanvas::class.java.getDeclaredField("typeset").apply { isAccessible = true }
+            val original = field.get(view)
+            view.controlsOpen = true
+            view.bind(book, Locator(), prefs, 0xff222222.toInt(), 0xffeeeeee.toInt(), "")
+            view.bind(book, Locator(), prefs.copy(brightness = .2f, showBattery = true, volumeKeys = false),
+                0xff222222.toInt(), 0xffeeeeee.toInt(), "")
+            dispatcher.scheduler.runCurrent()
+            assertSame(original, field.get(view))
+            view.turn(1)
+            assertSame(original, field.get(view))
+        } finally { Dispatchers.resetMain() }
+    }
+
     @Test fun dragScrollPublishesProgressAndReflowKeepsTheAnchor() {
         val dispatcher = StandardTestDispatcher()
         Dispatchers.setMain(dispatcher)

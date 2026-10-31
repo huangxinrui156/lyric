@@ -14,8 +14,8 @@ android {
         applicationId = "com.lyric.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 26
-        versionName = "0.8.4"
+        versionCode = 27
+        versionName = "0.9.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -26,6 +26,9 @@ android {
             matchingFallbacks += "release"
             applicationIdSuffix = ".benchmark"
             isDebuggable = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
     sourceSets.getByName("androidTest").assets.srcDir("src/test/resources")
@@ -45,9 +48,19 @@ android {
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 
+composeCompiler {
+    // Kotlin 2.0.21 already enables strong skipping (including lambda memoization).
+    stabilityConfigurationFile.set(layout.projectDirectory.file("compose-stability.conf"))
+    if (providers.gradleProperty("composeReports").isPresent) {
+        reportsDestination.set(layout.buildDirectory.dir("compose-reports"))
+        metricsDestination.set(layout.buildDirectory.dir("compose-reports"))
+    }
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.profileinstaller:profileinstaller:1.3.1")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")

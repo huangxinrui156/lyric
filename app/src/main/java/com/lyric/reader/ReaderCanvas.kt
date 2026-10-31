@@ -23,6 +23,7 @@ class ReaderCanvas(context: Context) : View(context) {
     var onMenu: () -> Unit = {}
     var onContentReady: () -> Unit = {}
     private var contentReported = false
+    private var describedLocator: Locator? = null
     var onEndReached: () -> Unit = {}
     var onReadingActivity: () -> Unit = {}
     var onPageInfo: (String) -> Unit = {}
@@ -60,8 +61,15 @@ class ReaderCanvas(context: Context) : View(context) {
     var onExcerpt: (Locator, String) -> Unit = { _, _ -> }
     /** (chapter, start, end, text, withNote) — chapter-relative offsets survive re-pagination. */
     var onHighlight: (Int, Int, Int, String, Boolean) -> Unit = { _, _, _, _, _ -> }
+    private var highlightsByChapter: Map<Int, List<com.lyric.data.HighlightRow>> = emptyMap()
     var highlights: List<com.lyric.data.HighlightRow> = emptyList()
-        set(value) { if (field != value) { field = value; invalidate() } }
+        set(value) {
+            if (field != value) {
+                field = value
+                highlightsByChapter = value.groupBy { it.chapterIndex }
+                invalidate()
+            }
+        }
     var onImage: (String) -> Unit = {}
     private var pendingKey: Any? = null
     private var layoutKey: Any? = null
@@ -72,6 +80,8 @@ class ReaderCanvas(context: Context) : View(context) {
     private val selectionPath = Path()
     private val selectionPaint = Paint()
     private val paperPaint = Paint()
+    private val skeletonPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val scroller = OverScroller(context)
     private var selection: TextSelection? = null
     val selectionMenuOpen: Boolean get() = selectionPopup != null
@@ -141,6 +151,11 @@ class ReaderCanvas(context: Context) : View(context) {
         paper: Int,
         highlight: String,
     ) {
+        // AndroidView can update for controls/footer changes without changing its content.
+        if (this.book === book && this.locator == locator && prefs == settings &&
+            this.ink == ink && this.paper == paper && this.highlight == highlight &&
+            !curlAwaitingDraw && !checkCompletionAfterNavigation &&
+            (layoutKey != null || pendingKey != null)) return
         if (curlOrigin != null && (this.book !== book || (locator != curlOrigin && locator != curlDestination))) abortCurl()
         if (this.book !== book) { clearSelection(); contentReported = false }
         val oldLoc = this.locator
@@ -155,8 +170,10 @@ class ReaderCanvas(context: Context) : View(context) {
         this.ink = ink
         this.paper = paper
         this.highlight = highlight
-        contentDescription =
-            preview(book.chapters[locator.chapterIndex].text, locator.charOffset, 800)
+        if (oldLoc != locator || changedBook) {
+            describedLocator = null
+            contentDescription = preview(book.chapters[locator.chapterIndex].text, locator.charOffset, 800)
+        }
         val window = locator.charOffset / Typesetter.WINDOW
         val key =
             listOf(
@@ -180,9 +197,14 @@ class ReaderCanvas(context: Context) : View(context) {
                 paginator?.close()
                 paginationKey = geometry
                 val assets = BookAssets(context, book)
+                // Resolved once, lazily on the worker (imported fonts may require disk IO).
+                val layoutSettings = effective(settings, book)
+                val layoutFont by lazy { font(settings.font, settings, book) }
+                val scaledDensity = resources.displayMetrics.scaledDensity
+                val displayDensity = density
                 paginator = PrePaginator(book, scope, { c, offset ->
                     Typesetter.layout(book.chapters[c].text, offset, textWidth, textHeight,
-                        density, resources.displayMetrics.scaledDensity, effective(settings, book), font(settings.font, settings, book),
+                        displayDensity, scaledDensity, layoutSettings, layoutFont,
                         book.chapters[c], assets)
                 }, { c -> if (c == chapter) pageInfo() })
             }
@@ -199,8 +221,13 @@ class ReaderCanvas(context: Context) : View(context) {
                 worker.prioritize(this@ReaderCanvas.locator)
                 invalidate()
             }
-        } else if (key == layoutKey && (oldLoc != locator || changedBook || oldMode != settings.pageMode)) syncLocation()
+        } else if (key == layoutKey && (oldLoc != locator || changedBook || oldMode != settings.pageMode || checkCompletionAfterNavigation)) syncLocation()
         invalidate()
+    }
+
+    private fun updateContentDescription() {
+        contentDescription = "Lyric正文:" + preview(
+            book?.chapters?.getOrNull(locator.chapterIndex)?.text.orEmpty(), locator.charOffset, 200)
     }
 
     private fun preview(text: String, offset: Int, length: Int): String {
@@ -356,14 +383,16 @@ class ReaderCanvas(context: Context) : View(context) {
         if (highlights.isNotEmpty()) {
             val night = com.lyric.core.ThemePalette.isNight(prefs.theme, prefs.customBg)
             val b = book
-            for (h in highlights) {
-                if (h.chapterIndex != chapter) continue
+            for (h in highlightsByChapter[chapter].orEmpty()) {
                 val active = editing?.id == h.id
                 // While editing, the live (dragged) range replaces the stored one.
-                val (hs, he) = if (active && b != null && selection != null) {
+                var hs = h.start
+                var he = h.end
+                if (active && b != null && selection != null) {
                     val base = TextSelection.absolute(b, chapter, 0)
-                    (selection!!.start - base) to (selection!!.end - base)
-                } else h.start to h.end
+                    hs = selection!!.start - base
+                    he = selection!!.end - base
+                }
                 drawMarker(canvas, set, hs - set.sourceStart, he - set.sourceStart, h, night, active)
             }
         }
@@ -385,7 +414,10 @@ class ReaderCanvas(context: Context) : View(context) {
             ReaderMetrics.endOpen()
             onContentReady()
         }
-        contentDescription = "Lyric正文:" + preview(book?.chapters?.getOrNull(chapter)?.text.orEmpty(), locator.charOffset, 200)
+        if (describedLocator != locator) {
+            updateContentDescription()
+            describedLocator = locator
+        }
         canvas.restore()
         if (curlAwaitingDraw) {
             curlAwaitingDraw = false
@@ -404,7 +436,7 @@ class ReaderCanvas(context: Context) : View(context) {
     }
 
     private fun drawSkeleton(canvas: Canvas) {
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ink; alpha = 18 }
+        val paint = skeletonPaint.apply { color = ink; alpha = 18 }
         val line = prefs.fontSize * resources.displayMetrics.scaledDensity
         var y = line
         var row = 0
@@ -424,14 +456,20 @@ class ReaderCanvas(context: Context) : View(context) {
         reportedScroll = scroll
         val offset =
             set.layout.getLineStart(set.layout.getLineForVertical(scroll.toInt())) + set.sourceStart
-        locator = locator.copy(charOffset = offset)
+        val previousPage = page
+        val changed = locator.charOffset != offset
+        if (changed) {
+            locator = locator.copy(charOffset = offset)
+        }
         page = set.pages.indexOfLast { it.start <= offset - set.sourceStart }.coerceAtLeast(0)
-        onLocator(locator)
-        reportVisibleLocation()
+        if (changed) {
+            onLocator(locator)
+            reportVisibleLocation()
+        }
         val b = book
         if (b != null && chapter == b.chapters.lastIndex && set.sourceEnd == b.chapters[chapter].text.length &&
             scroll >= maxScroll() && maxScroll() > 0) onEndReached()
-        pageInfo()
+        if (previousPage != page) pageInfo()
     }
 
     private fun target(step: Int): Locator? {
@@ -795,6 +833,7 @@ class ReaderCanvas(context: Context) : View(context) {
     private val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val markerPath = Path()
     private val markerRect = android.graphics.RectF()
+    private val markerRandom = java.util.Random()
 
     /**
      * 美术设计 0.5.3 highlighter: per-line band, 38% of line height, bottom at baseline+0.12em,
@@ -826,7 +865,7 @@ class ReaderCanvas(context: Context) : View(context) {
             val bottom = layout.getLineBaseline(line) + .12f * em
             val top = bottom - band
             val rr = minOf(r, (right - left) / 2)
-            val rnd = java.util.Random(h.id * 1_000_003L + line)
+            val rnd = markerRandom.apply { setSeed(h.id * 1_000_003L + line) }
             markerPath.reset()
             markerPath.moveTo(left + rr, top)
             var x = left + rr
@@ -867,7 +906,7 @@ class ReaderCanvas(context: Context) : View(context) {
             val x = if (atLineEnd) set.layout.getLineRight(line) else set.layout.getPrimaryHorizontal(local)
             point.set(horizontal + x,
                 (set.layout.getLineBottom(line) - top).coerceIn(12 * density, height - 12 * density))
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = palette().handle }
+            val paint = handlePaint.apply { color = palette().handle }
             drawHandle(canvas, point, absolute == selected.start, paint)
         }
         handle(selected.start, startHandle)

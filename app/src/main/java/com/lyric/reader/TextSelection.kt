@@ -28,7 +28,7 @@ data class TextSelection(val anchor: Int, val focus: Int) {
     }
     companion object {
         fun absolute(book: Book, chapter: Int, offset: Int) =
-            book.chapters.take(chapter).sumOf { it.text.length } + offset
+            book.textOffset(chapter.coerceAtMost(book.chapters.size)).toInt() + offset
         fun word(text: String, offset: Int, base: Int = 0): TextSelection? {
             if (text.isEmpty()) return null
             var at = offset.coerceIn(0, text.lastIndex)

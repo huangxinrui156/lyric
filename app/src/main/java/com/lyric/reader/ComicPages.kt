@@ -13,7 +13,7 @@ import java.util.zip.ZipFile
 class ComicArchive(file: File, private val sampleEntry: String? = null) : Closeable, PageSource {
     private val zip: ZipFile = openMatching(file, sampleEntry)
     // ~1/8 of heap for decoded pages (current ±2 preloaded fit comfortably).
-    private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).toInt()) {
+    private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).coerceAtMost(96L * 1024 * 1024).toInt()) {
         override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
     }
 
@@ -24,16 +24,16 @@ class ComicArchive(file: File, private val sampleEntry: String? = null) : Closea
     }
 
     /** Decodes at most [maxWidth] wide (power-of-two sampling); null bitmap → explicit error. */
+    @Synchronized
     override fun page(entry: String, maxWidth: Int, maxHeight: Int): Bitmap {
-        val key = "$entry@$maxWidth"
+        check(!closed) { "Page source is closed" }
+        val key = "$entry@$maxWidth:$maxHeight"
         cache.get(key)?.let { return it }
         val data = bytes(entry)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
         require(bounds.outWidth > 0) { "${entry.substringAfterLast('/')} · 无法解码图片" }
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= maxWidth || bounds.outHeight / (sample * 2) >= maxHeight ||
-            (bounds.outWidth.toLong() / sample) * (bounds.outHeight / sample) * 4 > 48L * 1024 * 1024) sample *= 2
+        val sample = pageSampleSize(bounds.outWidth, bounds.outHeight, maxWidth, maxHeight)
         val bmp = BitmapFactory.decodeByteArray(data, 0, data.size,
             BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 })
             ?: error("${entry.substringAfterLast('/')} · 图片已损坏")
@@ -41,7 +41,10 @@ class ComicArchive(file: File, private val sampleEntry: String? = null) : Closea
         return bmp
     }
 
-    override fun close() { cache.evictAll(); synchronized(zip) { zip.close() } }
+    private var closed = false
+    // Eviction only drops references: Compose may still be drawing an evicted bitmap.
+    @Synchronized
+    override fun close() { if (closed) return; closed = true; cache.evictAll(); synchronized(zip) { zip.close() } }
 
     companion object {
         fun openMatching(file: File, entry: String?): ZipFile {

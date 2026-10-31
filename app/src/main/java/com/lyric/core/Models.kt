@@ -47,6 +47,7 @@ data class Chapter(
 }
 
 @Serializable
+@androidx.compose.runtime.Immutable
 data class TocEntry(val title: String, val chapterIndex: Int, val charOffset: Int = 0)
 
 @Serializable
@@ -64,11 +65,18 @@ data class Book(
     /** Direction declared by the file (ComicInfo.xml Manga / EPUB page-progression): "rtl" | "ltr" | null. */
     val readingDirection: String? = null,
 ) {
-    val totalChars: Long
-        get() = chapters.sumOf { it.text.length.toLong() }
+    // Published books keep chapter text fixed; reparsing creates a new Book. This
+    // index is derived, never serialized, and keeps per-line progress off O(chapters).
+    @kotlinx.serialization.Transient
+    private val textOffsets = LongArray(chapters.size + 1).apply {
+        chapters.forEachIndexed { i, chapter -> this[i + 1] = this[i] + chapter.text.length }
+    }
+    val totalChars: Long get() = textOffsets.last()
+    internal fun textOffset(chapter: Int): Long = textOffsets[chapter]
 }
 
 @Serializable
+@androidx.compose.runtime.Immutable
 data class BookStyle(
     val serif: Boolean = true,
     val lineHeight: Float? = null,
@@ -77,6 +85,7 @@ data class BookStyle(
 
 /** UTF-16 offset in canonical chapter text, never a page number or a formatted-text offset. */
 @Serializable
+@androidx.compose.runtime.Immutable
 data class Locator(val chapterIndex: Int = 0, val charOffset: Int = 0, val page: Int = 0)
 
 @Serializable
@@ -105,6 +114,7 @@ enum class ReaderTheme(val label: String, val bg: Long, val ink: Long, val meta:
 }
 
 @Serializable
+@androidx.compose.runtime.Immutable
 data class ReaderSettings(
     val appTheme: String = "system",
     val accentColor: Int = 0,
@@ -191,7 +201,7 @@ fun Book.percent(locator: Locator): Float {
                 .toFloat()
     }
     if (totalChars == 0L) return 0f
-    return ((chapters.take(p.chapterIndex).sumOf { it.text.length.toLong() } + p.charOffset)
+    return ((textOffset(p.chapterIndex) + p.charOffset)
             .toDouble() / totalChars)
         .toFloat()
 }
@@ -205,6 +215,7 @@ fun Book.excerpt(locator: Locator, length: Int = 90): String {
 
 /** Ranges always refer to canonical UTF-16 text; ruby readings are metadata, not text. */
 @Serializable
+@androidx.compose.runtime.Immutable
 data class TextStyleRange(
     val start: Int,
     val end: Int,

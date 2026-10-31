@@ -28,6 +28,10 @@ import com.lyric.data.SettingsScope
 import java.io.File
 import kotlinx.coroutines.*
 
+private val brightnessLevels = listOf(.01f) + (1..10).map { it / 10f }
+private val fontSizeLevels = (12..36).map { it.toFloat() }
+private val pageModeLabels = PageMode.entries.map { it.label }
+
 @Composable
 fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () -> Unit) {
     val prefs by vm.settings.collectAsStateWithLifecycle()
@@ -112,10 +116,10 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                     modifier = Modifier.padding(bottom = 10.dp),
                 )
             }
-            SettingStepper("亮度", prefs.brightness, listOf(.01f) + (1..10).map { it / 10f }, "${kotlin.math.round(prefs.brightness * 100).toInt()}%") {
+            SettingStepper("亮度", prefs.brightness, brightnessLevels, "${kotlin.math.round(prefs.brightness * 100).toInt()}%") {
                 update(prefs.copy(brightness = it))
             }
-            SettingStepper("字号", prefs.fontSize, (12..36).map { it.toFloat() }, "${prefs.fontSize.toInt()} sp") {
+            SettingStepper("字号", prefs.fontSize, fontSizeLevels, "${prefs.fontSize.toInt()} sp") {
                 update(prefs.copy(fontSize = it))
             }
             Row(
@@ -170,7 +174,7 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
             }
             ChoiceRow(
                 "翻页",
-                PageMode.entries.map { it.label },
+                pageModeLabels,
                 PageMode.entries.indexOf(prefs.pageMode),
             ) {
                 update(prefs.copy(pageMode = PageMode.entries[it]))

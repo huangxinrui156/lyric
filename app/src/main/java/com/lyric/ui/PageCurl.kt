@@ -60,13 +60,15 @@ internal fun PageCurl(frame: CurlFrame, paper: Color, modifier: Modifier, style:
         frame.finishing = true
         latestFinished(commit)
     }
+    val drawing = remember { CurlDrawing() }
     Canvas(modifier) {
         val current = frame.current ?: return@Canvas
         drawIntoCanvas { canvas ->
             val native = canvas.nativeCanvas
-            if (frame.target == null) native.drawBitmap(current, null, RectF(0f, 0f, size.width, size.height), null)
+            drawing.bounds.set(0f, 0f, size.width, size.height)
+            if (frame.target == null) native.drawBitmap(current, null, drawing.bounds, null)
             else drawPageCurl(native, current, frame.target!!, size.width, size.height,
-                if (settling) animated.value else frame.touch, frame.direction, frame.topCorner, paper.toArgb(), style, density)
+                if (settling) animated.value else frame.touch, frame.direction, frame.topCorner, paper.toArgb(), style, density, drawing)
         }
     }
 }
@@ -77,64 +79,89 @@ internal class CurlGeometry(width: Float, height: Float, touch: Offset, directio
     val cut = Path()
     val back = Path()
     val reflection = Matrix()
-    val midpoint: PointF
-    val normal: PointF
-    val corner = PointF(if (direction > 0) width else 0f, if (top) 0f else height)
-    val finger: PointF
+    val midpoint = PointF()
+    val normal = PointF()
+    val corner = PointF()
+    val finger = PointF()
+    private val a = PointF(); private val f = PointF(); private val g = PointF()
+    private val e = PointF(); private val h = PointF(); private val c = PointF()
+    private val j = PointF(); private val b = PointF(); private val k = PointF()
+    private val d = PointF(); private val i = PointF()
+    private val mirror = Matrix()
+    private val matrixValues = FloatArray(9)
 
-    init {
+    init { update(width, height, touch, direction, top) }
+
+    fun update(width: Float, height: Float, touch: Offset, direction: Int, top: Boolean) {
+        cut.rewind(); back.rewind()
+        corner.set(if (direction > 0) width else 0f, if (top) 0f else height)
         val x = (if (direction > 0) touch.x else width - touch.x).coerceIn(-width, width - .5f)
         val y = touch.y.coerceIn(.5f, height - .5f)
-        val a = PointF(x, y)
-        val f = PointF(width, corner.y)
-        val g = PointF((a.x + f.x) / 2, (a.y + f.y) / 2)
-        val e = PointF(g.x - (f.y - g.y) * (f.y - g.y) / (f.x - g.x), f.y)
-        val h = PointF(f.x, g.y - (f.x - g.x) * (f.x - g.x) / (f.y - g.y))
-        val c = PointF(e.x - (f.x - e.x) / 2, f.y)
-        val j = PointF(f.x, h.y - (f.y - h.y) / 2)
-        fun intersection(a1: PointF, a2: PointF, b1: PointF, b2: PointF): PointF {
+        a.set(x, y)
+        f.set(width, corner.y)
+        g.set((a.x + f.x) / 2, (a.y + f.y) / 2)
+        e.set(g.x - (f.y - g.y) * (f.y - g.y) / (f.x - g.x), f.y)
+        h.set(f.x, g.y - (f.x - g.x) * (f.x - g.x) / (f.y - g.y))
+        c.set(e.x - (f.x - e.x) / 2, f.y)
+        j.set(f.x, h.y - (f.y - h.y) / 2)
+        fun intersection(a1: PointF, a2: PointF, b1: PointF, b2: PointF, out: PointF) {
             val dx = a2.x - a1.x; val dy = a2.y - a1.y
             val bx = b2.x - b1.x; val by = b2.y - b1.y
             val denominator = dx * by - dy * bx
-            if (abs(denominator) < .0001f) return PointF(a2.x, a2.y)
+            if (abs(denominator) < .0001f) { out.set(a2); return }
             val t = ((b1.x - a1.x) * by - (b1.y - a1.y) * bx) / denominator
-            return PointF(a1.x + t * dx, a1.y + t * dy)
+            out.set(a1.x + t * dx, a1.y + t * dy)
         }
-        val b = intersection(a, e, c, j)
-        val k = intersection(a, h, c, j)
-        val d = PointF((c.x + 2 * e.x + b.x) / 4, (c.y + 2 * e.y + b.y) / 4)
-        val i = PointF((j.x + 2 * h.x + k.x) / 4, (j.y + 2 * h.y + k.y) / 4)
+        intersection(a, e, c, j, b)
+        intersection(a, h, c, j, k)
+        d.set((c.x + 2 * e.x + b.x) / 4, (c.y + 2 * e.y + b.y) / 4)
+        i.set((j.x + 2 * h.x + k.x) / 4, (j.y + 2 * h.y + k.y) / 4)
         cut.moveTo(c.x, c.y); cut.quadTo(e.x, e.y, b.x, b.y)
         cut.lineTo(a.x, a.y); cut.lineTo(k.x, k.y); cut.quadTo(h.x, h.y, j.x, j.y)
         cut.lineTo(f.x, f.y); cut.close()
         back.moveTo(d.x, d.y); back.lineTo(b.x, b.y); back.lineTo(a.x, a.y)
         back.lineTo(k.x, k.y); back.lineTo(i.x, i.y); back.close()
         if (direction < 0) {
-            val mirror = Matrix().apply { setValues(floatArrayOf(-1f, 0f, width, 0f, 1f, 0f, 0f, 0f, 1f)) }
+            matrixValues.fill(0f)
+            matrixValues[0] = -1f; matrixValues[2] = width; matrixValues[4] = 1f; matrixValues[8] = 1f
+            mirror.setValues(matrixValues)
             cut.transform(mirror); back.transform(mirror)
         }
-        finger = PointF(if (direction > 0) x else width - x, y)
-        midpoint = PointF((corner.x + finger.x) / 2, (corner.y + finger.y) / 2)
+        finger.set(if (direction > 0) x else width - x, y)
+        midpoint.set((corner.x + finger.x) / 2, (corner.y + finger.y) / 2)
         val dx = corner.x - finger.x; val dy = corner.y - finger.y
         val length = hypot(dx, dy)
-        normal = PointF(dx / length, dy / length)
+        normal.set(dx / length, dy / length)
         val nx = normal.x; val ny = normal.y
         val distance = nx * midpoint.x + ny * midpoint.y
-        reflection.setValues(floatArrayOf(1 - 2 * nx * nx, -2 * nx * ny, 2 * nx * distance,
-            -2 * nx * ny, 1 - 2 * ny * ny, 2 * ny * distance, 0f, 0f, 1f))
+        matrixValues[0] = 1 - 2 * nx * nx; matrixValues[1] = -2 * nx * ny; matrixValues[2] = 2 * nx * distance
+        matrixValues[3] = -2 * nx * ny; matrixValues[4] = 1 - 2 * ny * ny; matrixValues[5] = 2 * ny * distance
+        matrixValues[6] = 0f; matrixValues[7] = 0f; matrixValues[8] = 1f
+        reflection.setValues(matrixValues)
     }
+}
+
+internal class CurlDrawing {
+    val bounds = RectF()
+    val geometry = CurlGeometry(1f, 1f, Offset.Zero, 1, false)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    val shadowColors = IntArray(3)
+    val shadowStops = FloatArray(3)
+    val backColors = intArrayOf(0x18000000, 0x38ffffff, 0x68000000)
+    val backStops = floatArrayOf(0f, .55f, 1f)
 }
 
 internal fun drawPageCurl(canvas: AndroidCanvas, current: Bitmap, target: Bitmap, width: Float, height: Float,
     touch: Offset, direction: Int, top: Boolean, paper: Int,
     style: com.lyric.core.CurlStyle? = null, density: Float = 1f,
+    drawing: CurlDrawing = CurlDrawing(),
 ) {
     fun a(alpha: Float) = (alpha.coerceIn(0f, 1f) * 255).toInt() shl 24
     val cast = style?.castAlpha ?: .33f
     val dim = style?.dimAlpha ?: .10f
-    val bounds = RectF(0f, 0f, width, height)
-    val geometry = CurlGeometry(width, height, touch, direction, top)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    val bounds = drawing.bounds.apply { set(0f, 0f, width, height) }
+    val geometry = drawing.geometry.apply { update(width, height, touch, direction, top) }
+    val paint = drawing.paint.apply { shader = null; alpha = 255; this.style = Paint.Style.FILL }
     canvas.save()
     canvas.clipRect(bounds)
     canvas.drawBitmap(target, null, bounds, paint)
@@ -143,10 +170,11 @@ internal fun drawPageCurl(canvas: AndroidCanvas, current: Bitmap, target: Bitmap
     val shadowWidth = if (style != null) 24 * density else (width * .075f).coerceIn(12f, 72f)
     val dimWidth = if (style != null) 16 * density else shadowWidth
     // Cast shadow: strongest at the fold, fading over 24dp onto the revealed page; under-page dim 16dp.
+    drawing.shadowColors[0] = a(dim * .4f); drawing.shadowColors[1] = a(maxOf(cast, dim)); drawing.shadowColors[2] = 0
+    drawing.shadowStops[0] = 0f; drawing.shadowStops[1] = dimWidth / (dimWidth + shadowWidth); drawing.shadowStops[2] = 1f
     paint.shader = LinearGradient(m.x - n.x * dimWidth, m.y - n.y * dimWidth,
         m.x + n.x * shadowWidth, m.y + n.y * shadowWidth,
-        intArrayOf(a(dim * .4f), a(maxOf(cast, dim)), 0x00000000),
-        floatArrayOf(0f, dimWidth / (dimWidth + shadowWidth), 1f), Shader.TileMode.CLAMP)
+        drawing.shadowColors, drawing.shadowStops, Shader.TileMode.CLAMP)
     canvas.save(); canvas.clipPath(geometry.cut); canvas.drawRect(bounds, paint); canvas.restore()
     paint.shader = null
     canvas.save(); canvas.clipOutPath(geometry.cut)
@@ -159,7 +187,7 @@ internal fun drawPageCurl(canvas: AndroidCanvas, current: Bitmap, target: Bitmap
     canvas.restore()
     paint.shader = LinearGradient(m.x - n.x * shadowWidth * 2, m.y - n.y * shadowWidth * 2,
         m.x + n.x * shadowWidth / 2, m.y + n.y * shadowWidth / 2,
-        intArrayOf(0x18000000, 0x38ffffff, 0x68000000), floatArrayOf(0f, .55f, 1f), Shader.TileMode.CLAMP)
+        drawing.backColors, drawing.backStops, Shader.TileMode.CLAMP)
     canvas.drawRect(bounds, paint); canvas.restore()
     paint.shader = null
     paint.color = if (style != null) a(style.highlightAlpha) or 0xFFFFFF else 0x33000000

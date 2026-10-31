@@ -46,7 +46,10 @@ class ComicReaderTest {
         lateinit var vm: ReaderViewModel
         compose.runOnUiThread { vm = ReaderViewModel(app, row.id) }
         compose.setContent { LyricTheme { ReaderScreen(vm) {} } }
-        runCatching { compose.waitUntil(15_000) { vm.state.value.book != null || vm.state.value.error != null } }
+        runCatching { compose.waitUntil(15_000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            vm.state.value.book != null || vm.state.value.error != null
+        } }
         assertNotNull(vm.state.value.error.toString(), vm.state.value.book)
         compose.onNodeWithTag("comic-reader").assertExists()
         // First-time hint for the default right-to-left direction.

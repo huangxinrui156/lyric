@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import com.lyric.core.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.*
 
 private val Context.dataStore by preferencesDataStore("lyric_settings")
@@ -49,6 +50,7 @@ class SettingsStore(
                     .getOrDefault(ReaderSettings())
             }
             .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
 
     suspend fun update(
         scope: SettingsScope,
@@ -80,7 +82,7 @@ class SettingsStore(
         prefs[stringPreferencesKey("global")]?.let {
             runCatching { json.decodeFromString<ReaderSettings>(it) }.getOrNull()
         } ?: ReaderSettings()
-    }.distinctUntilChanged()
+    }.distinctUntilChanged().flowOn(Dispatchers.Default)
 
     val ownBookCount = store.data.map { prefs ->
         prefs.asMap().count { (key, value) -> key.name.startsWith("book_") && value.toString() != "{}" }

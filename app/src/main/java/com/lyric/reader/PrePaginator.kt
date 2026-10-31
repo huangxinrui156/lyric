@@ -36,7 +36,9 @@ class PrePaginator(
     }
 
     fun prioritize(at: Locator) {
-        active = Window(at.chapterIndex, at.charOffset / Typesetter.WINDOW * Typesetter.WINDOW)
+        val next = Window(at.chapterIndex, at.charOffset / Typesetter.WINDOW * Typesetter.WINDOW)
+        if (active == next && background?.isActive == true) return
+        active = next
         protected = buildSet {
             val c = at.chapterIndex
             val w = at.charOffset / Typesetter.WINDOW * Typesetter.WINDOW
@@ -47,25 +49,32 @@ class PrePaginator(
             if (c < book.chapters.lastIndex) add(Window(c + 1, 0))
         }
         background?.cancel()
+        val nearby = protected.toList()
         background = scope.launch(Dispatchers.Default) {
+            // Finish the adjacent windows before doing whole-book page counts.
+            for (window in nearby) {
+                ensureActive()
+                get(window.chapter, window.offset)
+                withContext(Dispatchers.Main) { changed(window.chapter) }
+            }
             for (window in order(book.chapters.map { it.text.length }, at)) {
                 ensureActive()
                 val near = window in protected
                 val known = lock.withLock { boundaries.containsKey(window) }
                 if (!known || near) get(window.chapter, window.offset)
-                withContext(Dispatchers.Main) { if (!known) changed(window.chapter) }
+                if (!known) withContext(Dispatchers.Main) { changed(window.chapter) }
                 yield()
             }
         }
     }
 
-    suspend fun pagePosition(chapter: Int, sourceStart: Int, page: Int): Pair<Int, Int>? = lock.withLock {
+    suspend fun pagePosition(chapter: Int, sourceStart: Int, page: Int): Pair<Int, Int>? = withContext(Dispatchers.Default) { lock.withLock {
         val keys = windows(book.chapters[chapter].text.length).map { Window(chapter, it) }
         if (keys.all { boundaries.containsKey(it) }) {
             val number = keys.filter { it.offset < sourceStart }.sumOf { boundaries.getValue(it).size } + page + 1
             number to keys.sumOf { boundaries.getValue(it).size }
         } else null
-    }
+    } }
     fun close() { background?.cancel() }
 
     companion object {
@@ -76,7 +85,7 @@ class PrePaginator(
             return chapters.flatMap { c ->
                 val offsets = windows(lengths[c])
                 val first = if (c == at.chapterIndex) at.charOffset / Typesetter.WINDOW * Typesetter.WINDOW else 0
-                (listOf(first) + offsets).distinct().filter { it in offsets }.map { Window(c, it) }
+                (listOf(first) + offsets).distinct().filter { it >= 0 && it < lengths[c].coerceAtLeast(1) }.map { Window(c, it) }
             }
         }
     }

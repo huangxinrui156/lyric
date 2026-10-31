@@ -18,8 +18,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.channels.BufferOverflow
 
+@androidx.compose.runtime.Immutable
 data class DeskSummary(val minutes: Int = 0, val pages: Int = 0, val notes: Int = 0)
 
+@androidx.compose.runtime.Immutable
 data class FocusUi(
     val running: Boolean = false,
     val paused: Boolean = false,
@@ -179,7 +181,7 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
                 val elapsed = ((System.currentTimeMillis() - wallStart - pausedMs) / 1000).coerceAtLeast(0)
                 val remain = (f.plannedMin * 60L - elapsed).coerceAtLeast(0)
                 focus.value = f.copy(elapsedSec = elapsed, remainSec = remain)
-                if (elapsed % 15L == 0L) persistActive()
+                if (elapsed != f.elapsedSec && elapsed % 15L == 0L) persistActive()
                 if (remain <= 0L) {
                     finishFocus(completed = true)
                     break

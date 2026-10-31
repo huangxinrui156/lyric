@@ -46,6 +46,7 @@ object Typesetter {
         var to = minOf((at.coerceAtLeast(0) / WINDOW + 1) * WINDOW, text.length)
         if (to < text.length && text[to].isLowSurrogate()) to++
         val span = SpannableString(text.substring(from, to))
+        val styles = chapter?.styles.orEmpty().filter { it.end > from && it.start < to }
         val size = settings.fontSize * scaledDensity
         span.setSpan(
             ExactLineHeight((size * settings.lineHeight).roundToInt()),
@@ -56,10 +57,10 @@ object Typesetter {
         var start = 0
         while (start < span.length) {
             val end = span.indexOf('\n', start).let { if (it < 0) span.length else it + 1 }
-            val authoredIndent = if (settings.useBookStyle) chapter?.styles
-                ?.filter { it.bookStyle && it.indentEm != null && it.start <= from + start && it.end > from + start }
-                ?.minByOrNull { it.end - it.start }?.indentEm else null
-            val structural = span[start] == '\uFFFC' || chapter?.styles?.any {
+            val authoredIndent = if (settings.useBookStyle) styles.asSequence()
+                .filter { it.bookStyle && it.indentEm != null && it.start <= from + start && it.end > from + start }
+                .minByOrNull { it.end - it.start }?.indentEm else null
+            val structural = span[start] == '\uFFFC' || styles.any {
                 !it.bookStyle && (it.sizeEm != null || it.align == "center") && it.start <= from + start && it.end > from + start
             } == true
             val indentEm = if (span[start] == '\uFFFC') 0f else authoredIndent ?: if (settings.indent && !structural) 2f else 0f
@@ -79,14 +80,14 @@ object Typesetter {
                 )
             start = end
         }
-        chapter?.styles?.filter { it.end > from && it.start < to && (!it.bookStyle || settings.useBookStyle) }
-            ?.sortedByDescending { it.end - it.start }?.forEach { style ->
+        styles.filter { !it.bookStyle || settings.useBookStyle }
+            .sortedByDescending { it.end - it.start }.forEach { style ->
                 val a = (style.start - from).coerceAtLeast(0)
                 val b = (style.end - from).coerceAtMost(span.length)
                 fun apply(value: Any, end: Int = b) { if (end > a) span.setSpan(value, a, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) }
                 if (style.bold || style.italic) apply(StyleSpan(
                     (if (style.bold) Typeface.BOLD else 0) or (if (style.italic) Typeface.ITALIC else 0)))
-                val overriddenSize = !style.bookStyle && settings.useBookStyle && chapter.styles.any {
+                val overriddenSize = !style.bookStyle && settings.useBookStyle && styles.any {
                     it.bookStyle && it.start == style.start && it.end == style.end && it.sizeEm != null
                 }
                 if (!overriddenSize) style.sizeEm?.let { apply(RelativeSizeSpan(it)) }

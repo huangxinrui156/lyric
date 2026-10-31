@@ -4,6 +4,9 @@ import com.lyric.core.Book
 import com.lyric.core.ContentType
 import com.lyric.core.Locator
 import com.lyric.core.excerpt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 
 /** v0.5: pre-0.5 「摘录」 were stored as bookmarks holding the selected text. */
 object Annotations {
@@ -22,9 +25,9 @@ object Annotations {
     )
 
     /** Moves this book's old excerpts into highlights; returns how many moved. */
-    suspend fun migrateExcerpts(dao: LibraryDao, bookId: String, book: Book): Int {
-        val olds = dao.allBookmarks().filter { it.bookId == bookId && isExcerpt(book, it) }
+    suspend fun migrateExcerpts(dao: LibraryDao, bookId: String, book: Book): Int = withContext(Dispatchers.IO) {
+        val olds = dao.bookmarks(bookId).first().filter { isExcerpt(book, it) }
         olds.forEach { dao.addHighlight(toHighlight(book, it)); dao.deleteBookmark(it.id) }
-        return olds.size
+        olds.size
     }
 }

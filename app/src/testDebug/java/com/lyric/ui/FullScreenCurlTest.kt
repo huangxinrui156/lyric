@@ -51,7 +51,16 @@ class FullScreenCurlTest {
         lateinit var vm: ReaderViewModel
         compose.runOnUiThread { vm = ReaderViewModel(app, row.id) }
         compose.setContent { LyricTheme { ReaderScreen(vm) {} } }
-        compose.waitUntil(15_000) { vm.state.value.book != null && vm.settings.value.pageMode == PageMode.CURL }
+        try {
+            compose.waitUntil(15_000) {
+                // waitUntil advances Compose's clock, but IO resumes viewModelScope on
+                // Android's paused looper. Drain it even when composition is already idle.
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+                vm.state.value.book != null && vm.settings.value.pageMode == PageMode.CURL
+            }
+        } catch (e: Throwable) {
+            throw AssertionError("book=${vm.state.value.book?.title}, error=${vm.state.value.error}, mode=${vm.settings.value.pageMode}", e)
+        }
         compose.onNodeWithText("第1章 旧章节", substring = true).assertExists()
         compose.waitForIdle()
         fun reader(view: View): ReaderCanvas? = if (view is ReaderCanvas) view else
