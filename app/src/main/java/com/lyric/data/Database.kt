@@ -169,6 +169,7 @@ interface LibraryDao {
     @Insert suspend fun addHighlight(row: HighlightRow): Long
     @Query("UPDATE highlights SET note = :note WHERE id = :id") suspend fun highlightNote(id: Long, note: String)
     @Query("DELETE FROM highlights WHERE id = :id") suspend fun deleteHighlight(id: Long)
+    @Query("UPDATE highlights SET start = :start, `end` = :end, text = :text WHERE id = :id") suspend fun highlightRange(id: Long, start: Int, end: Int, text: String)
     @Query("UPDATE highlights SET color = :color WHERE id = :id") suspend fun highlightColor(id: Long, color: Int)
 }
 

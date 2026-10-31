@@ -85,6 +85,11 @@ class ReaderCanvas(context: Context) : View(context) {
     internal val endHandlePoint: PointF get() = endHandle
     private var magnifier: android.widget.Magnifier? = null
     var onHighlightTap: (com.lyric.data.HighlightRow) -> Unit = {}
+    /** Active (tapped) highlight: handles adjust its range; menu = colours | 笔记 | 删除. */
+    internal var editing: com.lyric.data.HighlightRow? = null
+        private set
+    /** (id, action, a, b): "color"(index) · "note" · "delete" · "range"(start, end chapter-relative). */
+    var onHighlightEdit: (Long, String, Int, Int) -> Unit = { _, _, _, _ -> }
     private val longPress = Runnable { beginSelection(downX, downY) }
     private var edgeStep = 0
     private val edgeTurn = object : Runnable {
@@ -349,18 +354,20 @@ class ReaderCanvas(context: Context) : View(context) {
             }
         }
         if (highlights.isNotEmpty()) {
+            val night = com.lyric.core.ThemePalette.isNight(prefs.theme, prefs.customBg)
+            val b = book
             for (h in highlights) {
                 if (h.chapterIndex != chapter) continue
-                selectionPaint.color = com.lyric.core.ThemePalette.highlight(h.color, palette().fill)
-                val a = (h.start - set.sourceStart).coerceIn(0, set.layout.text.length)
-                val z = (h.end - set.sourceStart).coerceIn(0, set.layout.text.length)
-                if (a >= z) continue
-                selectionPath.reset()
-                set.layout.getSelectionPath(a, z, selectionPath)
-                canvas.drawPath(selectionPath, selectionPaint)
+                val active = editing?.id == h.id
+                // While editing, the live (dragged) range replaces the stored one.
+                val (hs, he) = if (active && b != null && selection != null) {
+                    val base = TextSelection.absolute(b, chapter, 0)
+                    (selection!!.start - base) to (selection!!.end - base)
+                } else h.start to h.end
+                drawMarker(canvas, set, hs - set.sourceStart, he - set.sourceStart, h, night, active)
             }
         }
-        selection?.let { selected ->
+        if (editing == null) selection?.let { selected ->
             val b = book ?: return@let
             val base = TextSelection.absolute(b, chapter, set.sourceStart)
             val a = (selected.start - base).coerceIn(0, set.layout.text.length)
@@ -564,6 +571,16 @@ class ReaderCanvas(context: Context) : View(context) {
         return offset.coerceIn(0, text.length)
     }
 
+    internal fun beginEdit(h: com.lyric.data.HighlightRow) {
+        val b = book ?: return
+        val base = TextSelection.absolute(b, h.chapterIndex, 0)
+        editing = h
+        selection = TextSelection(base + h.start, base + h.end)
+        performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+        showSelectionMenu()
+        invalidate()
+    }
+
     private fun highlightAt(x: Float, y: Float): com.lyric.data.HighlightRow? {
         if (highlights.isEmpty()) return null
         val offset = offsetAt(x, y) ?: return null
@@ -646,6 +663,35 @@ class ReaderCanvas(context: Context) : View(context) {
                 cornerRadius = 10 * d; setColor(colors.menuBg)
             }
             elevation = 14 * d
+            val edit = editing
+            if (edit != null) {
+                val night = com.lyric.core.ThemePalette.isNight(prefs.theme, prefs.customBg)
+                for (c in 0 until 4) addView(View(context).apply {
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.OVAL
+                        setColor(com.lyric.core.ThemePalette.markerLine(c))
+                        if (c == edit.color) setStroke((2 * d).toInt(), colors.menuInk)
+                    }
+                    contentDescription = "颜色 ${c + 1}"
+                    layoutParams = android.widget.LinearLayout.LayoutParams((20 * d).toInt(), (20 * d).toInt()).apply {
+                        gravity = android.view.Gravity.CENTER_VERTICAL; marginEnd = (12 * d).toInt()
+                    }
+                    setOnClickListener {
+                        onHighlightEdit(edit.id, "color", c, 0)
+                        editing = edit.copy(color = c); showSelectionMenu(); invalidate()
+                    }
+                })
+                addView(android.widget.TextView(context).apply { text = "|"; setTextColor(colors.menuInk); alpha = .4f; gravity = android.view.Gravity.CENTER; minHeight = (32 * d).toInt() })
+                listOf("note" to "笔记", "delete" to "删除").forEach { (action, label) ->
+                    addView(android.widget.TextView(context).apply {
+                        text = label; textSize = 13f; setTextColor(colors.menuInk)
+                        minHeight = (32 * d).toInt(); gravity = android.view.Gravity.CENTER
+                        setPadding((10 * d).toInt(), 0, if (action == "delete") 0 else (2 * d).toInt(), 0)
+                        contentDescription = label
+                        setOnClickListener { onHighlightEdit(edit.id, action, 0, 0); clearSelection() }
+                    })
+                }
+            } else
             listOf(1 to "复制", 2 to "划线", 4 to "笔记", 3 to "分享").forEachIndexed { i, (id, label) ->
                 addView(android.widget.TextView(context).apply {
                     text = label; textSize = 13f; setTextColor(colors.menuInk)
@@ -698,6 +744,7 @@ class ReaderCanvas(context: Context) : View(context) {
     private fun clearSelection() {
         hideSelectionMenu()
         selection = null
+        editing = null
         pressWord = null
         dismissMagnifier()
         draggingHandle = 0
@@ -743,6 +790,65 @@ class ReaderCanvas(context: Context) : View(context) {
 
     private fun dismissMagnifier() {
         if (android.os.Build.VERSION.SDK_INT >= 28) runCatching { magnifier?.dismiss() }
+    }
+
+    private val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val markerPath = Path()
+    private val markerRect = android.graphics.RectF()
+
+    /**
+     * 美术设计 0.5.3 highlighter: per-line band, 38% of line height, bottom at baseline+0.12em,
+     * rounded ends (r = band/2) reaching 1.5dp past the text, top edge wobbling ±0.6dp every 8–12dp
+     * (seeded by highlight id so it is stable across relayout), straight bottom; drawn under text.
+     */
+    private fun drawMarker(canvas: Canvas, set: TypesetChapter, from: Int, to: Int, h: com.lyric.data.HighlightRow, night: Boolean, active: Boolean) {
+        val layout = set.layout
+        val a = from.coerceIn(0, layout.text.length)
+        val z = to.coerceIn(0, layout.text.length)
+        if (a >= z) return
+        val d = density
+        val em = layout.paint.textSize
+        val band = layout.paint.fontSpacing * .38f
+        val r = band / 2
+        markerPaint.style = Paint.Style.FILL
+        markerPaint.color = com.lyric.core.ThemePalette.markerFill(h.color, night, active)
+        val first = layout.getLineForOffset(a)
+        val last = layout.getLineForOffset((z - 1).coerceAtLeast(a))
+        var endX = 0f; var endTop = 0f
+        for (line in first..last) {
+            val ls = maxOf(a, layout.getLineStart(line))
+            var le = minOf(z, layout.getLineEnd(line))
+            while (le > ls && layout.text[le - 1].let { it == '\n' || it == ' ' }) le--
+            if (le <= ls) continue
+            val x0 = minOf(layout.getPrimaryHorizontal(ls), if (le == layout.getLineEnd(line)) layout.getLineRight(line) else layout.getPrimaryHorizontal(le))
+            val x1 = maxOf(layout.getPrimaryHorizontal(ls), if (z >= layout.getLineEnd(line)) layout.getLineRight(line) else layout.getPrimaryHorizontal(le))
+            val left = x0 - 1.5f * d; val right = x1 + 1.5f * d
+            val bottom = layout.getLineBaseline(line) + .12f * em
+            val top = bottom - band
+            val rr = minOf(r, (right - left) / 2)
+            val rnd = java.util.Random(h.id * 1_000_003L + line)
+            markerPath.reset()
+            markerPath.moveTo(left + rr, top)
+            var x = left + rr
+            while (true) {
+                val nx = x + (8 + rnd.nextFloat() * 4) * d
+                if (nx >= right - rr) break
+                val mid = (x + nx) / 2
+                markerPath.quadTo(mid, top + (rnd.nextFloat() * 2 - 1) * .6f * d, nx, top + (rnd.nextFloat() * 2 - 1) * .6f * d)
+                x = nx
+            }
+            markerPath.lineTo(right - rr, top)
+            markerRect.set(right - 2 * rr, top, right, bottom); markerPath.arcTo(markerRect, -90f, 180f)
+            markerPath.lineTo(left + rr, bottom)
+            markerRect.set(left, top, left + 2 * rr, bottom); markerPath.arcTo(markerRect, 90f, 180f)
+            markerPath.close()
+            canvas.drawPath(markerPath, markerPaint)
+            endX = right; endTop = top
+        }
+        if (h.note.isNotBlank() && endX > 0f && z == to.coerceIn(0, layout.text.length)) {
+            markerPaint.color = com.lyric.core.ThemePalette.markerLine(h.color)
+            canvas.drawCircle(endX + 2 * d, endTop - 1 * d, 2 * d, markerPaint)
+        }
     }
 
     private fun drawHandles(canvas: Canvas, top: Float) {
@@ -845,12 +951,22 @@ class ReaderCanvas(context: Context) : View(context) {
                     draggingHandle = 0
                     pressWord = null
                     dismissMagnifier()
+                    val h = editing; val b = book; val sel = selection
+                    if (h != null && b != null && sel != null) {
+                        val base = TextSelection.absolute(b, h.chapterIndex, 0)
+                        val len = b.chapters[h.chapterIndex].text.length
+                        val ns = (sel.start - base).coerceIn(0, len); val ne = (sel.end - base).coerceIn(0, len)
+                        if (ne > ns && (ns != h.start || ne != h.end)) {
+                            editing = h.copy(start = ns, end = ne, text = b.chapters[h.chapterIndex].text.substring(ns, ne))
+                            onHighlightEdit(h.id, "range", ns, ne)
+                        }
+                    }
                     if (selection != null) showSelectionMenu()
                     invalidate()
                     return true
                 }
                 if (!moved && event.actionMasked == MotionEvent.ACTION_UP && selection == null) {
-                    highlightAt(event.x, event.y)?.let { onHighlightTap(it); return true }
+                    highlightAt(event.x, event.y)?.let { beginEdit(it); return true }
                 }
                 if (!moved && event.actionMasked == MotionEvent.ACTION_UP) {
                     val image = imageAt(event.x, event.y)

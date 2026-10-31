@@ -26,6 +26,28 @@ object ThemePalette {
         ReaderTheme.CUSTOM -> SelectionColors(argb(accent, .24f), accent.toInt(), customInk.toInt(), customBg.toInt())
     }
 
+    /** 美术设计 0.5.3 highlighter: (fill rgb, day alpha, night rgb, night alpha, line rgb) per colour index. */
+    private class Marker(val day: Long, val dayA: Float, val night: Long, val nightA: Float, val line: Long)
+    private val marker = listOf(
+        Marker(0xE08A6E, .38f, 0xE08A6E, .30f, 0xB5563A),
+        Marker(0x9AAA7E, .42f, 0xA3B38A, .28f, 0x5E6B4E),
+        Marker(0xE3B860, .40f, 0xD9B36A, .26f, 0xA87A2A),
+        Marker(0x8FA3B8, .40f, 0x93A8BF, .28f, 0x4E6680),
+    )
+    fun isNight(theme: ReaderTheme, customBg: Long = theme.bg) = when (theme) {
+        ReaderTheme.NIGHT, ReaderTheme.GREEN, ReaderTheme.BLACK -> true
+        ReaderTheme.CUSTOM -> dark(customBg)
+        else -> false
+    }
+    /** Marker fill; an active (tapped) highlight gets alpha x1.6 capped at 0.65. */
+    fun markerFill(color: Int, night: Boolean, active: Boolean = false): Int {
+        val m = marker[color.coerceIn(0, marker.lastIndex)]
+        var a = if (night) m.nightA else m.dayA
+        if (active) a = minOf(a * 1.6f, .65f)
+        return argb(if (night) m.night else m.day, a)
+    }
+    fun markerLine(color: Int): Int = (0xFF000000L or marker[color.coerceIn(0, marker.lastIndex)].line).toInt()
+
     /** Highlight colours: 0 = theme vermilion fill, 1 moss, 2 ochre, 3 slate blue (all ~26%). */
     val highlightColors = listOf(0xB5563AL, 0x5E6B4EL, 0xC08A2EL, 0x4F6D8AL)
     fun highlight(color: Int, themeFill: Int): Int =

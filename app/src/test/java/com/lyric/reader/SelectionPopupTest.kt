@@ -149,4 +149,34 @@ class SelectionPopupTest {
         assertNotNull(view.selectionPopup)
     }
 
+
+    @Test fun tappingHighlightEntersEditWithColourNoteDelete() {
+        val (_, view) = open(ReaderTheme.PAPER)
+        val h = com.lyric.data.HighlightRow(id = 9, bookId = "b", chapterIndex = 0, start = 0, end = 400, text = "x", note = "n")
+        view.highlights = listOf(h)
+        view.draw(android.graphics.Canvas(android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)))
+        val events = mutableListOf<String>()
+        view.onHighlightEdit = { id, action, a, _ -> events += "$id:$action:$a" }
+        val t = SystemClock.uptimeMillis()
+        view.dispatchTouchEvent(MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, view.width / 2f, 60f, 0))
+        view.dispatchTouchEvent(MotionEvent.obtain(t, t + 40, MotionEvent.ACTION_UP, view.width / 2f, 60f, 0))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(9L, view.editing?.id)
+        val menu = view.selectionMenuView!!
+        assertEquals(7, menu.childCount) // 4 colour dots, divider, 笔记, 删除
+        menu.getChildAt(2).performClick()
+        assertEquals("9:color:2", events.last())
+        (menu.parent as? android.view.View)?.let { } // menu rebuilt after colour change
+        val del = view.selectionMenuView!!.getChildAt(6); del.performClick()
+        assertEquals("9:delete:0", events.last())
+        assertNull(view.editing)
+    }
+
+    @Test fun markerAlphaFollowsSpec() {
+        assertEquals((.38f * 255).toInt(), ThemePalette.markerFill(0, false) ushr 24)
+        assertEquals((.30f * 255).toInt(), ThemePalette.markerFill(0, true) ushr 24)
+        assertEquals((.65f * 255).toInt(), ThemePalette.markerFill(1, false, active = true) ushr 24)
+        assertEquals(0xFF4E6680.toInt(), ThemePalette.markerLine(3))
+    }
+
 }

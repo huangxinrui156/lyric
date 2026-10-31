@@ -24,6 +24,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -334,7 +336,15 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                                     view.controlsOpen = controls
                                     view.onExcerpt = { at, text -> vm.bookmark(at, text) }
                                     view.highlights = highlightRows
-                                    view.onHighlightTap = { tappedHighlight = it }
+                                    view.onHighlightEdit = { hid, action, x, y ->
+                                        val row = highlightRows.firstOrNull { it.id == hid }
+                                        when (action) {
+                                            "color" -> vm.highlightColor(hid, x)
+                                            "range" -> row?.let { vm.highlightRange(hid, it.chapterIndex, x, y) }
+                                            "note" -> noteEdit = Triple(true, hid, row?.note.orEmpty())
+                                            "delete" -> vm.deleteHighlight(hid)
+                                        }
+                                    }
                                     view.onHighlight = { ch, start, end, text, withNote ->
                                         vm.addHighlight(ch, start, end, text) { if (withNote) noteEdit = Triple(true, it, "") }
                                     }
@@ -451,6 +461,16 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                         }
                     }
                 }
+                // 0.5.3: any tap outside the top/bottom panels closes the menu; the tap is consumed
+                // (no page turn, no selection) because this layer sits above the page and below the panels.
+                if (menu) Box(Modifier.fillMaxSize().semantics { contentDescription = "关闭阅读菜单" }
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false).consume()
+                            do { val e = awaitPointerEvent(); e.changes.forEach { it.consume() } } while (e.changes.any { it.pressed })
+                            menu = false
+                        }
+                    })
                 AnimatedVisibility(visible = menu, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()) {
                     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
                         Row(
