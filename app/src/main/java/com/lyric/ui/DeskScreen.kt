@@ -61,6 +61,7 @@ fun DeskScreen(
     openBook: (String, Locator) -> Unit,
     openFocus: () -> Unit,
     openNotes: () -> Unit,
+    continueReading: (String) -> Unit = {},
 ) {
     // 0.8.1: timer and full notes are their own nav routes, so system Back always lands here.
     // The 250ms timer tick is NOT collected at this level (only in FocusRunningRow).
@@ -216,7 +217,7 @@ fun DeskScreen(
                     )
                     Text("更换 ›", fontSize = 13.sp, color = Stone)
                 }
-                FocusRunningRow(vm, openFocus)
+                FocusRunningRow(vm, openFocus, continueReading)
                 if (!active) Box(
                     Modifier
                         .fillMaxWidth()
@@ -578,26 +579,46 @@ val DeskNavIcon = Icons.AutoMirrored.Outlined.MenuBook
 
 /** Only this small row observes the ticking timer, so the desk list doesn't recompose 4×/s. */
 @Composable
-private fun FocusRunningRow(vm: DeskViewModel, openFocus: () -> Unit) {
+private fun FocusRunningRow(vm: DeskViewModel, openFocus: () -> Unit, continueReading: (String) -> Unit) {
     val focus by vm.focus.collectAsStateWithLifecycle()
     if (!focus.running) return
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
             .padding(top = 12.dp)
             .background(Ink, RoundedCornerShape(18.dp))
-            .clickable(onClick = openFocus)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Text(
-            "${if (focus.paused) "已暂停" else "专注中"} ${DeskViewModel.formatRemain(focus.remainSec)}",
-            color = Paper, fontSize = 13.sp, modifier = Modifier.weight(1f),
+            "${if (focus.paused) "已暂停" else "专注中"} ${DeskViewModel.formatRemain(focus.remainSec)} · ${focus.bookTitle}",
+            color = Paper, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
-        Text("回到计时 ›", color = FocusBtnFill, fontSize = 12.sp)
-        Text("重置", color = FocusRing, fontSize = 12.sp,
-            modifier = Modifier.padding(start = 14.dp).clickable { vm.resetFocus() })
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.height(34.dp).background(FocusBtnFill, RoundedCornerShape(17.dp))
+                    .clickable { continueReading(focus.bookId) }.padding(horizontal = 18.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text("继续阅读", color = FocusBg, fontSize = 13.sp) }
+            Spacer(Modifier.weight(1f))
+            Text("回到计时", color = FocusBtnFill, fontSize = 12.sp,
+                modifier = Modifier.clickable(onClick = openFocus).padding(8.dp))
+            Text("重置", color = FocusRing, fontSize = 12.sp,
+                modifier = Modifier.clickable { vm.resetFocus() }.padding(8.dp))
+        }
     }
+}
+
+/** Reader drawer header line: 「专注中 · 剩余 42:48」. Only this composable ticks. */
+@Composable
+fun FocusRemainingLabel(vm: DeskViewModel, bookId: String) {
+    val focus by vm.focus.collectAsStateWithLifecycle()
+    if (!focus.running || focus.bookId != bookId) return
+    Text(
+        "${if (focus.paused) "已暂停" else "专注中"} · 剩余 ${DeskViewModel.formatRemain(focus.remainSec)}",
+        color = if (focus.paused) Stone else Vermilion,
+        fontSize = 12.sp,
+        modifier = Modifier.padding(top = 6.dp),
+    )
 }
 
 /** Full-screen route wrapper: collects focus here, closes itself when the session ends. */

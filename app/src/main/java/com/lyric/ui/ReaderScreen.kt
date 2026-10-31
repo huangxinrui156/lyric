@@ -68,7 +68,7 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 
 @Composable
-fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
+fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, back: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     state.book?.takeIf { it.contentType == ContentType.COMIC }?.let { comic ->
         ComicReaderScreen(vm, comic, back)
@@ -280,6 +280,7 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                             fontSize = 12.sp,
                             modifier = Modifier.padding(top = 8.dp),
                         )
+                        drawerExtra()
                     }
                     TabRow(selectedTabIndex = drawerTab, containerColor = Color.Transparent) {
                         listOf("目录", "书签", "划线").forEachIndexed { i, s ->

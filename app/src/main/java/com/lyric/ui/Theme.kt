@@ -84,14 +84,22 @@ fun LyricTheme(prefs: ReaderSettings = ReaderSettings(), content: @Composable ()
     )
 }
 
+/** 0.8.3: grain is rasterised once per size into a bitmap, so each frame is a single drawImage
+ * instead of up to 18k point draws (was the main cost while sheets/lists animate). */
 fun Modifier.paperGrain() = drawWithCache {
+    val w = size.width.toInt().coerceIn(1, 4096)
+    val h = size.height.toInt().coerceIn(1, 4096)
+    val bitmap = androidx.compose.ui.graphics.ImageBitmap(w, h)
     val random = Random(17)
-    val count = (size.width * size.height / 140f).toInt().coerceAtMost(18000)
-    val points =
-        List(count) { Offset(random.nextFloat() * size.width, random.nextFloat() * size.height) }
+    val count = (w * h / 140f).toInt().coerceAtMost(18000)
+    val points = List(count) { Offset(random.nextFloat() * w, random.nextFloat() * h) }
+    androidx.compose.ui.graphics.Canvas(bitmap).drawPoints(
+        PointMode.Points, points,
+        androidx.compose.ui.graphics.Paint().apply { color = Color.Black.copy(alpha = .045f); strokeWidth = .7f },
+    )
     onDrawWithContent {
         drawContent()
-        drawPoints(points, PointMode.Points, Color.Black.copy(alpha = .045f), strokeWidth = .7f)
+        drawImage(bitmap)
     }
 }
 

@@ -159,6 +159,9 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
         tick()
     }
 
+    fun pauseFocusFor(bookId: String) { if (focus.value.running && focus.value.bookId == bookId) pauseFocus() }
+    fun resumeFocusFor(bookId: String) { if (focus.value.running && focus.value.bookId == bookId) resumeFocus() }
+
     /** 重置: drop the session; elapsed ≥1 min still counts as reading time. */
     fun resetFocus() = finishFocus(completed = false)
 

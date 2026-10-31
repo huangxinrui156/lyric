@@ -36,6 +36,8 @@ class MainActivity : ReaderActivity() {
                                     openBook = { id, loc -> nav.navigate("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}") },
                                     openFocus = { nav.navigate("focus") { launchSingleTop = true } },
                                     openNotes = { nav.navigate("notes") { launchSingleTop = true } },
+                                    // Last saved position (chapter -1) and the timer resumes in the reader route.
+                                    continueReading = { id -> nav.navigate("reader/$id/-1/0/0") },
                                 )
                             },
                         ) { nav.navigate("reader/$it/-1/0/0") }
@@ -71,7 +73,17 @@ class MainActivity : ReaderActivity() {
                                 entry.arguments?.getString("page")?.toIntOrNull() ?: 0),
                                 entry.arguments?.getLong("bookmark") ?: 0L)
                         }
-                        ReaderScreen(vm) { vm.pause(); nav.popBackStack() }
+                        // 0.8.3: a focus session only counts while its book is visibly open in the reader.
+                        val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                        DisposableEffect(owner, id) {
+                            val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+                                if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) desk.resumeFocusFor(id)
+                                if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) desk.pauseFocusFor(id)
+                            }
+                            owner.lifecycle.addObserver(obs)
+                            onDispose { owner.lifecycle.removeObserver(obs); desk.pauseFocusFor(id) }
+                        }
+                        ReaderScreen(vm, drawerExtra = { FocusRemainingLabel(desk, id) }) { vm.pause(); nav.popBackStack() }
                     }
                 }
             }

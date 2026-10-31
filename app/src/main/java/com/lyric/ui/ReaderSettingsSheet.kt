@@ -82,7 +82,8 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 22.dp)
                 .padding(bottom = 24.dp)
-                .paperGrain()
+                // 0.8.3: no paper grain here — it was redrawn over the whole scroll content
+                // on every frame of the sheet's enter animation.
         ) {
             if (advanced) {
                 Row(
