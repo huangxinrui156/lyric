@@ -150,12 +150,22 @@ fun DeskScreen(
                                 .background(dBar),
                         )
                         Column(Modifier.padding(start = 12.dp)) {
+                            // 0.9: long notes no longer push the desk down — 4 lines, tap 展开/收起.
+                            var expanded by rememberSaveable(quote!!.id) { mutableStateOf(false) }
+                            val text = remember(quote!!.id, quote!!.text) { compactPreview(quote!!.text) }
                             Text(
-                                quote!!.text,
+                                text,
                                 fontFamily = Serif,
                                 fontSize = 18.sp,
                                 lineHeight = (18 * 1.75).sp,
                                 color = dText,
+                                maxLines = if (expanded) Int.MAX_VALUE else 4,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (text.length > 60) Text(
+                                if (expanded) "收起" else "展开",
+                                fontSize = 12.sp, color = dSub,
+                                modifier = Modifier.padding(top = 4.dp).clickable { expanded = !expanded },
                             )
                             Text(
                                 "— 《${quote!!.bookTitle.ifBlank { "未名" }}》 ${quote!!.chapterTitle}",
@@ -282,7 +292,7 @@ fun DeskScreen(
                                     else Modifier,
                                 ),
                         ) {
-                            Text(h.text, fontFamily = Serif, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(remember(h.id, h.text) { compactPreview(h.text) }, fontFamily = Serif, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(
                                 "${h.bookTitle.ifBlank { "未名" }} · ${DeskViewModel.relativeDay(h.createdAt)}",
                                 fontSize = 11.sp,
@@ -661,3 +671,7 @@ private val dSegOffText @Composable get() = if (deskDark()) Color(0xFFA8A296) el
 private val dPrimary @Composable get() = if (deskDark()) Color(0xFFD0CABE) else Ink
 private val dPrimaryText @Composable get() = if (deskDark()) Color(0xFF16171A) else Paper
 private val dDivider @Composable get() = if (deskDark()) Color(0xFF2A2B2F) else Color(0xFFDDD5C6)
+
+/** Collapse blank paragraphs / line breaks into one spaced line for previews. */
+internal fun compactPreview(s: String): String =
+    s.trim().replace(Regex("\\s*\\n[\\s\\n]*"), " ").replace(Regex("[ \\t\u3000]{2,}"), " ")

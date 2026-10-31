@@ -133,7 +133,7 @@ private fun AboutContent() {
     val context = LocalContext.current
     var licenses by rememberSaveable { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
-    Text("Lyric · 抒情诗", fontFamily = Serif, fontSize = 28.sp)
+    Text("lyric", fontFamily = Serif, fontSize = 28.sp)
     var taps by remember { mutableIntStateOf(0) }
     var selfTest by remember { mutableStateOf(false) }
     Text("版本 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -63,7 +63,7 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
     private val quoteId = MutableStateFlow<Long?>(null)
     val quote: StateFlow<HighlightRow?> = combine(highlights, quoteId) { all, id ->
         if (all.isEmpty()) null
-        else all.firstOrNull { it.id == id } ?: all[Random.nextInt(all.size)].also { quoteId.value = it.id }
+        else all.firstOrNull { it.id == id } ?: preferShort(all).let { it[Random.nextInt(it.size)] }.also { quoteId.value = it.id }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val focusBookId = MutableStateFlow<String?>(null)
@@ -99,7 +99,7 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
         val all = highlights.value
         if (all.isEmpty()) { quoteId.value = null; return }
         val current = quoteId.value
-        val next = all.filter { it.id != current }.ifEmpty { all }
+        val next = preferShort(all).filter { it.id != current }.ifEmpty { all }
         quoteId.value = next[Random.nextInt(next.size)].id
     }
 
@@ -279,6 +279,9 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
     }
 
     fun openLocator(h: HighlightRow) = Locator(h.chapterIndex, h.start, 0)
+
+    /** 今日一句 prefers short highlights (≤ 80 chars) when any exist. */
+    private fun preferShort(all: List<HighlightRow>) = all.filter { it.text.trim().length in 1..80 }.ifEmpty { all }
 
     companion object {
         fun factory(app: LyricApp) = object : ViewModelProvider.Factory {
