@@ -73,6 +73,7 @@ data class HighlightRow(
     val chapterTitle: String = "",
     val bookTitle: String = "",
     val createdAt: Long = System.currentTimeMillis(),
+    @ColumnInfo(defaultValue = "0") val color: Int = 0,
 )
 
 @Serializable
@@ -168,12 +169,13 @@ interface LibraryDao {
     @Insert suspend fun addHighlight(row: HighlightRow): Long
     @Query("UPDATE highlights SET note = :note WHERE id = :id") suspend fun highlightNote(id: Long, note: String)
     @Query("DELETE FROM highlights WHERE id = :id") suspend fun deleteHighlight(id: Long)
+    @Query("UPDATE highlights SET color = :color WHERE id = :id") suspend fun highlightColor(id: Long, color: Int)
 }
 
 @Database(
     entities = [ShelfBook::class, ProgressRow::class, BookmarkRow::class, ReadingSession::class, FinishedBook::class, HighlightRow::class],
     views = [DailyStat::class],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -222,5 +224,12 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         db.execSQL("INSERT INTO progress_new SELECT bookId, chapterIndex, charOffset, page, updatedAt, contentRevision FROM progress")
         db.execSQL("DROP TABLE progress")
         db.execSQL("ALTER TABLE progress_new RENAME TO progress")
+    }
+}
+
+/** v0.5.2: per-highlight colour (0 = theme vermilion). Offsets are unchanged. */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE highlights ADD COLUMN color INTEGER NOT NULL DEFAULT 0")
     }
 }

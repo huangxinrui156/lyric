@@ -2,7 +2,6 @@ package com.lyric.reader
 
 import com.lyric.core.Book
 import com.lyric.core.Locator
-import java.text.BreakIterator
 import java.util.Locale
 
 /** Absolute UTF-16 boundaries allow selection to survive pages, windows and chapters. */
@@ -34,9 +33,20 @@ data class TextSelection(val anchor: Int, val focus: Int) {
             if (text.isEmpty()) return null
             var at = offset.coerceIn(0, text.lastIndex)
             if (text[at].isLowSurrogate() && at > 0) at--
-            val words = BreakIterator.getWordInstance(Locale.CHINA).apply { setText(text) }
-            val start = words.preceding(at + 1).coerceAtLeast(0)
-            val end = words.following(at).let { if (it == BreakIterator.DONE) text.length else it }
+            // ICU's dictionary word breaker gives real CJK words (e.g. 春眠) on device.
+            val icu = runCatching {
+                val w = android.icu.text.BreakIterator.getWordInstance(android.icu.util.ULocale.CHINA)!!
+                w.setText(text)
+                w.preceding(at + 1).coerceAtLeast(0) to w.following(at).let { if (it == android.icu.text.BreakIterator.DONE) text.length else it }
+            }.getOrNull()
+            val (s0, e0) = icu ?: java.text.BreakIterator.getWordInstance(java.util.Locale.CHINA).let { w ->
+                w.setText(text)
+                w.preceding(at + 1).coerceAtLeast(0) to w.following(at).let { if (it == java.text.BreakIterator.DONE) text.length else it }
+            }
+            var start = s0; var end = e0
+            // A lone CJK character still selects a two-character phrase so the first touch is useful.
+            fun cjk(i: Int) = i in text.indices && Character.UnicodeScript.of(text[i].code) == Character.UnicodeScript.HAN
+            if (end - start == 1 && cjk(start)) { if (cjk(end)) end++ else if (cjk(start - 1)) start-- }
             return TextSelection(base + start, base + end)
         }
     }

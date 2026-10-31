@@ -26,6 +26,11 @@ object ThemePalette {
         ReaderTheme.CUSTOM -> SelectionColors(argb(accent, .24f), accent.toInt(), customInk.toInt(), customBg.toInt())
     }
 
+    /** Highlight colours: 0 = theme vermilion fill, 1 moss, 2 ochre, 3 slate blue (all ~26%). */
+    val highlightColors = listOf(0xB5563AL, 0x5E6B4EL, 0xC08A2EL, 0x4F6D8AL)
+    fun highlight(color: Int, themeFill: Int): Int =
+        if (color <= 0 || color >= highlightColors.size) themeFill else argb(highlightColors[color], .26f)
+
     fun curl(theme: ReaderTheme, customBg: Long = theme.bg, customInk: Long = theme.ink): CurlStyle = when (theme) {
         ReaderTheme.PAPER -> CurlStyle(0xFFECE6DB.toInt(), .10f, .18f, .10f, .20f)
         ReaderTheme.BEIGE -> CurlStyle(0xFFDFD7C3.toInt(), .10f, .20f, .10f, .20f)

@@ -43,9 +43,9 @@ class MigrationTest {
         old.execSQL("INSERT INTO progress VALUES ('hash',0,42,3,123)")
         old.execSQL("INSERT INTO bookmarks (id,bookId,chapterIndex,charOffset,page,excerpt,chapterTitle,createdAt) VALUES (7,'hash',0,12,1,'保留这句话','章',456)")
         helper.close()
-        val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).allowMainThreadQueries().build()
+        val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).allowMainThreadQueries().build()
         try {
-            assertEquals(5, db.openHelper.writableDatabase.version)
+            assertEquals(6, db.openHelper.writableDatabase.version)
             val dao = db.library()
             assertEquals("原书", dao.book("hash")!!.title)
             assertEquals(42, dao.progress("hash")!!.charOffset)
@@ -89,9 +89,9 @@ class MigrationTest {
         }
         helper.close()
         val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name)
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).allowMainThreadQueries().build()
         try {
-            assertEquals(5, db.openHelper.writableDatabase.version)
+            assertEquals(6, db.openHelper.writableDatabase.version)
             val dao = db.library()
             assertEquals(0, dao.book("epub")!!.contentRevision)
             assertEquals(0, dao.progress("epub")!!.contentRevision)
@@ -134,9 +134,9 @@ class MigrationTest {
         }
         helper.close()
         val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name)
-            .addMigrations(MIGRATION_3_4, MIGRATION_4_5).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6).allowMainThreadQueries().build()
         try {
-            assertEquals(5, db.openHelper.writableDatabase.version)
+            assertEquals(6, db.openHelper.writableDatabase.version)
             val dao = db.library()
             val mark = dao.allBookmarks().single()
             assertEquals("保留这句话", mark.excerpt); assertEquals("", mark.note)
@@ -177,9 +177,9 @@ class MigrationTest {
         }
         helper.close()
         val db = Room.databaseBuilder(context, LibraryDatabase::class.java, name)
-            .addMigrations(MIGRATION_4_5).allowMainThreadQueries().build()
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6).allowMainThreadQueries().build()
         try {
-            assertEquals(5, db.openHelper.writableDatabase.version)
+            assertEquals(6, db.openHelper.writableDatabase.version)
             val dao = db.library()
             assertEquals(42, dao.progress("epub")!!.charOffset)
             dao.remove("epub")

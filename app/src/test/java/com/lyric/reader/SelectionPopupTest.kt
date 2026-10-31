@@ -119,4 +119,34 @@ class SelectionPopupTest {
         assertTrue(pos.y >= 0)
         assertTrue(pos.y + menu.measuredHeight <= view.height)
     }
+
+    @Test fun pressDragExtendsThenHandleDragsWhileMenuHidden() {
+        val (_, view) = open(ReaderTheme.PAPER)
+        val x = view.width / 4f; val y = view.height / 3f
+        val t = SystemClock.uptimeMillis()
+        view.dispatchTouchEvent(MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(LONG_PRESS_MS + 20))
+        val first = view.selectedRange!!
+        assertTrue("long-press selects a word/phrase", first.end - first.start >= 2)
+        assertNull("menu hidden while finger is down", view.selectionPopup)
+        view.dispatchTouchEvent(MotionEvent.obtain(t, t + 500, MotionEvent.ACTION_MOVE, x + view.width / 3f, y, 0))
+        val extended = view.selectedRange!!
+        assertEquals(first.start, extended.start); assertTrue(extended.end > first.end)
+        view.dispatchTouchEvent(MotionEvent.obtain(t, t + 600, MotionEvent.ACTION_UP, x + view.width / 3f, y, 0))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertNotNull("menu back after release", view.selectionPopup)
+        view.draw(android.graphics.Canvas(android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)))
+        // Grab the end handle (touch target centred on its bulb) and drag one line down.
+        val h = view.endHandlePoint; val d = view.resources.displayMetrics.density
+        val t2 = SystemClock.uptimeMillis()
+        view.dispatchTouchEvent(MotionEvent.obtain(t2, t2, MotionEvent.ACTION_DOWN, h.x + 6 * d, h.y + 12 * d, 0))
+        assertNotNull("touching a handle keeps the selection", view.selectedRange)
+        assertNull("menu hides while dragging", view.selectionPopup)
+        view.dispatchTouchEvent(MotionEvent.obtain(t2, t2 + 50, MotionEvent.ACTION_MOVE, h.x, h.y + 40 * d, 0))
+        assertTrue(view.selectedRange!!.end > extended.end)
+        view.dispatchTouchEvent(MotionEvent.obtain(t2, t2 + 90, MotionEvent.ACTION_UP, h.x, h.y + 40 * d, 0))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertNotNull(view.selectionPopup)
+    }
+
 }

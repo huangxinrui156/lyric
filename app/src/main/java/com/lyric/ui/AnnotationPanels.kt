@@ -169,3 +169,31 @@ fun NoteDialog(title: String, initial: String, save: (String) -> Unit, dismiss: 
         dismissButton = { TextButton(onClick = dismiss) { Text("取消") } },
     )
 }
+
+/** Tap on an existing highlight in the text: 改颜色 / 想法 / 删除. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HighlightOptionsSheet(h: HighlightRow, color: (Int) -> Unit, note: () -> Unit, delete: () -> Unit, dismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.background) {
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            Row(Modifier.height(IntrinsicSize.Min)) {
+                Box(Modifier.width(2.dp).fillMaxHeight().background(Vermilion))
+                Text(h.text, fontFamily = Serif, fontSize = 14.sp, lineHeight = 22.sp, maxLines = 3,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 10.dp))
+            }
+            NoteLine(h.note)
+            Text("颜色", fontSize = 12.sp, color = Stone, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                com.lyric.core.ThemePalette.highlightColors.forEachIndexed { i, rgb ->
+                    val c = Color(0xFF000000 or rgb)
+                    Box(Modifier.size(32.dp).background(c.copy(alpha = if (i == h.color) 1f else .55f), CircleShape)
+                        .clickable { color(i); dismiss() })
+                }
+            }
+            Row(Modifier.padding(top = 16.dp)) {
+                TextButton(onClick = { dismiss(); note() }) { Text(if (h.note.isBlank()) "写想法" else "改想法", color = Moss) }
+                TextButton(onClick = { dismiss(); delete() }) { Text("删除划线", color = Vermilion) }
+            }
+        }
+    }
+}

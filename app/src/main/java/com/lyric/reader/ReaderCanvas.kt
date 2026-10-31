@@ -80,6 +80,11 @@ class ReaderCanvas(context: Context) : View(context) {
     private val endHandle = PointF()
     private val handler = Handler(Looper.getMainLooper())
     private var longPressed = false
+    private var pressWord: TextSelection? = null
+    internal val selectedRange: TextSelection? get() = selection
+    internal val endHandlePoint: PointF get() = endHandle
+    private var magnifier: android.widget.Magnifier? = null
+    var onHighlightTap: (com.lyric.data.HighlightRow) -> Unit = {}
     private val longPress = Runnable { beginSelection(downX, downY) }
     private var edgeStep = 0
     private val edgeTurn = object : Runnable {
@@ -344,9 +349,9 @@ class ReaderCanvas(context: Context) : View(context) {
             }
         }
         if (highlights.isNotEmpty()) {
-            selectionPaint.color = palette().fill
             for (h in highlights) {
                 if (h.chapterIndex != chapter) continue
+                selectionPaint.color = com.lyric.core.ThemePalette.highlight(h.color, palette().fill)
                 val a = (h.start - set.sourceStart).coerceIn(0, set.layout.text.length)
                 val z = (h.end - set.sourceStart).coerceIn(0, set.layout.text.length)
                 if (a >= z) continue
@@ -559,6 +564,12 @@ class ReaderCanvas(context: Context) : View(context) {
         return offset.coerceIn(0, text.length)
     }
 
+    private fun highlightAt(x: Float, y: Float): com.lyric.data.HighlightRow? {
+        if (highlights.isEmpty()) return null
+        val offset = offsetAt(x, y) ?: return null
+        return highlights.firstOrNull { it.chapterIndex == chapter && offset >= it.start && offset < it.end }
+    }
+
     private fun imageAt(x: Float, y: Float): String? {
         val set = typeset ?: return null
         val text = set.layout.text as? android.text.Spanned ?: return null
@@ -580,8 +591,11 @@ class ReaderCanvas(context: Context) : View(context) {
             TextSelection.absolute(b, chapter, 0)) ?: return
         longPressed = true
         moved = true
+        // 0.5.2: keep the finger down and drag to extend from the long-pressed word.
+        pressWord = selection
+        draggingHandle = 2
+        parent?.requestDisallowInterceptTouchEvent(true)
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        showSelectionMenu()
         invalidate()
     }
 
@@ -647,19 +661,19 @@ class ReaderCanvas(context: Context) : View(context) {
         selectionMenuView = menu
         popupPosition = pos
         val popup = android.widget.PopupWindow(menu, menu.measuredWidth, menu.measuredHeight, false).apply {
-            isOutsideTouchable = true
+            isOutsideTouchable = false
             isTouchable = true
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
             elevation = 14 * d
             // Tap outside (anywhere, including the page) dismisses the menu and the selection.
-            setOnDismissListener { selectionPopup = null; if (draggingHandle == 0) clearSelection() }
+            setOnDismissListener { selectionPopup = null }
         }
         selectionPopup = popup
         if (windowToken != null) {
             val origin = IntArray(2).also { getLocationInWindow(it) }
             popup.showAtLocation(this, android.view.Gravity.NO_GRAVITY, origin[0] + pos.x, origin[1] + pos.y)
             menu.alpha = 0f; menu.scaleX = .96f; menu.scaleY = .96f
-            menu.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(160).start()
+            menu.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150).start()
         }
     }
 
@@ -672,7 +686,7 @@ class ReaderCanvas(context: Context) : View(context) {
         } ?: androidx.core.graphics.Insets.NONE
         val lineHeight = typeset?.layout?.let { it.height.toFloat() / it.lineCount.coerceAtLeast(1) } ?: (prefs.fontSize * 2 * d)
         val top = minOf(startHandle.y, endHandle.y) - lineHeight
-        val bottom = maxOf(startHandle.y, endHandle.y) + 12 * d
+        val bottom = maxOf(startHandle.y, endHandle.y) + 20 * d // below the 18dp handle bulbs
         val gap = 8 * d
         val minY = insets.top + gap
         val y = if (top - gap - h >= minY) top - gap - h else (bottom + gap).coerceAtMost(height - insets.bottom - h - gap)
@@ -684,6 +698,8 @@ class ReaderCanvas(context: Context) : View(context) {
     private fun clearSelection() {
         hideSelectionMenu()
         selection = null
+        pressWord = null
+        dismissMagnifier()
         draggingHandle = 0
         edgeStep = 0
         handler.removeCallbacks(edgeTurn)
@@ -692,6 +708,10 @@ class ReaderCanvas(context: Context) : View(context) {
 
     private fun moveBoundary(absolute: Int) {
         val old = selection ?: return
+        pressWord?.let { w ->
+            selection = if (absolute < w.start) TextSelection(absolute, w.end) else TextSelection(w.start, maxOf(absolute, w.end))
+            return
+        }
         selection = if (draggingHandle == 1) {
             if (absolute < old.end) TextSelection(absolute, old.end) else {
                 draggingHandle = 2; TextSelection(old.end, absolute)
@@ -707,7 +727,22 @@ class ReaderCanvas(context: Context) : View(context) {
         val b = book ?: return
         val offset = offsetAt(x, y) ?: return
         moveBoundary(TextSelection.absolute(b, chapter, offset))
+        showMagnifier(x, y)
         invalidate()
+    }
+
+    /** design: 140x48dp, 12dp corners, 1.5x, 48dp above the finger (API 29+; older devices skip it). */
+    private fun showMagnifier(x: Float, y: Float) {
+        if (android.os.Build.VERSION.SDK_INT < 29 || android.os.Build.FINGERPRINT == "robolectric") return
+        val d = density
+        val m = magnifier ?: android.widget.Magnifier.Builder(this)
+            .setSize((140 * d).toInt(), (48 * d).toInt()).setCornerRadius(12 * d).setInitialZoom(1.5f)
+            .setDefaultSourceToMagnifierOffset(0, -(48 * d).toInt()).build().also { magnifier = it }
+        runCatching { m.show(x, y) }
+    }
+
+    private fun dismissMagnifier() {
+        if (android.os.Build.VERSION.SDK_INT >= 28) runCatching { magnifier?.dismiss() }
     }
 
     private fun drawHandles(canvas: Canvas, top: Float) {
@@ -735,7 +770,7 @@ class ReaderCanvas(context: Context) : View(context) {
 
     /** design §6: 12dp teardrop; the point sits on the text edge, the bulb hangs below. */
     private fun drawHandle(canvas: Canvas, point: PointF, start: Boolean, paint: Paint) {
-        val r = 6 * density
+        val r = 9 * density
         val cx = point.x + if (start) -r else r
         val cy = point.y + r
         val drop = Path().apply {
@@ -771,7 +806,7 @@ class ReaderCanvas(context: Context) : View(context) {
                 longPressed = false
                 if (selection != null) {
                     // 48dp transparent hit target around the 12dp handle.
-                    fun near(point: PointF) = abs(event.x - point.x) < 24 * density && abs(event.y - point.y - 6 * density) < 24 * density
+                    fun near(point: PointF) = abs(event.x - point.x) < 24 * density && abs(event.y - point.y - 9 * density) < 24 * density
                     draggingHandle = when { near(startHandle) -> 1; near(endHandle) -> 2; else -> 0 }
                     if (draggingHandle != 0) {
                         parent?.requestDisallowInterceptTouchEvent(true)
@@ -808,8 +843,14 @@ class ReaderCanvas(context: Context) : View(context) {
                 edgeStep = 0
                 if (draggingHandle != 0 || longPressed) {
                     draggingHandle = 0
-                    showSelectionMenu()
+                    pressWord = null
+                    dismissMagnifier()
+                    if (selection != null) showSelectionMenu()
+                    invalidate()
                     return true
+                }
+                if (!moved && event.actionMasked == MotionEvent.ACTION_UP && selection == null) {
+                    highlightAt(event.x, event.y)?.let { onHighlightTap(it); return true }
                 }
                 if (!moved && event.actionMasked == MotionEvent.ACTION_UP) {
                     val image = imageAt(event.x, event.y)

@@ -240,6 +240,7 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
     }
 
     fun highlightNote(rowId: Long, note: String) { viewModelScope.launch { repository.dao.highlightNote(rowId, note.trim()) } }
+    fun highlightColor(rowId: Long, color: Int) { viewModelScope.launch { repository.dao.highlightColor(rowId, color) } }
     fun deleteHighlight(rowId: Long) { viewModelScope.launch { repository.dao.deleteHighlight(rowId) } }
     fun bookmarkNote(rowId: Long, note: String) { viewModelScope.launch { repository.dao.bookmarkNote(rowId, note.trim()) } }
 

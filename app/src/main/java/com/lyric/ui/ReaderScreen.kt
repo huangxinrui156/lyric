@@ -82,6 +82,11 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
     val marks by vm.bookmarks.collectAsStateWithLifecycle()
     val highlightRows by vm.highlights.collectAsStateWithLifecycle()
     var noteEdit by remember { mutableStateOf<Triple<Boolean, Long, String>?>(null) }
+    var tappedHighlight by remember { mutableStateOf<com.lyric.data.HighlightRow?>(null) }
+    tappedHighlight?.let { h ->
+        HighlightOptionsSheet(h, { vm.highlightColor(h.id, it) }, { noteEdit = Triple(true, h.id, h.note) },
+            { vm.deleteHighlight(h.id) }, { tappedHighlight = null })
+    }
     noteEdit?.let { (isHighlight, rowId, old) ->
         NoteDialog(if (isHighlight) "想法" else "书签备注", old,
             { if (isHighlight) vm.highlightNote(rowId, it) else vm.bookmarkNote(rowId, it) }, { noteEdit = null })
@@ -329,6 +334,7 @@ fun ReaderScreen(vm: ReaderViewModel, back: () -> Unit) {
                                     view.controlsOpen = controls
                                     view.onExcerpt = { at, text -> vm.bookmark(at, text) }
                                     view.highlights = highlightRows
+                                    view.onHighlightTap = { tappedHighlight = it }
                                     view.onHighlight = { ch, start, end, text, withNote ->
                                         vm.addHighlight(ch, start, end, text) { if (withNote) noteEdit = Triple(true, it, "") }
                                     }
