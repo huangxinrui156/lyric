@@ -3,6 +3,8 @@ package com.lyric.core
 import java.io.ByteArrayOutputStream
 import java.io.File
 
+class UnsupportedCompressionException : FriendlyImportException("暂不支持这种压缩格式")
+
 class DrmProtectedException : FriendlyImportException("这本书有版权保护，无法导入")
 
 /** Non-DRM Kindle books: MOBI6 (PalmDOC) and KF8/AZW3. HUFF/CDIC compression is rejected clearly. */
@@ -64,6 +66,7 @@ class MobiParser : BookParser {
         val title = exth[503]?.toString(charset)?.ifBlank { null }
             ?: if (isMobi) runCatching { String(rec0, rec0.u32(84), rec0.u32(88), charset) }.getOrNull()?.ifBlank { null } else null
         val author = exth[100]?.toString(charset).orEmpty()
+        if (compression == 17480) throw UnsupportedCompressionException()
         val raw = ImportTrace.stage("MOBI/解压正文") {
             val out = ByteArrayOutputStream()
             for (i in 1..textRecords) {
@@ -73,7 +76,6 @@ class MobiParser : BookParser {
                 when (compression) {
                     1 -> out.write(body)
                     2 -> out.write(palmDoc(body))
-                    17480 -> error("不支持的压缩格式（HUFF/CDIC）")
                     else -> error("未知的压缩方式 $compression")
                 }
             }
@@ -94,7 +96,10 @@ class MobiParser : BookParser {
         val cover = exth[201]?.u32(0)?.let { imageIndex[it + 1] } ?: imageIndex[1]
         val text = ImportTrace.stage("MOBI/解码文本") { String(raw, charset) }
         val kf8 = version >= 8
-        val parts = ImportTrace.stage("MOBI/拆分章节") { if (kf8) splitKf8(text, imageIndex) else splitMobi6(raw, charset, imageIndex) }
+        val parts = ImportTrace.stage("MOBI/拆分章节") {
+            if (kf8) kf8Parts(raw, rec0, charset, imageIndex) { runCatching { db.record(base + it) }.getOrNull() } ?: splitKf8(text, imageIndex)
+            else splitMobi6(raw, charset, imageIndex)
+        }
         val anchors = parts.second
         return ImportTrace.stage("MOBI/生成章节") {
             HtmlBook.build(title?.trim() ?: displayName.substringBeforeLast('.'), author.trim(), parts.first, images, cover) { found ->
@@ -141,6 +146,19 @@ class MobiParser : BookParser {
         val pieces = html.split(Regex("<mbp:pagebreak\\s*/?>", RegexOption.IGNORE_CASE)).filter { it.isNotBlank() }
         return merge(pieces) to toc
     }
+
+    /** Proper KF8 layout via SKEL/FRAG indexes; null when the indexes are missing or unreadable. */
+    private fun kf8Parts(raw: ByteArray, rec0: ByteArray, charset: java.nio.charset.Charset, images: Map<Int, String>,
+                         record: (Int) -> ByteArray?): Pair<List<HtmlBook.Part>, List<Pair<String, String>>>? = runCatching {
+        fun idx(o: Int) = rec0.u32(o).takeIf { it != -1 && it > 0 }
+        val skel = idx(0xFC)?.let { Kf8.readIndex(it, record) }?.takeIf { it.entries.isNotEmpty() } ?: return null
+        val frag = idx(0xF8)?.let { Kf8.readIndex(it, record) } ?: return null
+        val ncx = idx(0xF4)?.let { Kf8.readIndex(it, record) }
+        val flowEnd = Kf8.htmlFlowEnd(idx(0xC0)?.let(record), raw.size)
+        val assembled = Kf8.assemble(raw.copyOf(flowEnd), skel, frag, ncx)
+        val pieces = assembled.files.map { fixImages(String(it, charset), images) }.filter { it.isNotBlank() }
+        if (pieces.isEmpty()) null else merge(pieces) to assembled.toc
+    }.getOrNull()
 
     private fun splitKf8(text: String, images: Map<Int, String>): Pair<List<HtmlBook.Part>, List<Pair<String, String>>> {
         val html = fixImages(text, images)
