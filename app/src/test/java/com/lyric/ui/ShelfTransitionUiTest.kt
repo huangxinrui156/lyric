@@ -38,7 +38,7 @@ class ShelfTransitionUiTest {
         }
         compose.mainClock.advanceTimeByFrame()
         compose.onNodeWithText("书架").assertExists()
-        for ((next, duration) in listOf(ShelfSection.COMIC to 700L, ShelfSection.BOOK to 700L, ShelfSection.COMIC to 200L)) {
+        for ((next, duration) in listOf(ShelfSection.COMIC to SHELF_SWITCH_MS, ShelfSection.BOOK to SHELF_SWITCH_MS, ShelfSection.COMIC to 200L)) {
             compose.runOnIdle { assertTrue(state.start(next, duration == 200L)) }
             compose.waitForIdle()
             // One composition frame and one frame to establish the start timestamp.

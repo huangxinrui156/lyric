@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.lyric.core.Book
@@ -117,11 +118,11 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
     Box(Modifier.fillMaxSize()) {
         Scaffold(
             modifier = if (transition.running) Modifier.clearAndSetSemantics { } else Modifier,
-            containerColor = if (transition.running) Paper else MaterialTheme.colorScheme.background,
+            containerColor = MaterialTheme.colorScheme.background,
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
                 NavigationBar(
-                    containerColor = if (transition.running) Paper else MaterialTheme.colorScheme.background,
+                    containerColor = MaterialTheme.colorScheme.background,
                     tonalElevation = 0.dp,
                     modifier =
                         Modifier.border(BorderStroke(.5.dp, MaterialTheme.colorScheme.outlineVariant)),
@@ -193,7 +194,12 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
         }
         if (transition.running) Box(Modifier.fillMaxSize().pointerInput(Unit) {
             awaitPointerEventScope {
-                while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+                while (true) {
+                    val e = awaitPointerEvent(PointerEventPass.Initial)
+                    e.changes.forEach { it.consume() }
+                    // 0.6.2: a tap skips to the end state (finish() is idempotent: no stacking).
+                    if (e.changes.any { it.changedToDown() }) transition.skip()
+                }
             }
         }.semantics { contentDescription = "分区切换中" })
     }

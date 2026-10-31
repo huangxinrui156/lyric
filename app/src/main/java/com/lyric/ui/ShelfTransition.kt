@@ -22,6 +22,19 @@ import androidx.compose.ui.unit.dp
 import com.lyric.data.ShelfSection
 import kotlin.math.sin
 
+/**
+ * Total line-art switch length; retune here. Phase marks below are fractions of it
+ * (at 1400ms: 0–450 draw book · 450–550 hold · 550–1000 morph to panels + figures + horizon ·
+ * 1000–1150 hold · 1150–1400 line art fades, grid rises). Reduce-motion: 200ms crossfade.
+ */
+const val SHELF_SWITCH_MS = 1400L
+private const val BOOK_END = 450f / 1400f
+private const val MORPH_START = 550f / 1400f
+private const val MORPH_END = 1000f / 1400f
+private const val FADE_START = 1150f / 1400f
+
+private fun phase(t: Float, a: Float, b: Float) = ((t - a) / (b - a)).coerceIn(0f, 1f)
+
 internal fun reducedShelfMotion(context: Context): Boolean =
     Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
 
@@ -46,6 +59,8 @@ internal class ShelfTransitionState(initial: ShelfSection) {
         return true
     }
     fun finish() { fraction = 1f; from = target; running = false }
+    /** A tap during the animation jumps to the end state; repeated taps are no-ops. */
+    fun skip() { if (running) finish() }
 }
 
 internal data class ShelfTransitionFrame(
@@ -58,13 +73,13 @@ internal data class ShelfTransitionFrame(
 internal fun shelfTransitionFrame(fraction: Float, toComic: Boolean, reduced: Boolean): ShelfTransitionFrame {
     val t = fraction.coerceIn(0f, 1f)
     if (reduced) return ShelfTransitionFrame(1f - t, t, 0f, 0f, 0f)
-    val m = (if (toComic) t else 1f - t) * 700f
-    val comic = ((m - 500f) / 200f).coerceIn(0f, 1f)
-    val book = 1f - (m / 250f).coerceIn(0f, 1f)
+    val m = if (toComic) t else 1f - t
+    val comic = phase(m, FADE_START, 1f)
+    val book = 1f - phase(m, 0f, BOOK_END)
     val outgoing = if (toComic) book else comic
     val incoming = if (toComic) comic else book
     // The arriving grid rises from 12dp below into place.
-    return ShelfTransitionFrame(outgoing, incoming, 0f, 12f * (1f - incoming), m / 700f)
+    return ShelfTransitionFrame(outgoing, incoming, 0f, 12f * (1f - incoming), m)
 }
 
 @Composable
@@ -73,12 +88,12 @@ internal fun ShelfTransition(state: ShelfTransitionState, content: @Composable (
         if (state.running) {
             // A frame clock intentionally bypasses Compose's duration-scale multiplier so the
             // accessibility fallback still crossfades for 200ms when the system scale is zero.
-            val duration = if (state.reduced) 200_000_000L else 700_000_000L
+            val duration = if (state.reduced) 200_000_000L else SHELF_SWITCH_MS * 1_000_000L
             val start = withFrameNanos { it }
             do {
                 val linear = withFrameNanos { ((it - start).toDouble() / duration).toFloat().coerceIn(0f, 1f) }
                 state.fraction = if (state.reduced) linear else androidx.compose.animation.core.FastOutSlowInEasing.transform(linear)
-            } while (linear < 1f)
+            } while (linear < 1f && state.running)
             state.finish()
         }
     }
@@ -183,8 +198,9 @@ private fun ShelfMorph(time: () -> Float) {
     val night = MaterialTheme.colorScheme.background.luminance() < .5f
     val ink = if (night) Color(0xFFD0CABE) else Color(0xFF2B2A27)
     Canvas(Modifier.fillMaxSize()) {
-        val ms = time().coerceIn(0f, 1f) * 700f
-        val fade = 1f - ((ms - 500f) / 200f).coerceIn(0f, 1f)
+        val t = time().coerceIn(0f, 1f)
+        val fade = 1f - phase(t, FADE_START, 1f)
+        val morph = phase(t, MORPH_START, MORPH_END)
         // 美术设计: art 64% of screen width, centred horizontally, its centre at 42% of the height.
         val scale = size.width * .64f / 240f
         // Stroke stays 2dp on screen regardless of the art scale.
@@ -201,9 +217,10 @@ private fun ShelfMorph(time: () -> Float) {
         }
         translate((size.width - 240f * scale) / 2f, size.height * .42f - 90f * scale) {
             scale(scale, scale, pivot = androidx.compose.ui.geometry.Offset.Zero) {
-                draw(book, (ms / 250f).coerceIn(0f, 1f), (1f - ((ms - 250f) / 250f).coerceIn(0f, 1f)) * fade)
-                draw(panels, ((ms - 250f) / 150f).coerceIn(0f, 1f), fade)
-                draw(figures, ((ms - 380f) / 120f).coerceIn(0f, 1f), fade)
+                // Morph: the book fades while the panel frames stroke in, then figures and horizon.
+                draw(book, phase(t, 0f, BOOK_END), (1f - phase(morph, 0f, .35f)) * fade)
+                draw(panels, phase(morph, 0f, .65f), fade)
+                draw(figures, phase(morph, .55f, 1f), fade)
             }
         }
     }
