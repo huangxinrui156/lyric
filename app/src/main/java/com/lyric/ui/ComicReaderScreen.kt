@@ -52,7 +52,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lyric.ReaderActivity
 import com.lyric.core.*
 import com.lyric.data.SettingsScope
-import com.lyric.reader.ComicArchive
+import com.lyric.reader.*
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
 import com.lyric.reader.VolumeNavigation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -115,30 +117,51 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
         }
     }
     val archive = sourceState
-    val pager = rememberPagerState(initialPage = pages.indexOf(locator)) { pages.pages.size }
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = pages.indexOf(locator))
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val spreads = remember(pages, landscape, prefs.comicSpread, prefs.comicOffset, vertical) {
+        Spreads.pair(pages.pages.size, landscape, prefs.comicSpread && !vertical, prefs.comicOffset)
+    }
+    val pager = key(spreads, vertical) {
+        rememberPagerState(initialPage = Spreads.indexOf(spreads, pages.indexOf(locator))) { spreads.size }
+    }
+    val listState = key(vertical) {
+        androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = pages.indexOf(locator))
+    }
+    val latestLocator by rememberUpdatedState(locator)
+    val outline by produceState(emptyList<PdfOutline.Entry>(), archive) {
+        val source = archive?.getOrNull() as? PdfPageSource
+        value = if (source == null) emptyList() else withContext(Dispatchers.IO) { source.outline() }
+    }
+    var layoutMenu by remember { mutableStateOf(false) }
     var chrome by remember { mutableStateOf(false) }
     var zoomed by remember { mutableStateOf(false) }
     var chapters by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    BackHandler { if (chapters) chapters = false else back() }
+    suspend fun jumpToPage(page: Int) {
+        val target = page.coerceIn(0, pages.pages.lastIndex)
+        if (vertical) listState.scrollToItem(target) else pager.scrollToPage(Spreads.indexOf(spreads, target))
+        vm.readingActivity(pages.locator(target))
+    }
+    BackHandler { if (layoutMenu) layoutMenu = false else if (chapters) chapters = false else back() }
 
-    LaunchedEffect(pager) {
-        snapshotFlowPage(pager) { i ->
-            vm.readingActivity(pages.locator(i))
-            if (i == pages.pages.lastIndex) vm.finished()
+    LaunchedEffect(pager, vertical) {
+        if (!vertical) snapshotFlowPage(pager) { i ->
+            val spread = spreads.getOrNull(i) ?: return@snapshotFlowPage
+            // Keep the exact physical anchor through rotation/settings changes until a real turn.
+            if (pages.indexOf(latestLocator) !in spread) vm.readingActivity(pages.locator(spread.first()))
+            if (spread.last() == pages.pages.lastIndex) vm.finished()
         }
     }
     // Volume keys and D-pad: same direction semantics as text (down = next page).
     val activity = context as? Activity
-    DisposableEffect(prefs.volumeKeys, prefs.swapVolumeKeys, chapters) {
+    DisposableEffect(prefs.volumeKeys, prefs.swapVolumeKeys, chapters, layoutMenu, pager, vertical) {
         (activity as? ReaderActivity)?.readerVolumeHandler = { event ->
             val step = VolumeNavigation.step(event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN,
-                prefs.volumeKeys, prefs.swapVolumeKeys, chapters)
+                prefs.volumeKeys, prefs.swapVolumeKeys, chapters || layoutMenu)
             if (step != null && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0)
                 scope.launch {
                     if (prefs.comicDirection == "vertical") listState.animateScrollBy(step * listState.layoutInfo.viewportSize.height * 0.85f)
-                    else pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, pages.pages.lastIndex))
+                    else pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, spreads.lastIndex))
                 }
             step != null
         }
@@ -166,16 +189,14 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
         if (hint) hints.edit().putBoolean(hintKey, true).apply()
     }
     LaunchedEffect(hint) { if (hint) { delay(2400); hint = false } }
-    LaunchedEffect(vertical) {
-        // Keep the same page when switching between paged and 条漫.
-        if (vertical) listState.scrollToItem(pager.currentPage) else pager.scrollToPage(listState.firstVisibleItemIndex)
-    }
     LaunchedEffect(listState, vertical) {
         if (vertical) snapshotFlow { listState.firstVisibleItemIndex }.collect { i ->
             vm.readingActivity(pages.locator(i)); if (i == pages.pages.lastIndex) vm.finished()
         }
     }
-    val currentIndex = if (vertical) listState.firstVisibleItemIndex else pager.currentPage
+    val currentSpread = spreads.getOrNull(pager.currentPage).orEmpty()
+    val currentIndex = if (vertical) listState.firstVisibleItemIndex else
+        pages.indexOf(locator).takeIf { it in currentSpread } ?: currentSpread.firstOrNull() ?: 0
 
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     LaunchedEffect(archive, vertical, currentIndex, viewport) {
@@ -208,18 +229,20 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
                 HorizontalPager(pager, Modifier.fillMaxSize(), beyondViewportPageCount = 2,
                     userScrollEnabled = !zoomed, key = { it }) { index ->
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                        ComicPage(archive.getOrThrow(), pages.pages[index],
+                        val pair = spreads[index].let { if (rtl) it.reversed() else it }
+                        ComicPage(archive.getOrThrow(), pages.pages[pair.first()],
+                            second = pair.getOrNull(1)?.let { pages.pages[it] }, trim = prefs.comicTrim,
                             onZoom = { if (index == pager.currentPage) zoomed = it },
                             onTap = { x, w ->
                                 hint = false
                                 when (val step = ComicTaps.step(x, w, rtl)) {
                                     0 -> chrome = !chrome
                                     else -> scope.launch {
-                                        pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, pages.pages.lastIndex))
+                                        pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, spreads.lastIndex))
                                     }
                                 }
                             },
-                            onSkip = { scope.launch { pager.animateScrollToPage((index + 1).coerceAtMost(pages.pages.lastIndex)) } })
+                            onSkip = { scope.launch { pager.animateScrollToPage((index + 1).coerceAtMost(spreads.lastIndex)) } })
                     }
                 }
             }
@@ -274,7 +297,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
                         var drag by remember { mutableStateOf<Float?>(null) }
                         Slider(drag ?: currentIndex.toFloat(), { drag = it },
                             valueRange = 0f..(pages.pages.lastIndex.coerceAtLeast(1)).toFloat(),
-                            onValueChangeFinished = { drag?.let { v -> scope.launch { if (vertical) listState.scrollToItem(v.toInt()) else pager.scrollToPage(v.toInt()) } }; drag = null },
+                            onValueChangeFinished = { drag?.let { v -> scope.launch { jumpToPage(v.toInt()) } }; drag = null },
                             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                             colors = SliderDefaults.colors(thumbColor = ComicAccent, activeTrackColor = ComicAccent, inactiveTrackColor = Track))
                     }
@@ -283,18 +306,35 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
                     IconButton({ chapters = true }) { Icon(Icons.AutoMirrored.Outlined.List, "章节", tint = ComicInk) }
                     IconButton({ choose(ComicDirections.next(dir)) }) { DirectionIcon(dir, ComicInk) }
+                    IconButton({ layoutMenu = true }) { Icon(Icons.Outlined.Tune, "版面", tint = ComicInk) }
                     IconButton({ vm.bookmark(pages.locator(currentIndex)) }) { Icon(Icons.Outlined.BookmarkBorder, "书签", tint = ComicInk) }
                 }
             }
         }
+        if (layoutMenu) ComicLayoutSheet(prefs, vertical, { layoutMenu = false }) { next ->
+            vm.updateSettings(SettingsScope.BOOK, next)
+        }
         if (chapters) Dialog({ chapters = false }) {
             Surface(color = Color(0xFF1A1A1D), shape = RoundedCornerShape(10.dp)) {
                 LazyColumn(Modifier.heightIn(max = 480.dp).padding(vertical = 8.dp)) {
-                    itemsIndexed(book.chapters) { i, c ->
+                    if (isPdf) {
+                        if (outline.isNotEmpty()) itemsIndexed(outline) { _, entry ->
+                            Text("${entry.title} · ${entry.page + 1}", color = if (entry.page == currentIndex) ComicAccent else ComicInk,
+                                fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
+                                    chapters = false
+                                    scope.launch { jumpToPage(entry.page) }
+                                }.padding(start = (20 + entry.level.coerceAtMost(10) * 16).dp, end = 20.dp, top = 12.dp, bottom = 12.dp))
+                        } else items(pages.pages.size) { page ->
+                            Text("第 ${page + 1} 页", color = ComicInk, modifier = Modifier.fillMaxWidth().clickable {
+                                chapters = false
+                                scope.launch { jumpToPage(page) }
+                            }.padding(20.dp))
+                        }
+                    } else itemsIndexed(book.chapters) { i, c ->
                         Text("${c.title} · ${c.units.size} 页", color = if (current?.chapter == i) ComicAccent else ComicInk,
                             fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
                                 chapters = false
-                                scope.launch { pages.indexOf(Locator(i, 0, 0)).let { if (vertical) listState.scrollToItem(it) else pager.scrollToPage(it) } }
+                                scope.launch { pages.indexOf(Locator(i, 0, 0)).let { jumpToPage(it) } }
                             }.padding(horizontal = 20.dp, vertical = 12.dp))
                     }
                 }
@@ -345,6 +385,7 @@ fun DirectionIcon(dir: String, tint: Color, modifier: Modifier = Modifier.size(2
 /** 条漫 page: full width, height from the header aspect ratio (no layout jump), decoded at screen width. */
 @Composable
 private fun ComicStripPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, onTap: () -> Unit) {
+    val latestTap by rememberUpdatedState(onTap)
     var width by remember { mutableIntStateOf(0) }
     var attempt by remember { mutableIntStateOf(0) }
     var result by remember(ref, attempt) { mutableStateOf<Result<Bitmap>?>(null) }
@@ -353,7 +394,7 @@ private fun ComicStripPage(archive: com.lyric.reader.PageSource, ref: ComicPageR
     }
     val ratio = ref.unit.width?.let { w -> ref.unit.height?.takeIf { it > 0 && w > 0 }?.let { w.toFloat() / it } } ?: (1 / 1.4f)
     Box(Modifier.fillMaxWidth().aspectRatio(ratio).onSizeChanged { width = it.width }
-        .pointerInput(ref) { detectTapGestures(onTap = { onTap() }) }) {
+        .pointerInput(ref) { detectTapGestures(onTap = { latestTap() }) }) {
         val r = result
         when {
             r == null -> Box(Modifier.fillMaxSize().background(Skeleton))
@@ -365,23 +406,41 @@ private fun ComicStripPage(archive: com.lyric.reader.PageSource, ref: ComicPageR
     }
 }
 
+/** 裁白边 detection runs only once trim is on (worker thread); crops are kept for this page result so toggling animates both ways. */
 @Composable
-private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, onZoom: (Boolean) -> Unit,
+private fun trimmedArtwork(loaded: List<PageArtwork>, trim: Boolean): List<PageArtwork> {
+    var crops by remember(loaded) { mutableStateOf<List<PageCrop>?>(null) }
+    LaunchedEffect(loaded, trim) {
+        if (trim && crops == null) crops = withContext(Dispatchers.Default) { loaded.map { PageTrim.detect(it.bitmap) } }
+    }
+    val c = crops
+    return remember(loaded, c) { if (c == null) loaded else loaded.mapIndexed { i, p -> p.copy(crop = c[i]) } }
+}
+
+@Composable
+private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, second: ComicPageRef? = null, trim: Boolean = false, onZoom: (Boolean) -> Unit,
                       onTap: (Float, Float) -> Unit, onSkip: () -> Unit) {
+    val latestTap by rememberUpdatedState(onTap)
+    val latestZoom by rememberUpdatedState(onZoom)
     var size by remember { mutableStateOf(IntSize.Zero) }
     var attempt by remember { mutableIntStateOf(0) }
-    var result by remember(ref, attempt) { mutableStateOf<Result<Bitmap>?>(null) }
-    var slow by remember(ref, attempt) { mutableStateOf(false) }
-    var verySlow by remember(ref, attempt) { mutableStateOf(false) }
-    LaunchedEffect(archive, ref, attempt, size) {
+    var result by remember(ref, second, attempt) { mutableStateOf<Result<List<PageArtwork>>?>(null) }
+    var slow by remember(ref, second, attempt) { mutableStateOf(false) }
+    var verySlow by remember(ref, second, attempt) { mutableStateOf(false) }
+    LaunchedEffect(archive, ref, second, attempt, size) {
         if (size.width == 0) return@LaunchedEffect
         launch { delay(300); slow = true; delay(700); verySlow = true }
-        result = withContext(Dispatchers.IO) { runCatching { archive.page(ref.unit.resource, size.width * 2, size.height * 2) } }
+        result = withContext(Dispatchers.IO) { runCatching {
+            listOfNotNull(ref, second).map { page ->
+                val bitmap = archive.page(page.unit.resource, if (second == null) size.width * 2 else size.width, size.height * 2)
+                PageArtwork(bitmap, PageCrop())
+            }
+        } }
     }
-    var scale by remember(ref) { mutableFloatStateOf(1f) }
-    var offset by remember(ref) { mutableStateOf(Offset.Zero) }
+    var scale by remember(ref, second) { mutableFloatStateOf(1f) }
+    var offset by remember(ref, second) { mutableStateOf(Offset.Zero) }
     val anim = rememberCoroutineScope()
-    LaunchedEffect(scale > 1.01f) { onZoom(scale > 1.01f) }
+    LaunchedEffect(scale > 1.01f) { latestZoom(scale > 1.01f) }
     fun clampOffset(o: Offset, s: Float) = Offset(
         o.x.coerceIn(-size.width * (s - 1) / 2, size.width * (s - 1) / 2),
         o.y.coerceIn(-size.height * (s - 1) / 2, size.height * (s - 1) / 2))
@@ -396,7 +455,7 @@ private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, o
                         scale = from + (target - from) * t; offset = fromOffset + (toOffset - fromOffset) * t
                     }
                 }
-            }, onTap = { p -> if (scale <= 1.01f) onTap(p.x, size.width.toFloat()) })
+            }, onTap = { p -> if (scale <= 1.01f) latestTap(p.x, size.width.toFloat()) })
         }
         .pointerInput(ref) {
             // Pinch 1–4x; one-finger pan only while zoomed so the pager keeps its swipe otherwise.
@@ -429,10 +488,10 @@ private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, o
             r.isFailure -> ComicError("这一页没能打开",
                 "${ref.unit.resource.substringAfterLast('/')} · ${r.exceptionOrNull()?.localizedMessage?.substringAfter(" · ") ?: "未知错误"}",
                 { attempt++ }, onSkip)
-            else -> Image(r.getOrThrow().asImageBitmap(), null, contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize().graphicsLayer {
+            else -> trimmedArtwork(r.getOrThrow(), trim).let { art -> ComicArtwork(art, trim && art.any { it.crop != PageCrop() },
+                Modifier.fillMaxSize().padding(4.dp).graphicsLayer {
                     scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y
-                })
+                }) }
         }
         if (scale > 1.01f) Text("${"%.1f".format(scale)}×", color = ComicInk, fontSize = 11.sp,
             modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)

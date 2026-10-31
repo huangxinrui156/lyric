@@ -149,6 +149,9 @@ data class ReaderSettings(
     val customInk: Long = 0xFF2B2A27,
     /** Comic reading direction: "rtl" (default, manga), "ltr" or "vertical" (条漫). Stored per book via SettingsScope.BOOK. */
     val comicDirection: String = "rtl",
+    val comicSpread: Boolean = true,
+    val comicOffset: Boolean = false,
+    val comicTrim: Boolean = false,
 )
 
 interface BookParser {

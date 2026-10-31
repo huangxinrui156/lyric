@@ -49,6 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lyric.core.Locator
 import com.lyric.data.HighlightRow
 import kotlin.math.min
+import kotlinx.coroutines.launch
 
 private val FocusBg = Color(0xFF16171A)
 private val FocusRingTrack = Color(0xFF2A2B2F)
@@ -367,115 +368,105 @@ fun FocusTimerScreen(vm: DeskViewModel, focus: FocusUi, openBook: () -> Unit) {
 
     // Back (incl. predictive gesture) is handled by the nav route: pops to 案头, session keeps running.
 
-    Box(Modifier.fillMaxSize().background(FocusBg)) {
-        Text(
-            focus.bookTitle,
-            color = FocusMuted,
-            fontSize = 13.sp,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 40.dp, start = 20.dp, end = 20.dp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+    val night = deskDark()
+    val background = if (night) FocusBg else Paper
+    val ink = if (night) FocusBtnFill else Ink
+    val meta = if (night) FocusMuted else Stone
+    val accent = if (night) FocusRing else Vermilion
+    Column(Modifier.fillMaxSize().background(background).navigationBarsPadding()
+        .verticalScroll(rememberScrollState()).padding(horizontal = 32.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(focus.bookTitle, color = meta, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(56.dp))
+        FocusRingDisplay(focus, ink, meta, accent, if (night) FocusRingTrack else Linen)
+        Spacer(Modifier.height(48.dp))
+        NoiseControls(vm, night)
+        Spacer(Modifier.height(24.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            OutlinedButton(onClick = { if (focus.paused) vm.resumeFocus() else vm.pauseFocus() },
+                modifier = Modifier.weight(1f).height(48.dp), border = BorderStroke(1.dp, if (night) FocusBtnBorder else Linen)) {
+                Text(if (focus.paused) "继续" else "暂停", color = ink)
+            }
+            Button(onClick = openBook, modifier = Modifier.weight(1f).height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ink, contentColor = background)) { Text("继续阅读") }
+        }
+        TextButton(onClick = { vm.resetFocus() }) { Text("重置", color = meta) }
+        Text(if (focus.paused) "已暂停 · 点「继续」恢复计时" else "计时结束轻震一下，自动记录时长", color = meta, fontSize = 12.sp)
+    }
+}
 
-        val progress = if (focus.plannedMin <= 0) 0f
-        else (1f - focus.remainSec.toFloat() / (focus.plannedMin * 60f)).coerceIn(0f, 1f)
+@Composable
+private fun FocusRingDisplay(focus: FocusUi, ink: Color, meta: Color, accent: Color, track: Color) {
+    Box(Modifier.size(240.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 3.dp.toPx()
+            val diameter = min(size.width, size.height) - stroke
+            val top = Offset(stroke / 2, stroke / 2)
+            val extent = Size(diameter, diameter)
+            drawArc(track, -90f, 360f, false, top, extent, style = Stroke(stroke))
+            val progress = if (focus.plannedMin <= 0) 0f else (1f - focus.remainSec / (focus.plannedMin * 60f)).coerceIn(0f, 1f)
+            drawArc(accent, -90f, 360f * progress, false, top, extent, style = Stroke(stroke, cap = StrokeCap.Round))
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(DeskViewModel.formatRemain(focus.remainSec), fontFamily = Serif, fontSize = 52.sp, color = ink)
+            Text("共 ${focus.plannedMin} 分钟", color = meta, fontSize = 12.sp)
+        }
+    }
+}
 
-        Box(Modifier.align(Alignment.TopCenter).padding(top = 200.dp).size(240.dp), contentAlignment = Alignment.Center) {
-            Canvas(Modifier.fillMaxSize()) {
-                val stroke = 3.dp.toPx()
-                val diameter = min(size.width, size.height) - stroke
-                val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
-                val arcSize = Size(diameter, diameter)
-                drawArc(
-                    color = FocusRingTrack,
-                    startAngle = -90f,
-                    sweepAngle = 360f,
-                    useCenter = false,
-                    topLeft = topLeft,
-                    size = arcSize,
-                    style = Stroke(width = stroke),
-                )
-                drawArc(
-                    color = FocusRing,
-                    startAngle = -90f,
-                    sweepAngle = 360f * progress,
-                    useCenter = false,
-                    topLeft = topLeft,
-                    size = arcSize,
-                    style = Stroke(width = stroke, cap = StrokeCap.Round),
-                )
+@Composable
+private fun NoiseControls(vm: DeskViewModel, night: Boolean) {
+    val noise by vm.noise.collectAsStateWithLifecycle()
+    val selected = if (night) Color(0xFFA3B38A) else Moss
+    val fill = if (night) FocusRingTrack else CardPaper
+    val meta = if (night) FocusMuted else Stone
+    Column(Modifier.widthIn(max = 360.dp).fillMaxWidth()) {
+        Text("环境声", color = meta, fontSize = 13.sp)
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.lyric.audio.NoiseSound.entries.forEach { sound ->
+                val active = noise.sound == sound
+                Box(Modifier.width(68.dp).height(36.dp).background(if (active) selected else fill, RoundedCornerShape(18.dp))
+                    .clickable { vm.noiseSound(sound) }, contentAlignment = Alignment.Center) {
+                    Text(sound.label, fontSize = 14.sp, color = if (active) { if (night) FocusBg else Paper } else { if (night) Color(0xFFA8A296) else Stone })
+                }
             }
         }
-
-        Text(
-            DeskViewModel.formatRemain(focus.remainSec),
-            fontFamily = Serif,
-            fontWeight = FontWeight.Light,
-            fontSize = 52.sp,
-            color = FocusBtnFill,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 280.dp),
-        )
-        Text(
-            "共 ${focus.plannedMin} 分钟",
-            fontSize = 12.sp,
-            color = FocusMuted,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 355.dp),
-        )
-
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 150.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Box(
-                Modifier
-                    .height(44.dp)
-                    .border(1.dp, FocusBtnBorder, RoundedCornerShape(22.dp))
-                    .clickable {
-                        if (focus.paused) vm.resumeFocus() else vm.pauseFocus()
-                    }
-                    .padding(horizontal = 28.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(if (focus.paused) "继续" else "暂停", color = FocusBtnFill, fontSize = 14.sp)
-            }
-            Box(
-                Modifier
-                    .height(44.dp)
-                    .background(FocusBtnFill, RoundedCornerShape(22.dp))
-                    .clickable(onClick = openBook)
-                    .padding(horizontal = 28.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("继续阅读", color = FocusBg, fontSize = 14.sp)
-            }
+        if (noise.sound != com.lyric.audio.NoiseSound.NONE) {
+            Slider(noise.volume, vm::noiseVolume, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                colors = SliderDefaults.colors(thumbColor = if (night) FocusBtnFill else Moss,
+                    activeTrackColor = selected, inactiveTrackColor = fill))
         }
-
-        Text(
-            "重置",
-            color = FocusMuted,
-            fontSize = 13.sp,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 96.dp)
-                .clickable { vm.resetFocus() }
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        )
-        Text(
-            if (focus.paused) "已暂停 · 点「继续」恢复计时" else "计时结束轻震一下，自动记录时长",
-            fontSize = 12.sp,
-            color = Color(0xFF5A574F),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 40.dp),
-        )
     }
 }
 
 @Composable
 fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back: () -> Unit) {
     val highlights by vm.highlights.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val night = deskDark()
+    var exporting by remember { mutableStateOf(false) }
+    var exportNote by remember { mutableStateOf<HighlightRow?>(null) }
+    fun share(note: HighlightRow? = null, bookId: String? = null) {
+        if (exporting) return
+        exporting = true
+        scope.launch {
+            try {
+                val file = if (note == null) vm.exportNotes(bookId) else vm.exportCard(note, night)
+                com.lyric.export.NoteExport.share(context, file, if (note == null) "text/markdown" else "image/png")
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { android.widget.Toast.makeText(context, "导出失败：${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show() }
+            finally { exporting = false }
+        }
+    }
+    exportNote?.let { note ->
+        AlertDialog(onDismissRequest = { exportNote = null }, title = { Text("导出笔记") },
+            text = { Column {
+                TextButton(onClick = { exportNote = null; share(note = note) }) { Text("分享图片卡片") }
+                TextButton(onClick = { exportNote = null; share(bookId = note.bookId) }) { Text("本书笔记 · Markdown") }
+            } }, confirmButton = { TextButton(onClick = { exportNote = null }) { Text("取消") } })
+    }
     var query by rememberSaveable { mutableStateOf("") }
     var byBook by rememberSaveable { mutableStateOf(false) }
     val filtered = remember(highlights, query, byBook) { vm.filterNotes(highlights, query, byBook) }
@@ -489,6 +480,7 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
                     TextButton(onClick = back) { Text("返回", color = dLink) }
                 },
                 actions = {
+                    TextButton(enabled = !exporting && highlights.isNotEmpty(), onClick = { share() }) { Text(if (exporting) "导出中…" else "导出全部", color = dLink, fontSize = 12.sp) }
                     TextButton(onClick = { byBook = !byBook }) {
                         Text(if (byBook) "按书 ▾" else "按时间 ▾", fontSize = 12.sp, color = dSub)
                     }
@@ -533,12 +525,12 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
                             )
                         }
                         items(list, key = { it.id }, contentType = { "note" }) { h ->
-                            DeskNoteRow(h) { openBook(h.bookId, vm.openLocator(h)) }
+                            DeskNoteRow(h, export = { exportNote = h }) { openBook(h.bookId, vm.openLocator(h)) }
                         }
                     }
                 } else {
                     items(filtered, key = { it.id }, contentType = { "note" }) { h ->
-                        DeskNoteRow(h) { openBook(h.bookId, vm.openLocator(h)) }
+                        DeskNoteRow(h, export = { exportNote = h }) { openBook(h.bookId, vm.openLocator(h)) }
                     }
                 }
             }
@@ -547,7 +539,7 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
 }
 
 @Composable
-private fun DeskNoteRow(h: HighlightRow, open: () -> Unit) {
+private fun DeskNoteRow(h: HighlightRow, export: () -> Unit, open: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -556,7 +548,7 @@ private fun DeskNoteRow(h: HighlightRow, open: () -> Unit) {
             .height(IntrinsicSize.Min),
     ) {
         Box(Modifier.width(2.dp).fillMaxHeight().background(dBar))
-        Column(Modifier.padding(start = 10.dp)) {
+        Column(Modifier.weight(1f).padding(start = 10.dp)) {
             Text(h.text, fontFamily = Serif, fontSize = 14.sp, lineHeight = 22.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
             NoteLine(h.note)
             Text(
@@ -566,6 +558,7 @@ private fun DeskNoteRow(h: HighlightRow, open: () -> Unit) {
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+        TextButton(onClick = export) { Text("导出", color = dLink, fontSize = 12.sp) }
     }
     HorizontalDivider(color = if (deskDark()) dDivider else MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(start = 32.dp))
 }

@@ -17,12 +17,14 @@ interface PageSource : java.io.Closeable {
 const val PDF_PAGE_PREFIX = "pdf:"
 
 /** PdfRenderer-backed pages: rendered lazily at the requested width on paper white, LRU-cached. */
-class PdfPageSource(file: File) : PageSource {
+class PdfPageSource(private val file: File) : PageSource {
     private val fd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     private val renderer = try { PdfRenderer(fd) } catch (e: Exception) { fd.close(); throw IllegalStateException("PDF 无法打开（可能已加密或损坏）", e) }
     private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).coerceAtMost(96L * 1024 * 1024).toInt()) {
         override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
     }
+    private var cachedOutline: List<PdfOutline.Entry>? = null
+    @Synchronized fun outline(): List<PdfOutline.Entry> = cachedOutline ?: PdfOutline.read(file).also { cachedOutline = it }
     val pageCount get() = renderer.pageCount
 
     @Synchronized

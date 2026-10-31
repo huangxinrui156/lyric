@@ -81,6 +81,12 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    private val noisePlayer = com.lyric.audio.NoisePlayer(app, viewModelScope, ::pauseFocus)
+    val noise = noisePlayer.settings
+    fun noiseSound(sound: com.lyric.audio.NoiseSound) = noisePlayer.select(sound)
+    fun noiseVolume(volume: Float) = noisePlayer.volume(volume)
+    override fun onCleared() { noisePlayer.close(); super.onCleared() }
+
     private var tickJob: Job? = null
     private var focusId: String? = null
     private var wallStart = 0L
@@ -88,6 +94,9 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
     private var pausedAt = 0L
 
     init {
+        viewModelScope.launch {
+            focus.map { it.running to it.paused }.distinctUntilChanged().collect { (running, paused) -> noisePlayer.timer(running, paused) }
+        }
         viewModelScope.launch {
             while (isActive) {
                 dayBounds.value = dayRange(LocalDate.now())
@@ -269,6 +278,15 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
         )
         if (active.pausedAt == 0L) tick()
     }
+
+    suspend fun exportNotes(bookId: String? = null): java.io.File {
+        val notes = dao.allHighlights().let { all -> if (bookId == null) all else all.filter { it.bookId == bookId } }
+        val authors = dao.all().associate { it.id to it.author }
+        return com.lyric.export.NoteExport.markdownFile(app, notes, authors)
+    }
+
+    suspend fun exportCard(note: HighlightRow, night: Boolean): java.io.File =
+        com.lyric.export.NoteExport.imageFile(app, note, dao.book(note.bookId)?.author.orEmpty(), night)
 
     fun filterNotes(all: List<HighlightRow>, query: String, byBook: Boolean): List<HighlightRow> {
         val q = query.trim()
