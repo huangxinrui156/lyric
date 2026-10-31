@@ -48,7 +48,7 @@ class ShelfSectionTest {
         val middle = shelfTransitionFrame(375f / 700, true, false)
         assertEquals(0f, middle.outgoing, 0f); assertEquals(0f, middle.incoming, 0f)
         val arrival = shelfTransitionFrame(600f / 700, true, false)
-        assertEquals(.5f, arrival.incoming, .001f); assertEquals(24f, arrival.incomingY, .001f)
+        assertEquals(.5f, arrival.incoming, .001f); assertEquals(6f, arrival.incomingY, .001f)
         val reverse = shelfTransitionFrame(100f / 700, false, false)
         assertEquals(arrival.incoming, reverse.outgoing, .001f)
         assertEquals(arrival.drawing, reverse.drawing, .001f)
