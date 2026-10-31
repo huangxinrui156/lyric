@@ -433,9 +433,9 @@ private fun NoiseControls(vm: DeskViewModel, night: Boolean) {
             }
         }
         if (noise.sound != com.lyric.audio.NoiseSound.NONE) {
-            Slider(noise.volume, vm::noiseVolume, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                colors = SliderDefaults.colors(thumbColor = if (night) FocusBtnFill else Moss,
-                    activeTrackColor = selected, inactiveTrackColor = fill))
+            NoiseVolumeSlider(noise.volume, vm::noiseVolume, active = selected,
+                inactive = if (night) FocusRingTrack else Linen, thumb = if (night) FocusBtnFill else Color(0xFFF4EFE6),
+                thumbBorder = if (night) Color.Transparent else Linen)
         }
     }
 }
@@ -668,3 +668,26 @@ private val dDivider @Composable get() = if (deskDark()) Color(0xFF2A2B2F) else 
 /** Collapse blank paragraphs / line breaks into one spaced line for previews. */
 internal fun compactPreview(s: String): String =
     s.trim().replace(Regex("\\s*\\n[\\s\\n]*"), " ").replace(Regex("[ \\t\u3000]{2,}"), " ")
+
+
+/** 0.9.2: thin 2dp track, 14dp round paper thumb, no M3 thumb gap or stop-indicator dot. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NoiseVolumeSlider(value: Float, onChange: (Float) -> Unit, active: Color, inactive: Color, thumb: Color, thumbBorder: Color) {
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Slider(value, onChange, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(32.dp),
+        interactionSource = interaction,
+        thumb = {
+            Box(Modifier.size(14.dp).background(thumb, androidx.compose.foundation.shape.CircleShape)
+                .border(1.dp, thumbBorder, androidx.compose.foundation.shape.CircleShape))
+        },
+        track = { state ->
+            val fraction = state.value.coerceIn(0f, 1f)
+            Canvas(Modifier.fillMaxWidth().height(2.dp)) {
+                val y = size.height / 2
+                val x = size.width * fraction
+                drawLine(inactive, Offset(0f, y), Offset(size.width, y), size.height, StrokeCap.Round)
+                if (x > 0f) drawLine(active, Offset(0f, y), Offset(x, y), size.height, StrokeCap.Round)
+            }
+        })
+}

@@ -39,7 +39,7 @@ class NoisePlayer(private val context: Context, private val scope: CoroutineScop
             IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
         jobs += scope.launch {
             val saved = withContext(Dispatchers.IO) {
-                context.getSharedPreferences("focus_noise", 0).let { NoiseState.restore(it.getString("sound", null), it.getFloat("volume", .55f)) }
+                context.getSharedPreferences("focus_noise", 0).let { NoiseState.restore(it.getString("sound", null), it.getFloat("volume", NoiseState.DEFAULT_VOLUME)) }
             }
             state.update { it.copy(sound = if (userSelected) it.sound else saved.sound, volume = if (userVolume) it.volume else saved.volume) }
             state.map { it.persisted() }.distinctUntilChanged().collect { (sound, volume) ->
@@ -180,14 +180,17 @@ class NoisePlayer(private val context: Context, private val scope: CoroutineScop
                     codec.getOutputBuffer(index)?.let { b ->
                         b.position(info.offset); b.limit(info.offset + info.size)
                         val bytes = ByteArray(info.size); b.get(bytes); result.write(bytes)
-                        check(result.size() <= 2_000_000)
+                        check(result.size() <= 6_000_000)
                     }
                     outputEnded = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                     codec.releaseOutputBuffer(index, false)
                 }
             }
             val shorts = java.nio.ByteBuffer.wrap(result.toByteArray()).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-            return ShortArray(shorts.remaining()).also { shorts.get(it); check(it.isNotEmpty()) }
+            val all = ShortArray(shorts.remaining()).also { shorts.get(it); check(it.isNotEmpty()) }
+            // Generated loops are whole seconds long; drop codec padding so the wrap stays sample-exact.
+            val exact = all.size / 24000 * 24000
+            return if (exact > 0 && exact < all.size) all.copyOf(exact) else all
         } finally { codec?.run { runCatching { stop() }; release() }; extractor.release() }
     }
 }

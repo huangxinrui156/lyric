@@ -4,6 +4,12 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PageLayoutTest {
+    @Test fun spreadDefaultsOnlyOnLargeScreensButBookChoiceWins() {
+        assertTrue(Spreads.enabled(null, largeScreen = true))
+        assertFalse(Spreads.enabled(null, largeScreen = false))
+        assertTrue(Spreads.enabled(true, largeScreen = false))
+        assertFalse(Spreads.enabled(false, largeScreen = true))
+    }
     @Test fun coverOffsetOddEvenAndPortraitPairing() {
         assertEquals(listOf(listOf(0), listOf(1, 2), listOf(3, 4)), Spreads.pair(5, true, true, false))
         assertEquals(listOf(listOf(0), listOf(1, 2), listOf(3, 4), listOf(5)), Spreads.pair(6, true, true, false))

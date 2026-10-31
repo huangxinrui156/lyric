@@ -1,60 +1,111 @@
 #!/usr/bin/env python3
-"""Deterministic, self-generated CC0 ambience. Requires numpy and /usr/bin/ffmpeg.
-No recordings, samples, or third-party sound material. Run from any directory.
-Periodic FFT noise and circular envelopes make the PCM wrap continuous.
+"""Deterministic, self-generated CC0 ambience for the focus timer (Lyric 0.9.2).
+No recordings, samples or third-party sound material. Requires numpy and /usr/bin/ffmpeg.
+All noise is synthesised periodically in the FFT domain and every event envelope is placed on a
+circular timeline, so the PCM wraps sample-exactly (no loop seam, no pop).
+Targets a quiet ambient level (~-30 dBFS RMS, roughly -30 LUFS for broadband noise).
 """
 from pathlib import Path
-import subprocess
-import tempfile
-import wave
+import subprocess, tempfile, wave
 import numpy as np
 
 RATE = 24000
-SECONDS = 30
+SECONDS = 64
 N = RATE * SECONDS
-rng = np.random.default_rng(901)
+rng = np.random.default_rng(902)
 t = np.arange(N) / RATE
 freq = np.fft.rfftfreq(N, 1 / RATE)
 out = Path(__file__).resolve().parents[1] / 'app/src/main/res/raw'
 out.mkdir(parents=True, exist_ok=True)
 
 
-def noise(low, high, power=0):
-    spectrum = np.fft.rfft(rng.normal(size=N))
-    shape = (1 - np.exp(-(freq / low) ** 4)) * np.exp(-(freq / high) ** 4)
-    shape *= np.maximum(freq, low) ** (-power / 2)
-    y = np.fft.irfft(spectrum * shape, n=N)
-    return y / np.std(y)
+def noise(low, high, slope=0.0, n=N):
+    """Periodic coloured noise: slope 1 = pink, 2 = brown. Soft band edges."""
+    f = np.fft.rfftfreq(n, 1 / RATE)
+    spectrum = np.fft.rfft(rng.normal(size=n))
+    shape = 1 / (1 + (low / np.maximum(f, 1e-3)) ** 4)          # gentle high-pass
+    shape *= 1 / np.sqrt(1 + (f / high) ** 4)                    # gentle low-pass
+    shape *= np.maximum(f, 20) ** (-slope / 2)
+    y = np.fft.irfft(spectrum * shape, n=n)
+    return y / (np.std(y) + 1e-12)
 
 
-def distance(center):
+def slow_lfo(periods, depth):
+    """Sum of sines with integer cycles per loop => periodic, smooth."""
+    m = np.zeros(N)
+    for cycles in periods:
+        m += np.sin(2 * np.pi * cycles * t / SECONDS + rng.uniform(0, 2 * np.pi))
+    return 1 + depth * m / len(periods)
+
+
+def circ(center):
     return (t - center + SECONDS / 2) % SECONDS - SECONDS / 2
 
 
-rain = noise(100, 7200, .65) * (.65 + .08 * np.sin(2 * np.pi * t / 10))
-paper = noise(450, 7000, .2)
-env = np.full(N, .012)
-for center in [2, 6.8, 11.5, 17, 22.3, 27]:
-    d = distance(center)
-    env += np.exp(-(d / .38) ** 2) * (.55 + .15 * np.cos(2 * np.pi * d * 17))
-paper *= env
-fire = noise(30, 1600, 1.5) * .22
-crackle = noise(600, 9000)
-for center in rng.uniform(0, SECONDS, 100):
-    d = distance(center)
-    fire += crackle * np.exp(-(d / rng.uniform(.003, .035)) ** 2) * rng.uniform(.04, .3)
+def events(min_gap, max_gap):
+    times, at = [], rng.uniform(0, max_gap)
+    while at < SECONDS - min_gap:
+        times.append(at); at += rng.uniform(min_gap, max_gap)
+    return times
 
-for name, y in [('rain', rain), ('pages', paper), ('fire', fire)]:
-    y *= .62 / max(abs(y))
-    pcm = (y * 32767).astype('<i2')
+
+def rms_db(y):
+    return 20 * np.log10(np.sqrt(np.mean(y ** 2)) + 1e-12)
+
+
+def normalize(y, target_db):
+    y = y * 10 ** ((target_db - rms_db(y)) / 20)
+    peak = np.max(np.abs(y))
+    ceiling = 0.12  # ~-18 dBFS: soft ceiling, transients never jump out of the bed
+    if peak > ceiling:
+        y = np.tanh(y / ceiling) * ceiling
+    return y
+
+
+# Rain: distant, steady. Pink/brown body, rolled off above ~3 kHz, very slow breathing.
+rain = 0.75 * noise(60, 2800, 1.4) + 0.25 * noise(300, 3800, 1.0)
+rain *= slow_lfo([1, 2, 3], 0.10)
+rain = normalize(rain, -30)
+
+# 翻书: quiet room tone with sparse, soft, varied page rustles every 8-20 s.
+room = noise(40, 900, 1.8)
+room = room / np.std(room) * 10 ** (-50 / 20)
+paper = np.zeros(N)
+for center in events(8, 20):
+    dur = rng.uniform(0.35, 0.9)
+    d = circ(center)
+    # asymmetric envelope: soft attack, longer release, plus a second smaller ruffle
+    env = np.where(d < 0, np.exp(-(d / (dur * 0.35)) ** 2), np.exp(-(d / dur) ** 2))
+    env += 0.35 * np.exp(-((d - dur * rng.uniform(0.4, 0.8)) / (dur * 0.25)) ** 2)
+    band = noise(rng.uniform(500, 900), rng.uniform(2500, 4000), 0.8)
+    paper += band * env * rng.uniform(0.5, 1.0)
+paper = paper / (np.sqrt(np.mean(paper ** 2)) + 1e-12) * 10 ** (-40 / 20)
+pages = room + paper
+pages = normalize(pages, -36)
+
+# 炉火: low soft rumble, gentle flicker and sparse low-level crackles.
+fire = noise(30, 700, 1.8) * slow_lfo([2, 5, 7], 0.15)
+fire = fire / np.std(fire) * 10 ** (-34 / 20)
+crack = np.zeros(N)
+for center in events(0.4, 2.5):
+    d = circ(center)
+    w = rng.uniform(0.002, 0.012)
+    crack += np.exp(-np.abs(d) / w) * rng.uniform(0.2, 1.0)
+crack *= noise(700, 3500, 0.5)
+crack = crack / (np.sqrt(np.mean(crack ** 2)) + 1e-12) * 10 ** (-44 / 20)
+fire = normalize(fire + crack, -31)
+
+for name, y in [('rain', rain), ('pages', pages), ('fire', fire)]:
+    pcm = (np.clip(y, -1, 1) * 32767).astype('<i2')
+    # seam check: the jump across the wrap must look like any other adjacent-sample step
+    step = abs(int(pcm[0]) - int(pcm[-1])); typical = np.percentile(np.abs(np.diff(pcm.astype(int))), 99.9)
+    assert step <= typical + 1, (name, step, typical)
+    print(f'{name}: rms {rms_db(y):.1f} dBFS, peak {20*np.log10(np.max(np.abs(y))):.1f} dBFS, seam step {step} (p99.9 {typical:.0f})')
     with tempfile.TemporaryDirectory() as temp:
         wav = Path(temp) / 'loop.wav'
         with wave.open(str(wav), 'wb') as w:
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(RATE)
-            w.writeframes(pcm.tobytes())
-        subprocess.run(['/usr/bin/ffmpeg', '-y', '-hide_banner', '-loglevel', 'error',
-                        '-i', str(wav), '-c:a', 'libvorbis', '-q:a', '2',
-                        '-map_metadata', '-1', str(out / f'noise_{name}.ogg')], check=True)
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE); w.writeframes(pcm.tobytes())
+        subprocess.run(['/usr/bin/ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', str(wav),
+                        '-c:a', 'libvorbis', '-q:a', '1', '-map_metadata', '-1',
+                        str(out / f'noise_{name}.ogg')], check=True)
 print('Generated bytes:', sum(p.stat().st_size for p in out.glob('noise_*.ogg')))

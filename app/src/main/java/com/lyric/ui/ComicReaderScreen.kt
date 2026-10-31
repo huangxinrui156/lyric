@@ -118,8 +118,10 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
     }
     val archive = sourceState
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val spreads = remember(pages, landscape, prefs.comicSpread, prefs.comicOffset, vertical) {
-        Spreads.pair(pages.pages.size, landscape, prefs.comicSpread && !vertical, prefs.comicOffset)
+    val largeScreen = LocalConfiguration.current.smallestScreenWidthDp >= 600
+    val spreadOn = Spreads.enabled(prefs.comicSpread, largeScreen)
+    val spreads = remember(pages, landscape, spreadOn, prefs.comicOffset, vertical) {
+        Spreads.pair(pages.pages.size, landscape, spreadOn && !vertical, prefs.comicOffset)
     }
     val pager = key(spreads, vertical) {
         rememberPagerState(initialPage = Spreads.indexOf(spreads, pages.indexOf(locator))) { spreads.size }
@@ -134,6 +136,23 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
     }
     var layoutMenu by remember { mutableStateOf(false) }
     var chrome by remember { mutableStateOf(false) }
+    // 0.9.2: landscape comic reading is fully immersive (system bars hidden, content under the cutout).
+    val comicActivity = LocalContext.current as? android.app.Activity
+    if (comicActivity != null && landscape) DisposableEffect(comicActivity) {
+        val window = comicActivity.window
+        val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        val bars = androidx.core.view.WindowInsetsCompat.Type.systemBars()
+        controller.hide(bars)
+        val previousCutout = window.attributes.layoutInDisplayCutoutMode
+        if (android.os.Build.VERSION.SDK_INT >= 28) window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        onDispose {
+            controller.show(bars)
+            if (android.os.Build.VERSION.SDK_INT >= 28) window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = previousCutout }
+        }
+    }
     var zoomed by remember { mutableStateOf(false) }
     var chapters by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -231,7 +250,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                         val pair = spreads[index].let { if (rtl) it.reversed() else it }
                         ComicPage(archive.getOrThrow(), pages.pages[pair.first()],
-                            second = pair.getOrNull(1)?.let { pages.pages[it] }, trim = prefs.comicTrim,
+                            second = pair.getOrNull(1)?.let { pages.pages[it] }, trim = prefs.comicTrim, fillWidth = landscape,
                             onZoom = { if (index == pager.currentPage) zoomed = it },
                             onTap = { x, w ->
                                 hint = false
@@ -311,7 +330,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
                 }
             }
         }
-        if (layoutMenu) ComicLayoutSheet(prefs, vertical, { layoutMenu = false }) { next ->
+        if (layoutMenu) ComicLayoutSheet(prefs, vertical, largeScreen, { layoutMenu = false }) { next ->
             vm.updateSettings(SettingsScope.BOOK, next)
         }
         if (chapters) Dialog({ chapters = false }) {
@@ -417,8 +436,15 @@ private fun trimmedArtwork(loaded: List<PageArtwork>, trim: Boolean): List<PageA
     return remember(loaded, c) { if (c == null) loaded else loaded.mapIndexed { i, p -> p.copy(crop = c[i]) } }
 }
 
+/** Width / height of the (trimmed) page or side-by-side spread at a common height. */
+internal fun artworkRatio(art: List<PageArtwork>, trimmed: Boolean): Float = art.sumOf { p ->
+    val c = if (trimmed) p.crop else PageCrop()
+    val w = p.bitmap.width * (c.right - c.left); val h = p.bitmap.height * (c.bottom - c.top)
+    (w / h.coerceAtLeast(1f)).toDouble()
+}.toFloat()
+
 @Composable
-private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, second: ComicPageRef? = null, trim: Boolean = false, onZoom: (Boolean) -> Unit,
+private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, second: ComicPageRef? = null, trim: Boolean = false, fillWidth: Boolean = false, onZoom: (Boolean) -> Unit,
                       onTap: (Float, Float) -> Unit, onSkip: () -> Unit) {
     val latestTap by rememberUpdatedState(onTap)
     val latestZoom by rememberUpdatedState(onZoom)
@@ -427,12 +453,15 @@ private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, s
     var result by remember(ref, second, attempt) { mutableStateOf<Result<List<PageArtwork>>?>(null) }
     var slow by remember(ref, second, attempt) { mutableStateOf(false) }
     var verySlow by remember(ref, second, attempt) { mutableStateOf(false) }
-    LaunchedEffect(archive, ref, second, attempt, size) {
+    LaunchedEffect(archive, ref, second, attempt, size, fillWidth) {
         if (size.width == 0) return@LaunchedEffect
         launch { delay(300); slow = true; delay(700); verySlow = true }
         result = withContext(Dispatchers.IO) { runCatching {
             listOfNotNull(ref, second).map { page ->
-                val bitmap = archive.page(page.unit.resource, if (second == null) size.width * 2 else size.width, size.height * 2)
+                // Fill-width (landscape) pages are taller than the viewport: bound by width, not height.
+                val width = if (second == null) size.width * (if (fillWidth) 1 else 2) else size.width
+                val height = if (fillWidth) size.width * 4 else size.height * 2
+                val bitmap = archive.page(page.unit.resource, width, height)
                 PageArtwork(bitmap, PageCrop())
             }
         } }
@@ -488,10 +517,23 @@ private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, s
             r.isFailure -> ComicError("这一页没能打开",
                 "${ref.unit.resource.substringAfterLast('/')} · ${r.exceptionOrNull()?.localizedMessage?.substringAfter(" · ") ?: "未知错误"}",
                 { attempt++ }, onSkip)
-            else -> trimmedArtwork(r.getOrThrow(), trim).let { art -> ComicArtwork(art, trim && art.any { it.crop != PageCrop() },
-                Modifier.fillMaxSize().padding(4.dp).graphicsLayer {
+            else -> trimmedArtwork(r.getOrThrow(), trim).let { art ->
+                val trimmed = trim && art.any { it.crop != PageCrop() }
+                val zoomLayer = Modifier.graphicsLayer {
                     scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y
-                }) }
+                }
+                if (fillWidth) {
+                    // Landscape: fill the width, pan vertically inside the page/spread; taps still turn pages.
+                    val ratio = remember(art, trimmed) { artworkRatio(art, trimmed) }
+                    val scroll = rememberScrollState()
+                    Box(Modifier.fillMaxSize().then(zoomLayer).verticalScroll(scroll, enabled = scale <= 1.01f),
+                        contentAlignment = Alignment.Center) {
+                        ComicArtwork(art, trimmed, Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                            .heightIn(min = with(LocalDensity.current) { size.height.toDp() })
+                            .aspectRatio(ratio.coerceAtLeast(.05f), matchHeightConstraintsFirst = false))
+                    }
+                } else ComicArtwork(art, trimmed, Modifier.fillMaxSize().padding(4.dp).then(zoomLayer))
+            }
         }
         if (scale > 1.01f) Text("${"%.1f".format(scale)}×", color = ComicInk, fontSize = 11.sp,
             modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)

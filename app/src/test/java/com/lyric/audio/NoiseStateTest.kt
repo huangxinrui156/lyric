@@ -20,11 +20,25 @@ class NoiseStateTest {
         assertEquals(NoiseSound.NONE, NoiseState.restore("corrupt", -1f).sound)
         assertEquals(0f, NoiseState.restore("RAIN", -1f).volume)
     }
+    @Test fun perceptualCurveAndQuietDefault() {
+        assertEquals(.35f, NoiseState().volume)
+        assertEquals(0f, NoiseState.gain(0f)); assertEquals(1f, NoiseState.gain(1f))
+        assertTrue(NoiseState.gain(.35f) < .05f)
+        assertTrue(NoiseState.gain(.5f) > NoiseState.gain(.35f))
+    }
+    @Test fun startFadesInOver800ms() {
+        val gains = NoiseGains(1000)
+        gains.target(NoiseState(NoiseSound.RAIN, 1f, running = true))
+        repeat(399) { gains.next() }
+        assertEquals(.5f, gains.next()[1], .01f)
+        repeat(399) { gains.next() }
+        assertEquals(1f, gains.next()[1], .0001f)
+    }
     @Test fun crossfadeIsExactly300msAndInterruptedSwitchHasContinuousGain() {
         val gains = NoiseGains(1000)
         val running = NoiseState(NoiseSound.RAIN, 1f, running = true)
         gains.target(running)
-        repeat(300) { gains.next() }
+        repeat(800) { gains.next() }
         assertEquals(1f, gains.next()[1], .0001f)
         gains.target(running.select(NoiseSound.PAGES))
         repeat(150) { gains.next() }

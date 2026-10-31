@@ -25,12 +25,12 @@ class StorageAndSettingsTest {
         try {
             val store = SettingsStore(context, data)
             val before = store.settings("a", com.lyric.core.ContentType.COMIC).first()
-            assertTrue(before.comicSpread); assertFalse(before.comicOffset); assertFalse(before.comicTrim)
+            assertNull(before.comicSpread); assertFalse(before.comicOffset); assertFalse(before.comicTrim)
             store.update(SettingsScope.BOOK, "a", before, before.copy(comicSpread = false, comicOffset = true, comicTrim = true), com.lyric.core.ContentType.COMIC)
             val reopened = SettingsStore(context, data).settings("a", com.lyric.core.ContentType.COMIC).first()
-            assertFalse(reopened.comicSpread); assertTrue(reopened.comicOffset); assertTrue(reopened.comicTrim)
+            assertEquals(false, reopened.comicSpread); assertTrue(reopened.comicOffset); assertTrue(reopened.comicTrim)
             val other = store.settings("b", com.lyric.core.ContentType.COMIC).first()
-            assertTrue(other.comicSpread); assertFalse(other.comicOffset); assertFalse(other.comicTrim)
+            assertNull(other.comicSpread); assertFalse(other.comicOffset); assertFalse(other.comicTrim)
         } finally { scope.cancel() }
     }
     @Test fun clearingCachesRebuildsFromSourceAndPreservesOriginalFontsCoversAndReadingData() = runBlocking {

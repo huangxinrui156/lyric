@@ -14,8 +14,8 @@ android {
         applicationId = "com.lyric.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 28
-        versionName = "0.9.1"
+        versionCode = 29
+        versionName = "0.9.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }

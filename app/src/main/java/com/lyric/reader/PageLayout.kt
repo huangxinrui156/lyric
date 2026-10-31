@@ -7,6 +7,8 @@ import kotlin.math.*
 
 /** Zero-based physical pages. Cover stays alone even with offset enabled. */
 object Spreads {
+    /** Per-book choice wins; otherwise spreads default on only for large screens (sw >= 600dp). */
+    fun enabled(choice: Boolean?, largeScreen: Boolean) = choice ?: largeScreen
     fun pair(count: Int, landscape: Boolean, enabled: Boolean, offset: Boolean): List<List<Int>> {
         if (count <= 0) return emptyList()
         if (!landscape || !enabled) return (0 until count).map { listOf(it) }

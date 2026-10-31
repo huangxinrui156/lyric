@@ -60,7 +60,7 @@ internal fun ComicArtwork(pages: List<PageArtwork>, trim: Boolean, modifier: Mod
 }
 
 @Composable
-internal fun ComicLayoutSheet(prefs: ReaderSettings, vertical: Boolean, dismiss: () -> Unit, update: (ReaderSettings) -> Unit) {
+internal fun ComicLayoutSheet(prefs: ReaderSettings, vertical: Boolean, largeScreen: Boolean, dismiss: () -> Unit, update: (ReaderSettings) -> Unit) {
     val night = prefs.theme in listOf(ReaderTheme.NIGHT, ReaderTheme.BLACK, ReaderTheme.GREEN)
     val bg = if (night) Color(0xFF2A2B2F) else Paper
     val ink = if (night) Color(0xFFD0CABE) else Ink
@@ -82,7 +82,8 @@ internal fun ComicLayoutSheet(prefs: ReaderSettings, vertical: Boolean, dismiss:
                         checkedBorderColor = Color.Transparent, uncheckedBorderColor = Color.Transparent))
                 }
             }
-            toggle("双页", "横屏时自动开启", prefs.comicSpread, !vertical) { update(prefs.copy(comicSpread = it)) }
+            toggle("双页", if (largeScreen) "横屏时自动开启" else "横屏时两页并排（手机默认单页）",
+                com.lyric.reader.Spreads.enabled(prefs.comicSpread, largeScreen), !vertical) { update(prefs.copy(comicSpread = it)) }
             HorizontalDivider(color = divider)
             toggle("页码偏移一页", "跨页大图对不齐时打开", prefs.comicOffset, !vertical) { update(prefs.copy(comicOffset = it)) }
             HorizontalDivider(color = divider)
