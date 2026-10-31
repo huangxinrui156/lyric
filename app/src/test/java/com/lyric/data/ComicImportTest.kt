@@ -69,6 +69,7 @@ class ComicImportTest {
         assertEquals(repo.imports.value.toString(), 1, repo.imports.value.added)
         val row = repo.dao.all().single()
         assertEquals("cbz", row.extension); assertEquals("COMIC", row.contentType)
+        assertEquals("COMIC", row.section)
         assertTrue(File(row.coverPath!!).length() > 0)
         assertTrue("private copy kept for random access", repo.comicFile(row.id).isFile)
         provider.denied = true; repo.clearCaches()
@@ -96,6 +97,7 @@ class ComicImportTest {
         assertEquals(repo.imports.value.toString(), 1, repo.imports.value.added)
         val row = repo.dao.all().single()
         assertEquals("COMIC", row.contentType)
+        assertEquals("COMIC", row.section)
         val book = repo.load(row.id).second
         assertEquals(listOf("第1话", "第2话"), book.chapters.map { it.title })
         assertEquals(listOf("第1话/1.png", "第1话/2.png", "第1话/10.png"),
@@ -112,6 +114,7 @@ class ComicImportTest {
         repo.importUris(listOf(Uri.fromFile(file)))
         val row = repo.dao.all().first { it.title == "再见绘梨" }
         assertEquals("COMIC", row.contentType)
+        assertEquals("COMIC", row.section)
         assertTrue(repo.comicFile(row.id).isFile)
         val (_, book) = repo.load(row.id)
         assertEquals(ContentType.COMIC, book.contentType)
@@ -126,4 +129,31 @@ class ComicImportTest {
         assertTrue(repo.comicFile(row.id).isFile)
         ComicArchive(repo.comicFile(row.id), (again.chapters[0].content[0] as ContentUnit.ImagePage).resource).close()
     }
+    @Test fun singleImageUsesComicReaderAndReimportKeepsManualSectionAndProgress() = env { context, repo ->
+        val file = File(context.filesDir, "单页.png").apply { writeBytes(tinyPng(60, 80)) }
+        repo.importUris(listOf(Uri.fromFile(file)))
+        assertEquals(repo.imports.value.toString(), 1, repo.imports.value.added)
+        val row = repo.dao.all().single()
+        assertEquals("COMIC", row.section)
+        assertEquals("COMIC", row.contentType)
+        val book = repo.load(row.id).second
+        assertEquals(1, book.chapters.sumOf { it.units.size })
+        repo.save(row.id, book, Locator())
+        val progress = repo.dao.progress(row.id)
+        repo.dao.moveToSection(row.id, "BOOK")
+        repo.importUris(listOf(Uri.fromFile(file)))
+        assertEquals(1, repo.imports.value.duplicates)
+        assertEquals("BOOK", repo.dao.book(row.id)!!.section)
+        assertEquals(progress, repo.dao.progress(row.id))
+        // The shelf summary does not run reader migrations or modify anchors.
+        repo.dao.addBookmark(BookmarkRow(bookId = row.id, chapterIndex = 0, charOffset = 12,
+            page = 0, excerpt = "旧书签", chapterTitle = "页", contentRevision = 0))
+        val marks = repo.dao.allBookmarks()
+        repo.clearCaches()
+        val (summary, kept) = repo.comicSummary(row.id)
+        assertEquals(1, summary.chapters.sumOf { it.units.size })
+        assertEquals(progress, kept)
+        assertEquals(marks, repo.dao.allBookmarks())
+    }
+
 }

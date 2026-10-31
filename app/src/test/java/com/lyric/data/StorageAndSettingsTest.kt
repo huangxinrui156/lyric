@@ -97,4 +97,30 @@ class StorageAndSettingsTest {
         } finally { scope.cancel() }
     }
 
+    @Test fun shelfSectionSurvivesStoreRecreationAndBackupRoundTrip() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(context.filesDir, "section-${System.nanoTime()}.preferences_pb")
+        val firstJob = SupervisorJob()
+        val first = SettingsStore(context, PreferenceDataStoreFactory.create(scope = CoroutineScope(firstJob + Dispatchers.IO)) { file })
+        assertEquals(ShelfSection.BOOK, first.shelfSection.first())
+        first.shelfSection(ShelfSection.COMIC)
+        first.shelfSort(2, ShelfSection.BOOK)
+        first.shelfSort(1, ShelfSection.COMIC)
+        val snapshot = first.snapshot()
+        first.validate(snapshot)
+        firstJob.cancelAndJoin()
+        val secondJob = SupervisorJob()
+        try {
+            val reopened = SettingsStore(context, PreferenceDataStoreFactory.create(scope = CoroutineScope(secondJob + Dispatchers.IO)) { file })
+            assertEquals(ShelfSection.COMIC, reopened.shelfSection.first())
+            assertEquals(2, reopened.shelfSort.first())
+            assertEquals(1, reopened.comicShelfSort.first())
+            reopened.shelfSection(ShelfSection.BOOK)
+            reopened.restore(snapshot)
+            assertEquals(ShelfSection.COMIC, reopened.shelfSection.first())
+            reopened.restore(SettingsSnapshot()) // old backups without a section remain valid
+            assertEquals(ShelfSection.BOOK, reopened.shelfSection.first())
+        } finally { secondJob.cancelAndJoin(); file.delete() }
+    }
+
 }

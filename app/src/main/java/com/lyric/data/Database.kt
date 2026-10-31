@@ -29,6 +29,7 @@ data class ShelfBook(
     val percent: Float = 0f,
     val coverPath: String? = null,
     @ColumnInfo(defaultValue = "0") val contentRevision: Int = 0,
+    @ColumnInfo(defaultValue = "'BOOK'") val section: String = if (contentType == "COMIC") "COMIC" else "BOOK",
 )
 
 /** No foreign key since v5: removing a book from the shelf keeps where the reader was. */
@@ -138,6 +139,9 @@ interface LibraryDao {
 
     @Update suspend fun update(book: ShelfBook)
 
+    @Query("UPDATE books SET section = :section WHERE id = :id")
+    suspend fun moveToSection(id: String, section: String)
+
     @Query("DELETE FROM books WHERE id = :id") suspend fun remove(id: String)
 
     @Query("UPDATE books SET invalid = :invalid WHERE id = :id")
@@ -176,7 +180,7 @@ interface LibraryDao {
 @Database(
     entities = [ShelfBook::class, ProgressRow::class, BookmarkRow::class, ReadingSession::class, FinishedBook::class, HighlightRow::class],
     views = [DailyStat::class],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -233,4 +237,17 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE highlights ADD COLUMN color INTEGER NOT NULL DEFAULT 0")
     }
+}
+
+/** v0.6: shelf placement is independent of the reader format; all reading data stays untouched. */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE books ADD COLUMN section TEXT NOT NULL DEFAULT 'BOOK'")
+        db.execSQL("UPDATE books SET section = 'COMIC' WHERE contentType = 'COMIC'")
+    }
+}
+
+enum class ShelfSection(val label: String) {
+    BOOK("书架"), COMIC("画架");
+    fun other() = if (this == BOOK) COMIC else BOOK
 }

@@ -18,6 +18,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.lyric.core.*
 import com.lyric.reader.ReaderCanvas
 import com.lyric.ui.ImportDocuments
+import com.lyric.ui.ImportFilter
 import java.io.File
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
@@ -223,7 +224,7 @@ class RealEpubImportTest {
     @Test fun pickerUsesUnfilteredOpenDocumentAndPreservesReturnedGrantFlags() {
         val context = ApplicationProvider.getApplicationContext<Application>()
         val picker = ImportDocuments()
-        val intent = picker.createIntent(context, Unit)
+        val intent = picker.createIntent(context, ImportFilter.ALL)
         assertEquals(Intent.ACTION_OPEN_DOCUMENT, intent.action)
         assertEquals("*/*", intent.type)
         assertFalse(intent.hasExtra(Intent.EXTRA_MIME_TYPES))
@@ -233,7 +234,7 @@ class RealEpubImportTest {
         val result = picker.parseResult(android.app.Activity.RESULT_OK, Intent().setData(uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
         assertEquals(listOf(uri), result.uris)
         assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION, result.flags)
-        assertEquals(Intent.ACTION_OPEN_DOCUMENT_TREE, ImportDocuments(true).createIntent(context, Unit).action)
+        assertEquals(Intent.ACTION_OPEN_DOCUMENT_TREE, ImportDocuments(true).createIntent(context, ImportFilter.ALL).action)
         assertTrue(picker.parseResult(android.app.Activity.RESULT_CANCELED, null).uris.isEmpty())
     }
 

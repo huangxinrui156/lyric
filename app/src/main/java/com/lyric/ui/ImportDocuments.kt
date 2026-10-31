@@ -10,9 +10,11 @@ import com.lyric.core.ImportTrace
 
 data class DocumentSelection(val uris: List<Uri>, val flags: Int)
 
-/** No MIME filter: ColorOS may label EPUBs as ZIP, octet-stream or an OEM-specific type. */
-class ImportDocuments(private val tree: Boolean = false) : ActivityResultContract<Unit, DocumentSelection>() {
-    override fun createIntent(context: Context, input: Unit) = Intent(
+enum class ImportFilter { ALL, COMIC }
+
+/** Keep an explicit unfiltered escape hatch for providers with OEM-specific MIME types. */
+class ImportDocuments(private val tree: Boolean = false) : ActivityResultContract<ImportFilter, DocumentSelection>() {
+    override fun createIntent(context: Context, input: ImportFilter) = Intent(
         if (tree) Intent.ACTION_OPEN_DOCUMENT_TREE else Intent.ACTION_OPEN_DOCUMENT,
     ).apply {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
@@ -21,8 +23,13 @@ class ImportDocuments(private val tree: Boolean = false) : ActivityResultContrac
             type = "*/*"
             addCategory(Intent.CATEGORY_OPENABLE)
             putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            if (input == ImportFilter.COMIC) putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                "application/vnd.comicbook+zip", "application/x-cbz", "application/zip",
+                "application/x-zip", "application/x-zip-compressed", "application/epub+zip",
+                "application/x-epub+zip", "image/*", "application/octet-stream",
+            ))
         }
-        Log.i(ImportTrace.TAG, "启动 SAF action=$action type=$type (无 MIME 过滤)")
+        Log.i(ImportTrace.TAG, "启动 SAF action=$action type=$type filter=$input")
     }
 
     override fun parseResult(resultCode: Int, intent: Intent?): DocumentSelection {

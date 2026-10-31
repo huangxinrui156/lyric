@@ -31,4 +31,15 @@ class BookFormatsTest {
         assertThrows(IllegalArgumentException::class.java) { EpubPaths.resolve("book.opf", "%2E%2E/outside") }
         assertThrows(IllegalArgumentException::class.java) { EpubPaths.resolve("book.opf", "https://example.com/a.xhtml") }
     }
+    @Test fun rasterDetectionUsesBytesAndNeverTreatsTextOrZipAsAnImage() {
+        assertEquals("png", BookFormats.imageExtension(byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 13, 10, 26, 10)))
+        assertEquals("jpg", BookFormats.imageExtension(byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte())))
+        assertEquals("gif", BookFormats.imageExtension("GIF89a".toByteArray()))
+        assertEquals("webp", BookFormats.imageExtension("RIFF1234WEBP".toByteArray()))
+        assertNull(BookFormats.imageExtension("RIFF1234WAVE".toByteArray()))
+        assertNull(BookFormats.imageExtension(byteArrayOf(0x50, 0x4b, 3, 4)))
+        assertNull(BookFormats.imageExtension("第一章 雨声".toByteArray()))
+        assertEquals("cbz", BookFormats.extension("漫画.ZIP"))
+    }
+
 }

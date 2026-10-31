@@ -18,6 +18,18 @@ class ShelfViewModel(private val app: LyricApp) : ViewModel() {
     val repository = app.repository
     val books =
         repository.books.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // null prevents briefly showing the wrong shelf before DataStore has loaded.
+    val section = repository.settings.shelfSection
+        .map<ShelfSection, ShelfSection?> { it }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    fun section(value: ShelfSection) {
+        viewModelScope.launch { repository.settings.shelfSection(value) }
+    }
+    fun move(book: ShelfBook) {
+        viewModelScope.launch {
+            repository.dao.moveToSection(book.id, ShelfSection.valueOf(book.section).other().name)
+        }
+    }
     val imports = repository.imports.asStateFlow()
     val grid =
         repository.settings.grid.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
@@ -34,8 +46,10 @@ class ShelfViewModel(private val app: LyricApp) : ViewModel() {
 
     val sortMode =
         repository.settings.shelfSort.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    fun sort(mode: Int) {
-        viewModelScope.launch { repository.settings.shelfSort(mode) }
+    val comicSortMode =
+        repository.settings.comicShelfSort.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    fun sort(mode: Int, section: ShelfSection) {
+        viewModelScope.launch { repository.settings.shelfSort(mode, section) }
     }
 
     fun import(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null) {

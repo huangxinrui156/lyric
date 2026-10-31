@@ -11,7 +11,22 @@ object BookFormats {
 
     fun extension(name: String): String? = when (val e = name.substringAfterLast('.', "").lowercase()) {
         "txt", "epub", "cbz" -> e
+        "zip" -> "cbz"
         else -> null
+    }
+
+    /** Raster signatures supported by the comic reader, including nameless SAF documents. */
+    fun imageExtension(prefix: ByteArray): String? {
+        fun starts(vararg bytes: Int) = prefix.size >= bytes.size && bytes.indices.all { (prefix[it].toInt() and 255) == bytes[it] }
+        return when {
+            starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a) -> "png"
+            starts(0xff, 0xd8, 0xff) -> "jpg"
+            starts(0x47, 0x49, 0x46, 0x38) -> "gif"
+            starts(0x42, 0x4d) -> "bmp"
+            starts(0x52, 0x49, 0x46, 0x46) && prefix.size >= 12 &&
+                prefix.copyOfRange(8, 12).contentEquals("WEBP".toByteArray(Charsets.US_ASCII)) -> "webp"
+            else -> null
+        }
     }
 
     fun detect(prefix: ByteArray, displayName: String, mimeType: String?, uriName: String = ""): String {

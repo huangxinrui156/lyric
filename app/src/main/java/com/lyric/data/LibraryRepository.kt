@@ -298,8 +298,21 @@ class LibraryRepository(
                     }
                 }
             }
+            // Recognize the bytes before asking Android to inspect bounds. This also accepts
+            // opaque SAF filenames/MIME types without probing every EPUB or text as a bitmap.
+            val prefix = temp.inputStream().use { it.readBounded(12) }
+            val imageExtension = BookFormats.imageExtension(prefix)
+            if (imageExtension != null) {
+                val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                android.graphics.BitmapFactory.decodeFile(temp.path, bounds)
+                require(bounds.outWidth > 0 && bounds.outHeight > 0) { "图片已损坏或无法解码" }
+                val packed = packImages(listOf("1.$imageExtension" to Uri.fromFile(temp)))
+                try {
+                    return importOne(Uri.fromFile(packed), "${name.substringBeforeLast('.')}.cbz", retainSource = true)
+                } finally { packed.delete() }
+            }
             val extension = ImportTrace.stage("识别格式") { BookFormats.detect(
-                temp.inputStream().use { it.readBounded(4) }, name,
+                prefix, name,
                 runCatching { context.contentResolver.getType(uri) }.getOrNull(),
                 uri.lastPathSegment.orEmpty(),
             ).let { if (it == "epub" || it == "cbz") BookFormats.zipKind(temp) else it } }
@@ -437,7 +450,7 @@ class LibraryRepository(
                     ComicPages.thumbnail(kept, entry, 720)?.let { writeBytes(it) }
                 }.takeIf { it.length() > 0 }?.absolutePath
             } ?: row.coverPath
-            val updated = row.copy(contentType = ContentType.COMIC.name, contentRevision = 4, totalChars = book.totalChars,
+            val updated = row.copy(contentType = ContentType.COMIC.name, section = ShelfSection.COMIC.name, contentRevision = 4, totalChars = book.totalChars,
                 chapterCount = book.chapters.size, excerpt = "", coverPath = cover)
             writeCache(updated, book)
             // Text offsets mean nothing in a comic: restart at the first page, keep timestamps.
@@ -458,6 +471,20 @@ class LibraryRepository(
         tmp.outputStream().buffered(1 shl 16).use { json.encodeToStream(Book.serializer(), book, it) }
         check(tmp.renameTo(file)) { "无法写入解析缓存" }
         memory.remove(file.name)
+    }
+
+    /** Shelf metadata must never perform reader upgrades or rewrite reading anchors. */
+    suspend fun comicSummary(id: String): Pair<Book, ProgressRow?> = withContext(Dispatchers.IO) {
+        parseLock.withLock {
+            val row = dao.book(id) ?: error("书籍已移出收藏")
+            require(row.contentType == ContentType.COMIC.name)
+            val key = cacheFile(row).name
+            val book = memory[key] ?: runCatching {
+                cacheFile(row).inputStream().buffered(1 shl 16).use { json.decodeFromStream(Book.serializer(), it) }
+            }.getOrNull() ?: registry.parser(row.extension).parse(source(row)).also { writeCache(row, it) }
+            memory[key] = book
+            book to dao.progress(id)
+        }
     }
 
     suspend fun load(id: String, force: Boolean = false): Pair<ShelfBook, Book> =

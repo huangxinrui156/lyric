@@ -100,6 +100,10 @@ class SettingsStore(
 
     fun validate(snapshot: SettingsSnapshot) {
         snapshot.strings.forEach { (key, raw) ->
+            if (key == "shelf_section") {
+                require(ShelfSection.entries.any { it.name == raw }) { "未知分区" }
+                return@forEach
+            }
             require(key == "global" || key.startsWith("type_") || key.startsWith("book_")) { "未知设置项" }
             json.decodeFromString<ReaderSettings>(raw)
         }
@@ -117,12 +121,24 @@ class SettingsStore(
         }
     }
 
+    val shelfSection = store.data.map { prefs ->
+        ShelfSection.entries.firstOrNull { it.name == prefs[stringPreferencesKey("shelf_section")] }
+            ?: ShelfSection.BOOK
+    }.distinctUntilChanged()
+
+    suspend fun shelfSection(section: ShelfSection) = store.edit {
+        it[stringPreferencesKey("shelf_section")] = section.name
+    }
+
     val grid = store.data.map { it[booleanPreferencesKey("grid")] ?: true }
     val sortTitle = store.data.map { it[booleanPreferencesKey("sort_title")] ?: false }
 
     /** 0 最近阅读 · 1 导入时间 · 2 书名 (falls back to the pre-0.5 boolean). */
     val shelfSort = store.data.map { it[intPreferencesKey("shelf_sort")] ?: if (it[booleanPreferencesKey("sort_title")] == true) 2 else 0 }
-    suspend fun shelfSort(mode: Int) = store.edit { it[intPreferencesKey("shelf_sort")] = mode }
+    val comicShelfSort = store.data.map { it[intPreferencesKey("comic_shelf_sort")] ?: 0 }
+    suspend fun shelfSort(mode: Int, section: ShelfSection = ShelfSection.BOOK) = store.edit {
+        it[intPreferencesKey(if (section == ShelfSection.COMIC) "comic_shelf_sort" else "shelf_sort")] = mode
+    }
 
     suspend fun shelf(grid: Boolean? = null, sortTitle: Boolean? = null) =
         store.edit { p ->
