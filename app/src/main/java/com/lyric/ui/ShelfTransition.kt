@@ -24,14 +24,14 @@ import kotlin.math.sin
 
 /**
  * Total line-art switch length; retune here. Phase marks below are fractions of it
- * (at 1400ms: 0–450 draw book · 450–550 hold · 550–1000 morph to panels + figures + horizon ·
- * 1000–1150 hold · 1150–1400 line art fades, grid rises). Reduce-motion: 200ms crossfade.
+ * (at 2000ms: 0–650 draw book · 650–850 hold · 850–1450 morph to panels + figures + horizon ·
+ * 1450–1650 hold · 1650–2000 line art fades, grid rises). Reduce-motion: 200ms crossfade.
  */
-const val SHELF_SWITCH_MS = 1400L
-private const val BOOK_END = 450f / 1400f
-private const val MORPH_START = 550f / 1400f
-private const val MORPH_END = 1000f / 1400f
-private const val FADE_START = 1150f / 1400f
+const val SHELF_SWITCH_MS = 2000L
+private const val BOOK_END = 650f / 2000f
+private const val MORPH_START = 850f / 2000f
+private const val MORPH_END = 1450f / 2000f
+private const val FADE_START = 1650f / 2000f
 
 private fun phase(t: Float, a: Float, b: Float) = ((t - a) / (b - a)).coerceIn(0f, 1f)
 

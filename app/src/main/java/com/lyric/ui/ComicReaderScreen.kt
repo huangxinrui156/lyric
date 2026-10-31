@@ -93,12 +93,16 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
     val prefs by vm.settings.collectAsStateWithLifecycle()
     val locator by vm.locator.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val dir = prefs.comicDirection.takeIf { it in ComicDirections.all } ?: "rtl"
+    val isPdf = book.chapters.firstOrNull()?.units?.firstOrNull().let { it is com.lyric.core.ContentUnit.ImagePage && it.resource.startsWith(com.lyric.reader.PDF_PAGE_PREFIX) }
+    // PDFs read left to right (or as a vertical strip); the manga default does not apply.
+    val dir = (prefs.comicDirection.takeIf { it in ComicDirections.all } ?: "rtl").let { if (isPdf && it == "rtl") "ltr" else it }
     val rtl = dir == "rtl"
     val vertical = dir == "vertical"
     val pages = remember(book) { ComicPages(book) }
     val archive = remember(vm.id) {
-        runCatching { ComicArchive(vm.repository.comicFile(vm.id), pages.pages.firstOrNull()?.unit?.resource) }
+        runCatching<com.lyric.reader.PageSource> {
+            if (isPdf) com.lyric.reader.PdfPageSource(vm.repository.comicFile(vm.id))
+            else ComicArchive(vm.repository.comicFile(vm.id), pages.pages.firstOrNull()?.unit?.resource) }
     }
     DisposableEffect(archive) { onDispose { archive.getOrNull()?.close() } }
     val pager = rememberPagerState(initialPage = pages.indexOf(locator)) { pages.pages.size }
@@ -157,9 +161,9 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
     }
     val currentIndex = if (vertical) listState.firstVisibleItemIndex else pager.currentPage
 
-    Box(Modifier.fillMaxSize().background(ComicBg).testTag("comic-reader")) {
+    Box(Modifier.fillMaxSize().background(if (isPdf) Color(prefs.theme.bg) else ComicBg).testTag("comic-reader")) {
         if (pages.pages.isEmpty() || archive.isFailure) {
-            ComicError("这本漫画没能打开", archive.exceptionOrNull()?.localizedMessage ?: "没有图片", null, null)
+            ComicError(if (isPdf) "这份 PDF 没能打开" else "这本漫画没能打开", archive.exceptionOrNull()?.localizedMessage ?: "没有图片", null, null)
         } else if (vertical) {
             // 条漫: images fill the screen width, stacked without gaps.
             LazyColumn(Modifier.fillMaxSize().testTag("comic-strip"), state = listState) {
@@ -308,7 +312,7 @@ fun DirectionIcon(dir: String, tint: Color, modifier: Modifier = Modifier.size(2
 
 /** 条漫 page: full width, height from the header aspect ratio (no layout jump), decoded at screen width. */
 @Composable
-private fun ComicStripPage(archive: ComicArchive, ref: ComicPageRef, onTap: () -> Unit) {
+private fun ComicStripPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, onTap: () -> Unit) {
     var width by remember { mutableIntStateOf(0) }
     var attempt by remember { mutableIntStateOf(0) }
     var result by remember(ref, attempt) { mutableStateOf<Result<Bitmap>?>(null) }
@@ -330,7 +334,7 @@ private fun ComicStripPage(archive: ComicArchive, ref: ComicPageRef, onTap: () -
 }
 
 @Composable
-private fun ComicPage(archive: ComicArchive, ref: ComicPageRef, onZoom: (Boolean) -> Unit,
+private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, onZoom: (Boolean) -> Unit,
                       onTap: (Float, Float) -> Unit, onSkip: () -> Unit) {
     var size by remember { mutableStateOf(IntSize.Zero) }
     var attempt by remember { mutableIntStateOf(0) }

@@ -8,6 +8,9 @@ class ImportFailure(val stage: String, cause: Throwable) : Exception(
     "[$stage] ${cause.javaClass.simpleName}: ${cause.message ?: "无详细信息"}", cause,
 )
 
+/** Messages already meant for the reader (DRM, legacy .doc): shown verbatim, no stage prefix. */
+open class FriendlyImportException(message: String) : IllegalStateException(message)
+
 object ImportTrace {
     const val TAG = "LyricImport"
     inline fun <T> stage(name: String, block: () -> T): T {
@@ -18,7 +21,7 @@ object ImportTrace {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "失败 $name: ${e.javaClass.name}: ${e.message}", e)
-            throw if (e is ImportFailure) e else ImportFailure(name, e)
+            throw if (e is ImportFailure || e is FriendlyImportException) e else ImportFailure(name, e)
         }
     }
 }

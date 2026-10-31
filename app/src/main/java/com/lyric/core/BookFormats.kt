@@ -7,11 +7,15 @@ import java.util.zip.ZipFile
 object BookFormats {
     val pickerMimeTypes = arrayOf("text/plain", "application/epub+zip", "application/octet-stream",
         "application/zip", "application/x-zip", "application/x-zip-compressed", "application/x-epub+zip",
-        "application/vnd.comicbook+zip", "application/x-cbz")
+        "application/vnd.comicbook+zip", "application/x-cbz", "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword",
+        "application/x-mobipocket-ebook", "application/vnd.amazon.ebook", "application/vnd.amazon.mobi8-ebook", "application/x-mobi8-ebook")
 
     fun extension(name: String): String? = when (val e = name.substringAfterLast('.', "").lowercase()) {
-        "txt", "epub", "cbz" -> e
+        "txt", "epub", "cbz", "pdf", "docx", "mobi", "azw3" -> e
         "zip" -> "cbz"
+        "azw", "prc" -> "mobi"
+        "doc" -> throw FriendlyImportException("请另存为 DOCX 后再导入")
         else -> null
     }
 
@@ -30,6 +34,12 @@ object BookFormats {
     }
 
     fun detect(prefix: ByteArray, displayName: String, mimeType: String?, uriName: String = ""): String {
+        fun ascii(at: Int, s: String) = prefix.size >= at + s.length && String(prefix, at, s.length, Charsets.ISO_8859_1) == s
+        if (ascii(0, "%PDF")) return "pdf"
+        if (ascii(60, "BOOKMOBI") || ascii(60, "TEXtREAd"))
+            return if (displayName.endsWith(".azw3", true) || uriName.endsWith(".azw3", true)) "azw3" else "mobi"
+        if (prefix.size >= 4 && (prefix[0].toInt() and 255) == 0xD0 && (prefix[1].toInt() and 255) == 0xCF &&
+            (prefix[2].toInt() and 255) == 0x11 && (prefix[3].toInt() and 255) == 0xE0) throw FriendlyImportException("请另存为 DOCX 后再导入")
         // All EPUBs/CBZs are ZIP containers; see [zipKind] for the content-based split.
         if (prefix.size >= 4 && prefix[0] == 0x50.toByte() && prefix[1] == 0x4b.toByte() &&
             prefix[2] == 3.toByte() && prefix[3] == 4.toByte()) return "epub"
@@ -37,13 +47,19 @@ object BookFormats {
             "application/epub+zip" -> "epub"
             "application/vnd.comicbook+zip", "application/x-cbz" -> "cbz"
             "text/plain" -> "txt"
-            else -> error("无法识别文件格式，仅支持 TXT / EPUB / CBZ / ZIP 漫画")
+            "application/pdf" -> "pdf"
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx"
+            "application/x-mobipocket-ebook" -> "mobi"
+            "application/vnd.amazon.mobi8-ebook", "application/x-mobi8-ebook" -> "azw3"
+            "application/msword" -> throw FriendlyImportException("请另存为 DOCX 后再导入")
+            else -> error("无法识别文件格式，支持 TXT / EPUB / PDF / DOCX / MOBI / AZW3 / CBZ")
         }
     }
 
     /** A ZIP is an EPUB when it has container.xml; a ZIP of images is a comic. */
     fun zipKind(file: File): String = runCatching {
         ZipFile(file, Charsets.ISO_8859_1).use { zip ->
+            if (zip.getEntry("word/document.xml") != null) return "docx"
             if (zip.getEntry("META-INF/container.xml") != null) return "epub"
             val names = zip.entries().asSequence().filter { !it.isDirectory }.map { it.name }.toList()
             if (names.any { it.endsWith(".opf", true) || it.endsWith(".xhtml", true) }) "epub"

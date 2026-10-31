@@ -186,7 +186,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(Modifier.height(24.dp))
-                            if (status.running || status.message.isNotEmpty()) ImportProgress(status)
+                            if (status.running || status.message.isNotEmpty()) ImportProgress(status) { vm.cancelImport() }
                         }
                     2 -> me()
                 }
@@ -236,6 +236,15 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
             }
         }
     }
+    status.scannedPdfs.firstOrNull()?.takeIf { !status.running }?.let { (id, title) ->
+        AlertDialog(
+            onDismissRequest = { vm.scannedToComic(id, false) },
+            title = { Text("像是扫描版 PDF") },
+            text = { Text("《$title》的页面都是图片，放到画架按页阅读会更合适。要移到画架吗？") },
+            confirmButton = { TextButton(onClick = { vm.scannedToComic(id, true) }) { Text("移到画架") } },
+            dismissButton = { TextButton(onClick = { vm.scannedToComic(id, false) }) { Text("留在书架") } },
+        )
+    }
     remove?.let { book ->
         AlertDialog(
             onDismissRequest = { remove = null },
@@ -269,11 +278,11 @@ private fun ShelfContent(
     val visible =
         remember(books, sortMode, filter, query) {
             val list =
-                when (filter) {
-                    1 -> books.filter { it.extension == if (section == ShelfSection.COMIC) "cbz" else "txt" }
-                    2 -> books.filter { it.extension == "epub" }
-                    3 -> books.filter { it.lastRead > 0 }
-                    else -> books
+                when (val label = filterLabels(section).getOrNull(filter)) {
+                    null, "全部" -> books
+                    "最近" -> books.filter { it.lastRead > 0 }
+                    "MOBI" -> books.filter { it.extension == "mobi" || it.extension == "azw3" }
+                    else -> books.filter { it.extension == label.lowercase() }
                 }
             sortShelf(filterShelf(list, query), sortMode)
         }
@@ -319,8 +328,8 @@ private fun ShelfContent(
                     ContinueCard(continuing, section, vm.repository) { open(continuing.id) }
                 else EmptyShelf(section, import)
                 Spacer(Modifier.height(16.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    listOf("全部", if (section == ShelfSection.COMIC) "CBZ" else "TXT", "EPUB", "最近").forEachIndexed { index, label
+                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    filterLabels(section).forEachIndexed { index, label
                         ->
                         Column(
                             Modifier.padding(end = 16.dp).clickable {
@@ -376,7 +385,7 @@ private fun ShelfContent(
                         fontSize = 11.sp,
                     )
                 }
-                if (status.running) ImportProgress(status)
+                if (status.running) ImportProgress(status) { vm.cancelImport() }
             }
         }
         items(
@@ -417,7 +426,7 @@ private fun ShelfContent(
                         modifier = Modifier.padding(top = 6.dp),
                     )
                     Text(
-                        if (section == ShelfSection.COMIC) "CBZ / EPUB / 图片" else "TXT / EPUB",
+                        if (section == ShelfSection.COMIC) "CBZ / EPUB / 图片" else "TXT / EPUB / PDF / DOCX / MOBI / AZW3",
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -640,13 +649,20 @@ private fun ImportOption(icon: ImageVector, title: String, subtitle: String, cli
     }
 }
 
+private fun filterLabels(section: ShelfSection) =
+    if (section == ShelfSection.COMIC) listOf("全部", "CBZ", "EPUB", "最近")
+    else listOf("全部", "TXT", "EPUB", "PDF", "DOCX", "MOBI", "最近")
+
 @Composable
-private fun ImportProgress(status: ImportStatus) {
+private fun ImportProgress(status: ImportStatus, cancel: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-        Text(
-            if (status.running) "正在导入 ${status.done} / ${status.total}" else "导入完成",
-            fontSize = 13.sp,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (status.running) "正在导入 ${status.done} / ${status.total}" else "导入完成",
+                fontSize = 13.sp, modifier = Modifier.weight(1f),
+            )
+            if (status.running) TextButton(onClick = cancel) { Text("取消", fontSize = 13.sp) }
+        }
         if (status.running && status.total > 0)
             LinearProgressIndicator(
                 progress = { ((status.done + status.detailFraction) / status.total).coerceIn(0f, 1f) },

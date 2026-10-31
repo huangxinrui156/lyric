@@ -10,7 +10,7 @@ import java.nio.charset.Charset
 import java.util.zip.ZipFile
 
 /** Random-access page decoder over the private CBZ copy. Thread-safe; bounded memory. */
-class ComicArchive(file: File, private val sampleEntry: String? = null) : Closeable {
+class ComicArchive(file: File, private val sampleEntry: String? = null) : Closeable, PageSource {
     private val zip: ZipFile = openMatching(file, sampleEntry)
     // ~1/8 of heap for decoded pages (current ±2 preloaded fit comfortably).
     private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).toInt()) {
@@ -24,7 +24,7 @@ class ComicArchive(file: File, private val sampleEntry: String? = null) : Closea
     }
 
     /** Decodes at most [maxWidth] wide (power-of-two sampling); null bitmap → explicit error. */
-    fun page(entry: String, maxWidth: Int, maxHeight: Int = Int.MAX_VALUE): Bitmap {
+    override fun page(entry: String, maxWidth: Int, maxHeight: Int): Bitmap {
         val key = "$entry@$maxWidth"
         cache.get(key)?.let { return it }
         val data = bytes(entry)

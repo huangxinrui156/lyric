@@ -52,6 +52,8 @@ data class ImportStatus(
     val detail: String = "",
     val detailFraction: Float = 0f,
     val batchId: Long = 0,
+    /** PDFs that look scanned (no fonts): the shelf asks once whether to move them to 画架. */
+    val scannedPdfs: List<Pair<String, String>> = emptyList(),
     val folder: Boolean = false,
     val source: String = "",
 )
@@ -74,7 +76,8 @@ class LibraryRepository(
     val dao = db.library()
     val books = dao.observeBooks()
     val imports = MutableStateFlow(ImportStatus())
-    private val registry = ParserRegistry(listOf(TxtParser(), EpubParser(context.cacheDir), ComicParser()))
+    private val registry = ParserRegistry(listOf(TxtParser(), EpubParser(context.cacheDir), ComicParser(),
+        com.lyric.core.DocxParser(context.cacheDir), com.lyric.core.MobiParser(), com.lyric.reader.PdfParser()))
     private val json = Json { ignoreUnknownKeys = true }
     private val cache = File(context.filesDir, "parsed-v1").apply { mkdirs() }
     // A FileProvider may grant only transient access. Retain a private source in that case,
@@ -145,9 +148,14 @@ class LibraryRepository(
         }
     }
 
+    @Volatile private var importJob: kotlinx.coroutines.Job? = null
+    fun cancelImport() { importJob?.cancel(CancellationException("导入已取消")) }
+    fun dismissScanned(id: String) { imports.value = imports.value.copy(scannedPdfs = imports.value.scannedPdfs.filterNot { it.first == id }) }
+
     suspend fun importUris(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null) =
         withContext(Dispatchers.IO) {
             importLock.withLock {
+                importJob = currentCoroutineContext()[kotlinx.coroutines.Job]
                 val batchId = System.nanoTime()
                 imports.value = ImportStatus(running = true, message = "正在扫描本地文件…", batchId = batchId, folder = folder,
                     source = if (folder) uris.firstOrNull()?.lastPathSegment?.substringAfter(':')?.let { "/$it" }.orEmpty() else "")
@@ -289,7 +297,7 @@ class LibraryRepository(
                             val count = input.read(buffer)
                             if (count < 0) break
                             size += count
-                            require(size <= 200L * 1024 * 1024) { "文件超过 200MB" }
+                            require(size <= 300L * 1024 * 1024) { "文件超过 300MB" }
                             if (count > 0) {
                                 digest.update(buffer, 0, count)
                                 output.write(buffer, 0, count)
@@ -300,7 +308,7 @@ class LibraryRepository(
             }
             // Recognize the bytes before asking Android to inspect bounds. This also accepts
             // opaque SAF filenames/MIME types without probing every EPUB or text as a bitmap.
-            val prefix = temp.inputStream().use { it.readBounded(12) }
+            val prefix = temp.inputStream().use { it.readBounded(68) }
             val imageExtension = BookFormats.imageExtension(prefix)
             if (imageExtension != null) {
                 val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -318,7 +326,7 @@ class LibraryRepository(
             ).let { if (it == "epub" || it == "cbz") BookFormats.zipKind(temp) else it } }
             val id = digest.digest().joinToString("") { "%02x".format(it) }
             // Comics are read page by page with random access, so they always keep a private copy.
-            var keepCopy = retainSource || extension == "cbz"
+            var keepCopy = retainSource || extension == "cbz" || extension == "pdf"
             fun retain() = ImportTrace.stage("保存临时授权源文件") {
                 if (keepCopy) {
                     check(sources.isDirectory || sources.mkdirs()) { "无法创建源文件目录" }
@@ -357,7 +365,11 @@ class LibraryRepository(
             if (parsed.contentType == ContentType.COMIC) keepCopy = true
             imports.value = imports.value.copy(detail = "写入缓存…", detailFraction = 1f)
             val cover = ImportTrace.stage("保存封面") {
-                if (parsed.contentType == ContentType.COMIC) parsed.coverResource?.let { entry ->
+                if (extension == "pdf") {
+                    val directory = File(context.filesDir, "covers").apply { check(isDirectory || mkdirs()) }
+                    File(directory, "$id.jpg").apply { com.lyric.reader.PdfPageSource.thumbnail(temp, 720)?.let { writeBytes(it) } }
+                        .takeIf { it.length() > 0 }?.absolutePath
+                } else if (parsed.contentType == ContentType.COMIC) parsed.coverResource?.let { entry ->
                     val directory = File(context.filesDir, "covers").apply { check(isDirectory || mkdirs()) }
                     File(directory, "$id.${entry.substringAfterLast('.', "jpg").lowercase()}").apply {
                         ComicPages.thumbnail(temp, entry, 720)?.let { writeBytes(it) }
@@ -385,7 +397,7 @@ class LibraryRepository(
                     excerpt = parsed.chapters.first().text.take(80),
                     contentRevision = 4,
                     coverPath = cover,
-                )
+                ).let { if (extension == "pdf") it.copy(section = ShelfSection.BOOK.name) else it }
             try {
                 retain()
                 ImportTrace.stage("写入解析缓存") { parseLock.withLock { writeCache(row, parsed) } }
@@ -407,6 +419,8 @@ class LibraryRepository(
                 }
                 throw e
             }
+            if (extension == "pdf" && com.lyric.reader.PdfPageSource.looksScanned(File(sources, id)))
+                imports.value = imports.value.copy(scannedPdfs = imports.value.scannedPdfs + (id to parsed.title))
             Log.i(ImportTrace.TAG, "导入完成 id=$id chapters=${parsed.chapters.size} chars=${parsed.totalChars}")
             return true
         } finally {

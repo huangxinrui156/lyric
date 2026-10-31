@@ -31,6 +31,11 @@ class ShelfViewModel(private val app: LyricApp) : ViewModel() {
         }
     }
     val imports = repository.imports.asStateFlow()
+    fun cancelImport() = repository.cancelImport()
+    fun scannedToComic(id: String, move: Boolean) {
+        repository.dismissScanned(id)
+        if (move) viewModelScope.launch { repository.dao.moveToSection(id, ShelfSection.COMIC.name) }
+    }
     val grid =
         repository.settings.grid.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
     val sortTitle =
