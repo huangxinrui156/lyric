@@ -111,9 +111,6 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
         focus.value = focus.value.copy(plannedMin = min, remainSec = min * 60L)
     }
 
-    fun setMuteNotifications(on: Boolean) {
-        focus.value = focus.value.copy(muteNotifications = on)
-    }
 
     fun startFocus(): Boolean {
         if (focus.value.running) return true
@@ -162,6 +159,9 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
         tick()
     }
 
+    /** 重置: drop the session; elapsed ≥1 min still counts as reading time. */
+    fun resetFocus() = finishFocus(completed = false)
+
     fun abandonFocus() {
         finishFocus(completed = false)
     }
@@ -208,7 +208,7 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
                     pausedMs = pausedMs, pausedAt = 0,
                 )
             )
-            if (duration >= 10) {
+            if (completed || duration >= 60) {
                 // Feed 今日小结 minutes via reading_sessions (chars=0 so pages stay from real reading).
                 dao.addSession(
                     ReadingSession(

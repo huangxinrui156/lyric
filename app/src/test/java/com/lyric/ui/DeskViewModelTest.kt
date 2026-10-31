@@ -43,4 +43,10 @@ class DeskViewModelTest {
         assertEquals(listOf(2L), vmHelpers.filter(rows, "顾城", false).map { it.id })
         assertEquals(listOf("雨季", "顾城"), vmHelpers.filter(rows, "", true).map { it.bookTitle })
     }
+
+    @Test fun bookLabelSkipsCoverChapters() {
+        assertEquals("雪中悍刀行", deskBookLabel("雪中悍刀行", "Cover"))
+        assertEquals("雪中悍刀行", deskBookLabel("雪中悍刀行", " "))
+        assertEquals("雪中悍刀行 · 第 8 章", deskBookLabel("雪中悍刀行", "第 8 章"))
+    }
 }

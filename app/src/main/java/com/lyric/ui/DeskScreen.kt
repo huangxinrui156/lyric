@@ -2,7 +2,6 @@
 
 package com.lyric.ui
 
-import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -176,7 +175,10 @@ fun DeskScreen(
         ) {
             Column(Modifier.padding(18.dp)) {
                 Text("专注阅读", fontSize = 12.sp, color = Stone)
-                Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val focusState by vm.focus.collectAsStateWithLifecycle()
+                // Only flips when a session starts/ends, not on every tick.
+                val active by remember { derivedStateOf { focusState.running } }
+                if (!active) Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(25, 45).forEach { min ->
                         val on = planned == min
                         Box(
@@ -202,14 +204,11 @@ fun DeskScreen(
                         .clickable { pickingBook = true },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box(
-                        Modifier
-                            .width(28.dp)
-                            .height(36.dp)
-                            .background(Color(0xFFA9B39A), RoundedCornerShape(3.dp)),
-                    )
+                    val b = book
+                    if (b != null) BookCover(b, Modifier.width(28.dp).height(36.dp))
+                    else Box(Modifier.width(28.dp).height(36.dp).background(Color(0xFFA9B39A), RoundedCornerShape(3.dp)))
                     Text(
-                        book?.let { "${it.title} · ${it.chapterTitle}" } ?: "还没有可读的书",
+                        book?.let { deskBookLabel(it.title, it.chapterTitle) } ?: "还没有可读的书",
                         fontSize = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -218,47 +217,13 @@ fun DeskScreen(
                     Text("更换 ›", fontSize = 13.sp, color = Stone)
                 }
                 FocusRunningRow(vm, openFocus)
-                // 屏蔽通知：默认关；打开时才申请勿扰权限
-                var mute by rememberSaveable { mutableStateOf(false) }
-                val context = LocalContext.current
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("屏蔽通知", fontSize = 13.sp)
-                        Text("需要勿扰权限", fontSize = 11.sp, color = Stone)
-                    }
-                    Switch(
-                        checked = mute,
-                        onCheckedChange = { want ->
-                            if (want) {
-                                if (!hasDndAccess(context)) {
-                                    context.startActivity(
-                                        Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                    )
-                                    // Keep switch off until permission is granted on next toggle.
-                                    mute = false
-                                    vm.setMuteNotifications(false)
-                                } else {
-                                    mute = true
-                                    vm.setMuteNotifications(true)
-                                }
-                            } else {
-                                mute = false
-                                vm.setMuteNotifications(false)
-                            }
-                        },
-                    )
-                }
-                Box(
+                if (!active) Box(
                     Modifier
                         .fillMaxWidth()
                         .padding(top = 12.dp)
                         .height(44.dp)
                         .background(Ink, RoundedCornerShape(22.dp))
-                        .clickable(enabled = book != null) { vm.setMuteNotifications(mute); if (vm.startFocus()) openFocus() },
+                        .clickable(enabled = book != null) { if (vm.startFocus()) openFocus() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text("开始", fontSize = 15.sp, color = Paper)
@@ -377,25 +342,7 @@ fun FocusTimerScreen(vm: DeskViewModel, focus: FocusUi, openBook: () -> Unit) {
         val controller = window?.let { WindowCompat.getInsetsController(it, view) }
         controller?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller?.hide(WindowInsetsCompat.Type.statusBars())
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val hadDnd = focus.muteNotifications && hasDndAccess(context)
-        if (hadDnd) {
-            runCatching { nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE) }
-        }
-        onDispose {
-            controller?.show(WindowInsetsCompat.Type.statusBars())
-            if (hadDnd) {
-                runCatching { nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL) }
-            }
-        }
-    }
-
-    // Re-apply DND when toggle state changes while running (mute is set before start).
-    LaunchedEffect(focus.muteNotifications) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (focus.muteNotifications && hasDndAccess(context)) {
-            runCatching { nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE) }
-        }
+        onDispose { controller?.show(WindowInsetsCompat.Type.statusBars()) }
     }
 
     LaunchedEffect(Unit) {
@@ -406,7 +353,7 @@ fun FocusTimerScreen(vm: DeskViewModel, focus: FocusUi, openBook: () -> Unit) {
 
     Box(Modifier.fillMaxSize().background(FocusBg)) {
         Text(
-            if (focus.muteNotifications) "勿扰中 · ${focus.bookTitle}" else focus.bookTitle,
+            focus.bookTitle,
             color = FocusMuted,
             fontSize = 13.sp,
             modifier = Modifier
@@ -491,6 +438,16 @@ fun FocusTimerScreen(vm: DeskViewModel, focus: FocusUi, openBook: () -> Unit) {
             }
         }
 
+        Text(
+            "重置",
+            color = FocusMuted,
+            fontSize = 13.sp,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 96.dp)
+                .clickable { vm.resetFocus() }
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        )
         Text(
             if (focus.paused) "已暂停 · 点「继续」恢复计时" else "计时结束轻震一下，自动记录时长",
             fontSize = 12.sp,
@@ -597,10 +554,6 @@ private fun DeskNoteRow(h: HighlightRow, open: () -> Unit) {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(start = 32.dp))
 }
 
-internal fun hasDndAccess(context: Context): Boolean {
-    val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    return nm.isNotificationPolicyAccessGranted
-}
 
 private fun lightVibrate(context: Context) {
     runCatching {
@@ -642,6 +595,8 @@ private fun FocusRunningRow(vm: DeskViewModel, openFocus: () -> Unit) {
             color = Paper, fontSize = 13.sp, modifier = Modifier.weight(1f),
         )
         Text("回到计时 ›", color = FocusBtnFill, fontSize = 12.sp)
+        Text("重置", color = FocusRing, fontSize = 12.sp,
+            modifier = Modifier.padding(start = 14.dp).clickable { vm.resetFocus() })
     }
 }
 
@@ -656,4 +611,11 @@ fun FocusRoute(vm: DeskViewModel, back: () -> Unit, openBook: (String) -> Unit) 
     }
     BackHandler(onBack = back)
     FocusTimerScreen(vm, focus) { openBook(focus.bookId) }
+}
+
+/** 「雪中悍刀行 · Cover」 → 「雪中悍刀行」: skip cover/empty/untitled chapter labels. */
+internal fun deskBookLabel(title: String, chapter: String): String {
+    val c = chapter.trim()
+    val junk = c.isEmpty() || c == "未读" || Regex("(?i)^(cover|封面|title ?page|扉页|目录|toc|contents)$").matches(c)
+    return if (junk) title else "$title · $c"
 }
