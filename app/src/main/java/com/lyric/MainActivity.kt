@@ -25,7 +25,16 @@ class MainActivity : ReaderActivity() {
                 NavHost(navController = nav, startDestination = "shelf") {
                     composable("shelf") {
                         val vm: ShelfViewModel = viewModel(factory = LyricFactory(app))
-                        ShelfScreen(vm, me = { MeScreen(me) { nav.navigate(it) } }) { nav.navigate("reader/$it/-1/0/0") }
+                        val desk: DeskViewModel = viewModel(factory = DeskViewModel.factory(app))
+                        ShelfScreen(
+                            vm,
+                            me = { MeScreen(me) { nav.navigate(it) } },
+                            desk = {
+                                DeskScreen(desk) { id, loc ->
+                                    nav.navigate("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}")
+                                }
+                            },
+                        ) { nav.navigate("reader/$it/-1/0/0") }
                     }
                     composable("bookmarks") {
                         BookmarksScreen(me, { nav.popBackStack() }) { id, loc, bookmarkId ->

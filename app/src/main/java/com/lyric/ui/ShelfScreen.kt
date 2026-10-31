@@ -52,7 +52,7 @@ import java.text.Collator
 import java.util.Locale
 
 @Composable
-fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -> Unit) {
+fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composable () -> Unit, open: (String) -> Unit) {
     val savedSection by vm.section.collectAsStateWithLifecycle()
     val initialSection = savedSection
     if (initialSection == null) {
@@ -129,13 +129,13 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                 ) {
                     listOf(
                             section.label to if (section == ShelfSection.COMIC) Icons.Outlined.Collections else Icons.Outlined.AutoStories,
-                            "本地导入" to Icons.Outlined.AddCircleOutline,
+                            "案头" to DeskNavIcon,
                             "我的" to Icons.Outlined.PersonOutline,
                         )
                         .forEachIndexed { i, (label, icon) ->
                             NavigationBarItem(
                                 selected = tab == i,
-                                onClick = { if (!transition.running) { if (i == 1) prepareImport(); tab = i } },
+                                onClick = { if (!transition.running) tab = i },
                                 icon = { Icon(icon, label, modifier = Modifier.size(23.dp)) },
                                 label = { Text(label, fontSize = 11.sp) },
                                 colors =
@@ -153,41 +153,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                             import = { if (!transition.running) { prepareImport(); importer = true } },
                             actions = { if (!transition.running) actions = it })
                     }
-                    1 ->
-                        Column(
-                            Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState())
-                        ) {
-                            Text(
-                                "本地导入",
-                                fontSize = 28.sp,
-                                fontFamily = Serif,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                if (section == ShelfSection.COMIC) "让喜欢的画面，安静地留在身边。" else "让喜欢的文字，安静地留在身边。",
-                                modifier = Modifier.padding(top = 12.dp, bottom = 36.dp),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 13.sp,
-                            )
-                            ImportFilterChips(importFilter) { importFilter = it }
-                            Spacer(Modifier.height(16.dp))
-                            ImportOption(Icons.Outlined.InsertDriveFile, "选择文件", if (importFilter == ImportFilter.COMIC) "CBZ / ZIP / EPUB / 图片 · 支持多选" else "TXT / EPUB / CBZ / ZIP / 图片") {
-                                filePicker.launch(importFilter)
-                            }
-                            Spacer(Modifier.height(16.dp))
-                            ImportOption(Icons.Outlined.FolderOpen, "选择文件夹", "扫描所选文件夹及其子文件夹") {
-                                folderPicker.launch(importFilter)
-                            }
-                            Spacer(Modifier.height(28.dp))
-                            Text(
-                                "书籍只在本机解析。相同文件会自动跳过；原文件移动后，重新导入即可恢复访问。",
-                                fontSize = 12.sp,
-                                lineHeight = 22.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.height(24.dp))
-                            if (status.running || status.message.isNotEmpty()) ImportProgress(status) { vm.cancelImport() }
-                        }
+                    1 -> desk()
                     2 -> me()
                 }
             }
@@ -220,7 +186,6 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, open: (String) -
                 Spacer(Modifier.height(12.dp))
                 ImportOption(Icons.Outlined.FolderOpen, "选择文件夹", "扫描子文件夹，自动跳过重复书籍") {
                     importer = false
-                    tab = 1
                     folderPicker.launch(importFilter)
                 }
             }

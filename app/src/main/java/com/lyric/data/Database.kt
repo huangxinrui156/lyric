@@ -92,6 +92,22 @@ data class ReadingSession(
 @Entity(tableName = "finished_books")
 data class FinishedBook(@PrimaryKey val bookId: String, val title: String, val finishedAt: Long)
 
+/** Pomodoro-style focus blocks from the 案头 page; endAt=0 means still running. */
+@Serializable
+@Entity(tableName = "focus_sessions", indices = [Index("startAt"), Index("bookId")])
+data class FocusSession(
+    @PrimaryKey val id: String,
+    val bookId: String,
+    val bookTitle: String = "",
+    val startAt: Long,
+    val endAt: Long = 0,
+    val durationSec: Long = 0,
+    val plannedMin: Int = 25,
+    val completed: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val pausedMs: Long = 0,
+    @ColumnInfo(defaultValue = "0") val pausedAt: Long = 0,
+)
+
 @DatabaseView(viewName = "daily_stats", value = "SELECT date(startAt / 1000, 'unixepoch', 'localtime') AS day, SUM(durationSec) AS durationSec, SUM(chars) AS chars FROM reading_sessions GROUP BY day")
 data class DailyStat(val day: String, val durationSec: Long, val chars: Long)
 
@@ -175,12 +191,34 @@ interface LibraryDao {
     @Query("DELETE FROM highlights WHERE id = :id") suspend fun deleteHighlight(id: Long)
     @Query("UPDATE highlights SET start = :start, `end` = :end, text = :text WHERE id = :id") suspend fun highlightRange(id: Long, start: Int, end: Int, text: String)
     @Query("UPDATE highlights SET color = :color WHERE id = :id") suspend fun highlightColor(id: Long, color: Int)
+
+    @Query("SELECT * FROM highlights ORDER BY createdAt DESC")
+    fun observeAllHighlights(): Flow<List<HighlightRow>>
+
+    @Query("SELECT COUNT(*) FROM highlights WHERE createdAt >= :from AND createdAt < :to")
+    fun observeHighlightCount(from: Long, to: Long): Flow<Int>
+
+    @Query("""
+        SELECT COALESCE(SUM(
+            CASE WHEN books.contentType = 'COMIC' THEN reading_sessions.chars
+                 ELSE reading_sessions.chars / 400 END
+        ), 0) FROM reading_sessions
+        LEFT JOIN books ON books.id = reading_sessions.bookId
+        WHERE reading_sessions.startAt >= :from AND reading_sessions.startAt < :to
+    """)
+    fun observeApproxPages(from: Long, to: Long): Flow<Long>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertFocus(session: FocusSession)
+    @Query("SELECT * FROM focus_sessions WHERE endAt = 0 LIMIT 1") suspend fun activeFocus(): FocusSession?
+    @Query("SELECT * FROM focus_sessions ORDER BY startAt DESC") suspend fun allFocus(): List<FocusSession>
+    @Query("SELECT COALESCE(SUM(durationSec), 0) FROM focus_sessions WHERE completed = 1 AND startAt >= :from AND startAt < :to")
+    fun observeFocusSeconds(from: Long, to: Long): Flow<Long>
 }
 
 @Database(
-    entities = [ShelfBook::class, ProgressRow::class, BookmarkRow::class, ReadingSession::class, FinishedBook::class, HighlightRow::class],
+    entities = [ShelfBook::class, ProgressRow::class, BookmarkRow::class, ReadingSession::class, FinishedBook::class, HighlightRow::class, FocusSession::class],
     views = [DailyStat::class],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class LibraryDatabase : RoomDatabase() {
@@ -251,3 +289,13 @@ enum class ShelfSection(val label: String) {
     BOOK("书架"), COMIC("画架");
     fun other() = if (this == BOOK) COMIC else BOOK
 }
+
+/** v0.8: focus sessions for 案头 · 专注阅读. */
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `focus_sessions` (`id` TEXT NOT NULL, `bookId` TEXT NOT NULL, `bookTitle` TEXT NOT NULL, `startAt` INTEGER NOT NULL, `endAt` INTEGER NOT NULL, `durationSec` INTEGER NOT NULL, `plannedMin` INTEGER NOT NULL, `completed` INTEGER NOT NULL, `pausedMs` INTEGER NOT NULL DEFAULT 0, `pausedAt` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_focus_sessions_startAt` ON `focus_sessions` (`startAt`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_focus_sessions_bookId` ON `focus_sessions` (`bookId`)")
+    }
+}
+
