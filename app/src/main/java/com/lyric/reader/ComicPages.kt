@@ -2,7 +2,6 @@ package com.lyric.reader
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.util.LruCache
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.File
@@ -10,12 +9,10 @@ import java.nio.charset.Charset
 import java.util.zip.ZipFile
 
 /** Random-access page decoder over the private CBZ copy. Thread-safe; bounded memory. */
-class ComicArchive(file: File, private val sampleEntry: String? = null) : Closeable, PageSource {
+class ComicArchive internal constructor(file: File, private val sampleEntry: String?, private val budget: PageBitmapBudget) : Closeable, PageSource {
     private val zip: ZipFile = openMatching(file, sampleEntry)
-    // ~1/8 of heap for decoded pages (current ±2 preloaded fit comfortably).
-    private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).coerceAtMost(96L * 1024 * 1024).toInt()) {
-        override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
-    }
+    constructor(file: File, sampleEntry: String? = null) : this(file, sampleEntry, PageBitmapBudget.shared)
+    private val prefix = PageBitmapBudget.sourceKey()
 
     fun bytes(entry: String): ByteArray = synchronized(zip) {
         val e = zip.getEntry(entry) ?: error("${entry.substringAfterLast('/')} · 压缩包中找不到该图片")
@@ -27,24 +24,30 @@ class ComicArchive(file: File, private val sampleEntry: String? = null) : Closea
     @Synchronized
     override fun page(entry: String, maxWidth: Int, maxHeight: Int): Bitmap {
         check(!closed) { "Page source is closed" }
-        val key = "$entry@$maxWidth:$maxHeight"
-        cache.get(key)?.let { return it }
-        val data = bytes(entry)
+        val key = "$prefix$entry@$maxWidth:$maxHeight"
+        budget.get(key)?.let { return it }
+        val e = zip.getEntry(entry) ?: error("${entry.substringAfterLast('/')} · 压缩包中找不到该图片")
+        require(e.size <= 64L * 1024 * 1024) { "${entry.substringAfterLast('/')} · 图片过大" }
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
-        require(bounds.outWidth > 0) { "${entry.substringAfterLast('/')} · 无法解码图片" }
-        val sample = pageSampleSize(bounds.outWidth, bounds.outHeight, maxWidth, maxHeight)
-        val bmp = BitmapFactory.decodeByteArray(data, 0, data.size,
-            BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 })
-            ?: error("${entry.substringAfterLast('/')} · 图片已损坏")
-        cache.put(key, bmp)
-        return bmp
+        zip.getInputStream(e).use { BitmapFactory.decodeStream(it, null, bounds) }
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "${entry.substringAfterLast('/')} · 无法解码图片" }
+        val normalSample = pageSampleSize(bounds.outWidth, bounds.outHeight, maxWidth, maxHeight)
+        fun bytes(sample: Int) = ((bounds.outWidth.toLong() + sample - 1) / sample) *
+            ((bounds.outHeight.toLong() + sample - 1) / sample) * 4
+        return budget.decode(key, bytes(normalSample)) { allowed ->
+            var sample = normalSample
+            while (bytes(sample) > allowed && sample < (1 shl 30)) sample *= 2
+            // Reopen the ZIP stream for decode; no full compressed image ByteArray is retained.
+            zip.getInputStream(e).use { input -> BitmapFactory.decodeStream(input, null,
+                BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }) }
+                ?: error("${entry.substringAfterLast('/')} · 图片已损坏")
+        }
     }
 
     private var closed = false
     // Eviction only drops references: Compose may still be drawing an evicted bitmap.
     @Synchronized
-    override fun close() { if (closed) return; closed = true; cache.evictAll(); synchronized(zip) { zip.close() } }
+    override fun close() { if (closed) return; closed = true; budget.close(prefix); synchronized(zip) { zip.close() } }
 
     companion object {
         fun openMatching(file: File, entry: String?): ZipFile {

@@ -181,4 +181,44 @@ class ReaderNavigationTest {
         } finally { Dispatchers.resetMain() }
     }
 
+    @Test fun curlSnapshotOomAtEitherCaptureCommitsOnceWithoutAnimation() {
+        val dispatcher = StandardTestDispatcher()
+        Dispatchers.setMain(dispatcher)
+        try {
+            for (targetCapture in listOf(false, true)) {
+                val view = ReaderCanvas(ApplicationProvider.getApplicationContext<Application>())
+                view.layout(0, 0, 320, 240)
+                var visible: Locator? = null
+                var canonical = Locator()
+                var commits = 0
+                var cancelledOverlay = false
+                view.onLocator = { canonical = it; commits++ }
+                view.onVisibleLocator = { visible = it }
+                view.onCurlCancel = { cancelledOverlay = true }
+                fun failedCapture() {
+                    val image = pageSnapshot<Bitmap> { throw OutOfMemoryError("capture") }
+                    if (image == null) view.finishCurlWithoutAnimation()
+                }
+                view.onCurl = { _, _, _, _ ->
+                    if (targetCapture) view.prepareCurlTarget() else failedCapture()
+                }
+                view.bind(book, Locator(), ReaderSettings(pageMode = PageMode.CURL),
+                    0xff222222.toInt(), 0xffeeeeee.toInt(), "")
+                awaitPage(view, dispatcher.scheduler) { visible != null }
+                view.turn(1)
+                if (targetCapture) {
+                    awaitPage(view, dispatcher.scheduler) { visible != Locator() }
+                    assertEquals(0, commits)
+                    failedCapture()
+                }
+                awaitPage(view, dispatcher.scheduler) { book.percent(canonical) > 0f }
+                assertEquals(1, commits)
+                assertFalse(view.curlRunning)
+                assertTrue(cancelledOverlay)
+                assertEquals(canonical.chapterIndex, visible!!.chapterIndex)
+                assertEquals(canonical.charOffset, visible!!.charOffset)
+            }
+        } finally { Dispatchers.resetMain() }
+    }
+
 }

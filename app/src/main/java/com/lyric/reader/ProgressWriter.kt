@@ -34,7 +34,9 @@ class ProgressWriter<T>(scope: CoroutineScope, dispatcher: CoroutineDispatcher =
     }
     fun close() { wake.close() }
     suspend fun flush(value: T) {
-        val target = submit(value)
+        await(submit(value))
+    }
+    suspend fun await(target: Long) {
         completed.first { it.sequence >= target }.failure?.let { throw it }
     }
 }

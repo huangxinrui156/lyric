@@ -11,7 +11,6 @@ import com.lyric.core.*
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
-import java.util.Collections
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
@@ -89,13 +88,20 @@ class LibraryRepository(
     fun comicFile(id: String): File = File(sources, id)
     private val importLock = Mutex()
     private val parseLock = Mutex()
-    private val memory =
-        Collections.synchronizedMap(
-            object : LinkedHashMap<String, Book>(4, .75f, true) {
-                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Book>?) =
-                    size > 2
+    private val memory = BookMemoryCache((Runtime.getRuntime().maxMemory() / 16).coerceAtMost(32L * 1024 * 1024))
+
+    /** Called under importLock, after rows are durable, including cancelled/failed batches. */
+    private suspend fun releaseUnusedGrants() {
+        val references = dao.all().map { Uri.parse(it.uri) }
+        context.contentResolver.persistedUriPermissions.toList().forEach { grant ->
+            if (!grantIsReferenced(grant.uri, references)) {
+                val flags = (if (grant.isReadPermission) Intent.FLAG_GRANT_READ_URI_PERMISSION else 0) or
+                    (if (grant.isWritePermission) Intent.FLAG_GRANT_WRITE_URI_PERMISSION else 0)
+                try { context.contentResolver.releasePersistableUriPermission(grant.uri, flags) }
+                catch (e: SecurityException) { Log.i(ImportTrace.TAG, "授权已失效", e) }
             }
-        )
+        }
+    }
 
     private fun cacheFile(row: ShelfBook): File {
         val options = "layout-v03:${row.encodingOverride.orEmpty()}\u0000${row.chapterRegex.orEmpty()}"
@@ -279,6 +285,9 @@ class LibraryRepository(
                             message = e.localizedMessage ?: "导入失败",
                             errors = imports.value.errors + (e.message ?: "[导入] ${e.javaClass.simpleName}"))
                     Log.e(ImportTrace.TAG, "导入终止", e)
+                } finally {
+                    withContext(NonCancellable) { releaseUnusedGrants() }
+                    importJob = null
                 }
             }
         }
@@ -675,15 +684,20 @@ class LibraryRepository(
 
     suspend fun remove(id: String) =
         withContext(Dispatchers.IO) {
-            dao.remove(id)
-            File(sources, id).delete()
-            cache
-                .listFiles()
-                ?.filter { it.name.startsWith("$id-") }
-                ?.forEach {
-                    it.delete()
-                    memory.remove(it.name)
+            importLock.withLock {
+                parseLock.withLock {
+                    dao.remove(id)
+                    File(sources, id).delete()
+                    cache
+                        .listFiles()
+                        ?.filter { it.name.startsWith("$id-") }
+                        ?.forEach {
+                            it.delete()
+                            memory.remove(it.name)
+                        }
                 }
+                releaseUnusedGrants()
+            }
         }
 
     @OptIn(coil.annotation.ExperimentalCoilApi::class)

@@ -512,26 +512,25 @@ class ReaderCanvas(context: Context) : View(context) {
                 width > 0 &&
                 height > 0
         ) {
-            oldBitmap =
-                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
-                    draw(Canvas(it))
-                }
-            direction = step
-            animOffset = step * width.toFloat()
-            animator =
-                ValueAnimator.ofFloat(animOffset, 0f).apply {
-                    duration = 280
-                    interpolator = android.view.animation.AccelerateDecelerateInterpolator()
-                    addUpdateListener {
-                        animOffset = it.animatedValue as Float
-                        invalidate()
-                        if (it.animatedFraction == 1f) {
-                            oldBitmap?.recycle()
-                            oldBitmap = null
+            oldBitmap = pageSnapshot(width, height) { draw(it) }
+            if (oldBitmap != null) {
+                direction = step
+                animOffset = step * width.toFloat()
+                animator =
+                    ValueAnimator.ofFloat(animOffset, 0f).apply {
+                        duration = 280
+                        interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+                        addUpdateListener {
+                            animOffset = it.animatedValue as Float
+                            invalidate()
+                            if (it.animatedFraction == 1f) {
+                                oldBitmap?.recycle()
+                                oldBitmap = null
+                            }
                         }
+                        start()
                     }
-                    start()
-                }
+            }
         }
         performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
         checkCompletionAfterNavigation = true
@@ -582,6 +581,12 @@ class ReaderCanvas(context: Context) : View(context) {
             curlAwaitingDraw = true
             book?.let { bind(it, original, prefs, ink, paper, highlight) }
         }
+    }
+
+    /** Snapshot allocation failed: complete this turn without an overlay. */
+    fun finishCurlWithoutAnimation() {
+        curlAwaitingDraw = false
+        finishCurl(true) { onCurlCancel() }
     }
 
     fun abortCurl() {

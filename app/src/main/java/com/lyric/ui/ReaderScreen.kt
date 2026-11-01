@@ -366,8 +366,11 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
                                         curlCapture?.cancel()
                                         curlCapture = scope.launch {
                                             try {
-                                                frame.current = pageLayer.toImageBitmap().asAndroidBitmap()
-                                                if (curlFrame === frame) view.prepareCurlTarget()
+                                                frame.current = com.lyric.reader.pageSnapshot { pageLayer.toImageBitmap().asAndroidBitmap() }
+                                                if (curlFrame === frame) {
+                                                    if (frame.current == null) view.finishCurlWithoutAnimation()
+                                                    else view.prepareCurlTarget()
+                                                }
                                             } catch (e: Exception) {
                                                 if (e is kotlinx.coroutines.CancellationException) throw e
                                                 android.util.Log.e("LyricCurl", "页面截图失败", e)
@@ -391,7 +394,10 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
                                             try {
                                                 // Let Compose record the destination chapter title and footer too.
                                                 withFrameNanos { }; withFrameNanos { }
-                                                if (curlFrame === frame) frame.target = pageLayer.toImageBitmap().asAndroidBitmap()
+                                                if (curlFrame === frame) {
+                                                    frame.target = com.lyric.reader.pageSnapshot { pageLayer.toImageBitmap().asAndroidBitmap() }
+                                                    if (frame.target == null) view.finishCurlWithoutAnimation()
+                                                }
                                             } catch (e: Exception) {
                                                 if (e is kotlinx.coroutines.CancellationException) throw e
                                                 android.util.Log.e("LyricCurl", "页面截图失败", e)

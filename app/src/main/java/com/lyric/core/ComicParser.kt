@@ -14,10 +14,11 @@ class ComicParser : BookParser {
 
     override fun parse(source: ContentSource, encoding: String?, chapterRegex: String?): Book {
         val file = (source as? FileContentSource)?.file ?: error("漫画需要本地副本")
+        checkArchive(file)
         var first: Exception? = null
         for (charset in listOf("UTF-8", "GBK", "Cp437")) {
             try { return parse(file, source.displayName, Charset.forName(charset)) } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) throw e
+                e.rethrowImportAbort()
                 if (first == null) first = e else first.addSuppressed(e)
             }
         }
@@ -25,7 +26,11 @@ class ComicParser : BookParser {
     }
 
     private fun parse(file: File, displayName: String, charset: Charset): Book = ZipFile(file, charset).use { zip ->
-        val names = zip.entries().asSequence().filter { !it.isDirectory }.map { it.name }
+        var count = 0
+        val names = zip.entries().asSequence().onEach {
+            ImportProgress.check()
+            if (++count > MAX_ARCHIVE_ENTRIES) throw ArchiveLimitException()
+        }.filter { !it.isDirectory }.map { it.name }
             .filter { isImage(it) && !hidden(it) }.toList()
         require(names.isNotEmpty()) { "压缩包里没有可识别的图片（支持 jpg/png/webp/gif/bmp）" }
         val sorted = names.sortedWith(compareBy(NaturalOrder) { path(it) })
@@ -34,12 +39,12 @@ class ComicParser : BookParser {
         val chapters = groups.mapIndexed { index, (title, entries) ->
             Chapter(index, title, content = entries.map { name ->
                 ImportProgress.tick("读取图片尺寸", ++done, sorted.size)
-                val size = runCatching { zip.getInputStream(zip.getEntry(name)).use { ImageHeader.size(it) } }.getOrNull()
+                val size = importAttempt { zip.getInputStream(zip.getEntry(name)).use { ImageHeader.size(it) } }.getOrNull()
                 ContentUnit.ImagePage(name, size?.first, size?.second)
             })
         }
         val info = zip.entries().asSequence().firstOrNull { path(it.name).substringAfterLast('/').equals("ComicInfo.xml", true) }
-            ?.let { runCatching { zip.getInputStream(it).use { s -> String(s.readBounded(256 * 1024), Charsets.UTF_8) } }.getOrNull() }
+            ?.let { importAttempt { zip.getInputStream(it).use { s -> String(s.readBounded(256 * 1024), Charsets.UTF_8) } }.getOrNull() }
         Book(info?.let { tag(it, "Title") }?.takeIf { it.isNotBlank() } ?: displayName.substringBeforeLast('.').ifBlank { "漫画" },
             info?.let { tag(it, "Writer") }.orEmpty(), chapters,
             contentType = ContentType.COMIC, coverResource = sorted.first(), readingDirection = info?.let(::direction))

@@ -9,6 +9,7 @@ fun InputStream.readBounded(limit: Int): ByteArray {
     val buffer = ByteArray(16384)
     var remaining = limit
     while (remaining > 0) {
+        ImportProgress.check()
         val count = read(buffer, 0, minOf(buffer.size, remaining))
         if (count < 0) break
         if (count > 0) {

@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
-import android.util.LruCache
 import com.lyric.core.*
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -17,12 +16,11 @@ interface PageSource : java.io.Closeable {
 const val PDF_PAGE_PREFIX = "pdf:"
 
 /** PdfRenderer-backed pages: rendered lazily at the requested width on paper white, LRU-cached. */
-class PdfPageSource(private val file: File) : PageSource {
+class PdfPageSource internal constructor(private val file: File, private val budget: PageBitmapBudget) : PageSource {
     private val fd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     private val renderer = try { PdfRenderer(fd) } catch (e: Exception) { fd.close(); throw IllegalStateException("PDF 无法打开（可能已加密或损坏）", e) }
-    private val cache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).coerceAtMost(96L * 1024 * 1024).toInt()) {
-        override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
-    }
+    constructor(file: File) : this(file, PageBitmapBudget.shared)
+    private val prefix = PageBitmapBudget.sourceKey()
     private var cachedOutline: List<PdfOutline.Entry>? = null
     @Synchronized fun outline(): List<PdfOutline.Entry> = cachedOutline ?: PdfOutline.read(file).also { cachedOutline = it }
     val pageCount get() = renderer.pageCount
@@ -31,25 +29,28 @@ class PdfPageSource(private val file: File) : PageSource {
     override fun page(entry: String, maxWidth: Int, maxHeight: Int): Bitmap {
         check(!closed) { "Page source is closed" }
         val index = entry.removePrefix(PDF_PAGE_PREFIX).toIntOrNull() ?: error("页码无效：$entry")
-        val key = "$index@$maxWidth:$maxHeight"
-        cache.get(key)?.let { return it }
-        val bmp = synchronized(renderer) {
+        val key = "$prefix$index@$maxWidth:$maxHeight"
+        budget.get(key)?.let { return it }
+        return synchronized(renderer) {
             renderer.openPage(index).use { page ->
-                val (w, h) = pdfPageSize(page.width, page.height, maxWidth, maxHeight)
-                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also {
-                    it.eraseColor(Color.WHITE)
-                    page.render(it, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                val normal = pdfPageSize(page.width, page.height, maxWidth, maxHeight)
+                budget.decode(key, normal.first.toLong() * normal.second * 4) { allowed ->
+                    val (w, h) = pdfPageSize(page.width, page.height, maxWidth, maxHeight, allowed)
+                    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    try {
+                        bitmap.eraseColor(Color.WHITE)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                        bitmap
+                    } catch (e: Throwable) { bitmap.recycle(); throw e }
                 }
             }
         }
-        cache.put(key, bmp)
-        return bmp
     }
 
     private var closed = false
     // Eviction only drops references: Compose may still be drawing an evicted bitmap.
     @Synchronized
-    override fun close() { if (closed) return; closed = true; cache.evictAll(); synchronized(renderer) { renderer.close() }; fd.close() }
+    override fun close() { if (closed) return; closed = true; budget.close(prefix); synchronized(renderer) { renderer.close() }; fd.close() }
 
     companion object {
         fun thumbnail(file: File, maxWidth: Int): ByteArray? = runCatching {

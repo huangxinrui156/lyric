@@ -57,13 +57,22 @@ object BookFormats {
     }
 
     /** A ZIP is an EPUB when it has container.xml; a ZIP of images is a comic. */
-    fun zipKind(file: File): String = runCatching {
-        ZipFile(file, Charsets.ISO_8859_1).use { zip ->
-            if (zip.getEntry("word/document.xml") != null) return "docx"
-            if (zip.getEntry("META-INF/container.xml") != null) return "epub"
-            val names = zip.entries().asSequence().filter { !it.isDirectory }.map { it.name }.toList()
-            if (names.any { it.endsWith(".opf", true) || it.endsWith(".xhtml", true) }) "epub"
-            else if (names.any(ComicParser::isImage)) "cbz" else "epub"
+    fun zipKind(file: File): String {
+        return importAttempt {
+            ZipFile(file, Charsets.ISO_8859_1).use { zip ->
+                if (zip.getEntry("word/document.xml") != null) return "docx"
+                checkArchive(file)
+                if (zip.getEntry("META-INF/container.xml") != null) return "epub"
+                val names = zip.entries().asSequence().onEach { ImportProgress.check() }
+                    .filter { !it.isDirectory }.map { it.name }.toList()
+                if (names.any { it.endsWith(".opf", true) || it.endsWith(".xhtml", true) }) "epub"
+                else if (names.any(ComicParser::isImage)) "cbz" else "epub"
+            }
+        }.getOrElse {
+            // ZipFile may reject encrypted entries before exposing the directory. Preserve
+            // the old malformed-ZIP fallback, but propagate friendly DRM/limit errors.
+            importAttempt { checkArchive(file) }
+            "epub"
         }
-    }.getOrDefault("epub")
+    }
 }

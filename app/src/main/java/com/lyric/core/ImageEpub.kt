@@ -18,8 +18,9 @@ object ImageEpub {
 
     /** Returns a COMIC [Book] when the EPUB is a comic, otherwise null (text EPUB). */
     fun detect(file: File, displayName: String): Book? {
+        checkArchive(file)
         for (cs in listOf("UTF-8", "GBK", "Cp437")) {
-            val result = runCatching { ZipFile(file, Charset.forName(cs)).use { detect(it, displayName) } }
+            val result = importAttempt { ZipFile(file, Charset.forName(cs)).use { detect(it, displayName) } }
             result.getOrNull()?.let { return it }
             if (result.isSuccess) return null // parsed fine and is a text book
         }
@@ -30,17 +31,34 @@ object ImageEpub {
 
     private fun detect(zip: ZipFile, displayName: String): Book? {
         val entries = HashMap<String, ZipEntry>()
-        zip.entries().asSequence().filter { !it.isDirectory }.forEach { e ->
-            runCatching { EpubPaths.archive(e.name) }.getOrNull()?.let { entries.putIfAbsent(it, e) }
+        var count = 0
+        zip.entries().asSequence().onEach {
+            ImportProgress.check()
+            if (++count > MAX_ARCHIVE_ENTRIES) throw ArchiveLimitException()
+        }.filter { !it.isDirectory }.forEach { e ->
+            importAttempt { EpubPaths.archive(e.name) }.getOrNull()?.let { entries.putIfAbsent(it, e) }
         }
-        fun text(path: String, limit: Int = 2 * 1024 * 1024): String? = entries[path]?.takeIf { it.size <= limit }
-            ?.let { e -> zip.getInputStream(e).use { String(it.readBounded(limit + 1), Charsets.UTF_8) } }
+        fun text(path: String, limit: Int = 2 * 1024 * 1024): String? {
+            ImportProgress.check()
+            val e = entries[path] ?: return null
+            if (e.size > limit) {
+                require(path != "META-INF/encryption.xml") { "EPUB 加密描述过大" }
+                return null
+            }
+            return zip.getInputStream(e).use {
+                val bytes = it.readBounded(limit + 1)
+                require(bytes.size <= limit) { "EPUB 条目过大" }
+                String(bytes, Charsets.UTF_8)
+            }
+        }
         val container = Jsoup.parse(text("META-INF/container.xml") ?: error("no container"), "", Parser.xmlParser())
         val root = container.local("rootfile").firstOrNull()?.attr("full-path")?.takeIf { it.isNotBlank() } ?: error("no opf")
         val opfPath = EpubPaths.resolve("", root)
         val opf = Jsoup.parse(text(opfPath) ?: error("no opf"), "", Parser.xmlParser())
         val manifest = opf.local("manifest").flatMap { m -> m.children().filter { it.tagName().substringAfter(':') == "item" } }
             .associateBy { it.attr("id") }
+        EpubEncryption.inspect(text("META-INF/encryption.xml"),
+            EpubEncryption.fontPaths(manifest.values) { EpubPaths.resolve(opfPath, it) })
         val spineEl = opf.local("spine").firstOrNull() ?: error("no spine")
         val refs = spineEl.children().filter { it.tagName().substringAfter(':') == "itemref" }
         val metas = opf.local("meta")
@@ -53,8 +71,9 @@ object ImageEpub {
         var docs = 0; var imageDocs = 0
         val firstPageOfDoc = HashMap<String, Int>()
         refs.forEach { ref ->
+            ImportProgress.check()
             val item = manifest[ref.attr("idref")] ?: return@forEach
-            val path = runCatching { EpubPaths.resolve(opfPath, item.attr("href")) }.getOrNull() ?: return@forEach
+            val path = importAttempt { EpubPaths.resolve(opfPath, item.attr("href")) }.getOrNull() ?: return@forEach
             docs++
             if (item.attr("media-type").startsWith("image/")) {
                 if (path in entries) { firstPageOfDoc.putIfAbsent(path, pages.size); pages += path to path; imageDocs++ }
@@ -68,7 +87,7 @@ object ImageEpub {
                     "image" -> el.attr("xlink:href").ifBlank { el.attr("href") }
                     else -> null
                 }?.takeIf { it.isNotBlank() }
-            }.mapNotNull { runCatching { EpubPaths.resolve(path, it) }.getOrNull() }.filter { it in entries }.distinct()
+            }.mapNotNull { importAttempt { EpubPaths.resolve(path, it) }.getOrNull() }.filter { it in entries }.distinct()
             val words = body.text().replace(Regex("\\s+"), "").length
             if (images.isEmpty()) { if (words == 0) docs-- ; return@forEach } // blank spacer pages don't count
             // Essentially one picture: at most two images and no more than a caption's worth of text.
@@ -85,17 +104,17 @@ object ImageEpub {
         // Chapters from nav / NCX where they point at a page; otherwise one chapter.
         val marks = sortedMapOf<Int, String>()
         val navItem = manifest.values.firstOrNull { "nav" in it.attr("properties").split(' ') }
-        navItem?.let { runCatching { EpubPaths.resolve(opfPath, it.attr("href")) }.getOrNull() }?.let { navPath ->
+        navItem?.let { importAttempt { EpubPaths.resolve(opfPath, it.attr("href")) }.getOrNull() }?.let { navPath ->
             text(navPath)?.let { Jsoup.parse(it, "", Parser.htmlParser()) }?.select("nav a[href]")?.forEach { a ->
-                runCatching { EpubPaths.resolve(navPath, a.attr("href")) }.getOrNull()?.let(firstPageOfDoc::get)
+                importAttempt { EpubPaths.resolve(navPath, a.attr("href")) }.getOrNull()?.let(firstPageOfDoc::get)
                     ?.let { marks.putIfAbsent(it, a.text().trim().ifBlank { "第 ${marks.size + 1} 话" }) }
             }
         }
         if (marks.isEmpty()) manifest.values.firstOrNull { it.attr("media-type").contains("ncx") }?.let { ncx ->
-            val ncxPath = runCatching { EpubPaths.resolve(opfPath, ncx.attr("href")) }.getOrNull() ?: return@let
+            val ncxPath = importAttempt { EpubPaths.resolve(opfPath, ncx.attr("href")) }.getOrNull() ?: return@let
             text(ncxPath)?.let { Jsoup.parse(it, "", Parser.xmlParser()) }?.local("navPoint")?.forEach { p ->
                 val src = p.local("content").firstOrNull()?.attr("src") ?: return@forEach
-                runCatching { EpubPaths.resolve(ncxPath, src) }.getOrNull()?.let(firstPageOfDoc::get)
+                importAttempt { EpubPaths.resolve(ncxPath, src) }.getOrNull()?.let(firstPageOfDoc::get)
                     ?.let { marks.putIfAbsent(it, p.local("text").firstOrNull()?.text()?.trim().orEmpty().ifBlank { "第 ${marks.size + 1} 话" }) }
             }
         }
@@ -107,7 +126,7 @@ object ImageEpub {
             Chapter(i, marks.getValue(start), content = pages.subList(start, end).map { (_, image) ->
                 ImportProgress.tick("读取图片尺寸", ++done, pages.size)
                 val entry = entries.getValue(image)
-                val size = runCatching { zip.getInputStream(entry).use { ImageHeader.size(it) } }.getOrNull()
+                val size = importAttempt { zip.getInputStream(entry).use { ImageHeader.size(it) } }.getOrNull()
                 ContentUnit.ImagePage(entry.name, size?.first, size?.second)
             })
         }.filter { it.content.isNotEmpty() }.mapIndexed { i, c -> c.copy(index = i) }

@@ -122,23 +122,20 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
     fun pause() {
         if (closed) return
         tracker.onPause()
-        // Lifecycle must not return while its final durable snapshots are still queued.
-        // The writers run on IO, so this barrier does not depend on the main dispatcher.
-        val book = state.value.book
-        runBlocking(Dispatchers.IO) {
+        // Queue both final snapshots before waiting. Application-scope FIFO writers survive
+        // the bounded lifecycle wait and retain their ordering after a slow-disk timeout.
+        val target = state.value.book?.let { progressWriter.submit(it to locator.value) }
+        val barrier = CompletableDeferred<Unit>()
+        check(sessionWrites.trySend { barrier.complete(Unit); Unit }.isSuccess)
+        com.lyric.reader.awaitPauseWrites {
             try {
-                if (book != null) progressWriter.flush(book to locator.value)
+                if (target != null) progressWriter.await(target)
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 notice.value = "阅读进度保存失败：${e.localizedMessage}"
             }
-            val barrier = CompletableDeferred<Unit>()
-            sessionBarrier(barrier)
             barrier.await()
         }
-    }
-    private suspend fun sessionBarrier(done: CompletableDeferred<Unit>) {
-        // A checkpoint drain shares the same FIFO as the rolling writes.
-        sessionWrites.send { done.complete(Unit); Unit }
     }
     fun readingActivity(next: Locator) {
         val book = state.value.book ?: return

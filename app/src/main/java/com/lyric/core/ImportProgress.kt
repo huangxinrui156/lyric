@@ -15,6 +15,13 @@ object ImportProgress {
         try { return block() } finally { current.set(previous) }
     }
 
+    fun check() {
+        val scope = current.get() ?: return
+        if (scope.isCancelled()) throw kotlinx.coroutines.CancellationException("导入已取消")
+        if (System.nanoTime() > scope.deadlineNanos)
+            throw java.util.concurrent.TimeoutException("解析超时，文件过大或结构异常")
+    }
+
     fun tick(stage: String, done: Int, total: Int) {
         val scope = current.get() ?: return
         if (scope.isCancelled()) throw kotlinx.coroutines.CancellationException("导入已取消")

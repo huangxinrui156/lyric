@@ -15,12 +15,12 @@ internal fun pageSampleSize(width: Int, height: Int, maxWidth: Int, maxHeight: I
 }
 
 /** PDF pages fit the requested viewport, with the existing width/byte safety caps. */
-internal fun pdfPageSize(width: Int, height: Int, maxWidth: Int, maxHeight: Int): Pair<Int, Int> {
+internal fun pdfPageSize(width: Int, height: Int, maxWidth: Int, maxHeight: Int, maxBytes: Long = 48L * 1024 * 1024): Pair<Int, Int> {
     require(width > 0 && height > 0 && maxWidth > 0 && maxHeight > 0)
     val scale = minOf(maxWidth.coerceIn(64, 2400).toDouble() / width,
         maxHeight.toDouble() / height,
-        kotlin.math.sqrt(48.0 * 1024 * 1024 / (width.toDouble() * height * 4)))
-    val w = (width * scale).toInt().coerceAtLeast(1)
-    val h = (height * scale).toInt().coerceIn(1, (48L * 1024 * 1024 / (w * 4L)).toInt())
+        kotlin.math.sqrt(maxBytes.toDouble() / (width.toDouble() * height * 4)))
+    val w = (width * scale).toInt().coerceIn(1, (maxBytes / 4).coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
+    val h = (height * scale).toInt().coerceIn(1, (maxBytes / (w * 4L)).toInt())
     return w to h
 }
