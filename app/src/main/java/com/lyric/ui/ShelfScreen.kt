@@ -18,6 +18,7 @@ import com.lyric.core.ContentType
 import com.lyric.core.Locator
 import com.lyric.core.clamp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.*
@@ -78,6 +79,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
     val books by vm.books.collectAsStateWithLifecycle()
     val status by vm.imports.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(status.running, status.message) {
         if (!status.running && status.message.isNotBlank() && !status.folder) snackbar.showSnackbar(status.message)
     }
@@ -87,7 +89,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
         AlertDialog(
             onDismissRequest = { dismissedErrorBatch = status.batchId },
             title = { Text("导入失败") },
-            text = { Text(status.errors.joinToString("\n\n"), modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) },
+            text = { Text(status.summary + "\n\n" + status.errors.joinToString("\n\n"), modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) },
             confirmButton = { TextButton(onClick = {
                 clipboard.setText(AnnotatedString(status.errors.joinToString("\n\n")))
             }) { Text("复制错误信息") } },
@@ -160,7 +162,11 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
                 tabState.SaveableStateProvider(tab) { when (tab) {
                     0 -> ShelfTransition(transition) { shown ->
                         ShelfContent(vm, books, shown, grid, status,
-                            switch = switch, open = { if (!transition.running) open(it) },
+                            switch = switch, open = { id -> if (!transition.running) {
+                                if (books.firstOrNull { it.id == id }?.invalid == true)
+                                    scope.launch { snackbar.showSnackbar(FILE_ACCESS_EXPIRED_MESSAGE) }
+                                else open(id)
+                            } },
                             import = { if (!transition.running) { prepareImport(); importer = true } },
                             actions = { if (!transition.running) actions = it })
                     }

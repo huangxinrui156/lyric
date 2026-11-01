@@ -55,7 +55,16 @@ data class ImportStatus(
     val scannedPdfs: List<Pair<String, String>> = emptyList(),
     val folder: Boolean = false,
     val source: String = "",
-)
+    /** Files not started when the batch was stopped; duplicates keep their original meaning. */
+    val skipped: Int = 0,
+) {
+    val summary: String get() = "导入 $added · 跳过 ${duplicates + skipped} · 失败 $failures"
+    internal fun completed(): ImportStatus = copy(running = false, detail = "", detailFraction = 0f,
+        message = summary + (errors.lastOrNull()?.let { "\n$it" } ?: ""))
+}
+
+const val FILE_ACCESS_EXPIRED_MESSAGE = "文件访问已失效，重新选择即可恢复进度"
+private class SourceAccessException(cause: Throwable) : IllegalStateException(FILE_ACCESS_EXPIRED_MESSAGE, cause)
 
 data class SearchHit(
     val chapterIndex: Int,
@@ -165,6 +174,7 @@ class LibraryRepository(
                 val batchId = System.nanoTime()
                 imports.value = ImportStatus(running = true, message = "正在扫描本地文件…", batchId = batchId, folder = folder,
                     source = if (folder) uris.firstOrNull()?.lastPathSegment?.substringAfter(':')?.let { "/$it" }.orEmpty() else "")
+                var activeFile: String? = null
                 try {
                     Log.i(ImportTrace.TAG, "开始导入 count=${uris.size} tree=$folder flags=$grantFlags")
                     val files = mutableListOf<Uri>()
@@ -225,65 +235,65 @@ class LibraryRepository(
                         uris.forEach { retained[it] = persist(it, grantFlags) }
                         files += uris
                     }
-                    var lastFailure: String? = null
-                    var status = ImportStatus(running = true, total = files.size + comicFolders.size, batchId = batchId)
+                    var status = imports.value.copy(total = files.size + comicFolders.size)
+                    imports.value = status
                     comicFolders.forEach { (title, images) ->
                         currentCoroutineContext().ensureActive()
-                        status = status.copy(message = title); imports.value = status
+                        activeFile = title
+                        status = status.copy(message = title, detail = "", detailFraction = 0f); imports.value = status
                         val result = runCatching {
                             val packed = ImportTrace.stage("打包图片文件夹") { packImages(images) }
                             try { importOne(Uri.fromFile(packed), "$title.cbz", retainSource = true) } finally { packed.delete() }
                         }
                         result.exceptionOrNull()?.let {
                             if (it is CancellationException) throw it
-                            lastFailure = "$title：${it.localizedMessage ?: "导入失败"}"
-                            Log.e(ImportTrace.TAG, lastFailure, it)
+                            Log.e(ImportTrace.TAG, "$title：${it.importReason()}", it)
                         }
-                        status = status.copy(done = status.done + 1,
+                        status = imports.value.copy(done = status.done + 1,
                             added = status.added + if (result.getOrNull() == true) 1 else 0,
                             duplicates = status.duplicates + if (result.getOrNull() == false) 1 else 0,
                             failures = status.failures + if (result.isFailure) 1 else 0,
-                            errors = status.errors + listOfNotNull(result.exceptionOrNull()?.let { "$title：${it.message}" }))
+                            errors = status.errors + listOfNotNull(result.exceptionOrNull()?.let { "$title：${it.importReason()}" }))
                         imports.value = status
+                        activeFile = null
                     }
                     files.forEach { uri ->
                         currentCoroutineContext().ensureActive()
                         val name = runCatching { displayName(uri) }.getOrDefault("未知文件")
-                        status = status.copy(message = name)
+                        activeFile = name
+                        status = status.copy(message = name, detail = "", detailFraction = 0f)
                         imports.value = status
                         val result = runCatching { importOne(uri, name, retainSource = retained[uri] == false) }
                         result.exceptionOrNull()?.let {
                             if (it is CancellationException) throw it
-                            lastFailure = "$name：${it.localizedMessage ?: "解析失败"}"
-                            Log.e(ImportTrace.TAG, lastFailure, it)
+                            Log.e(ImportTrace.TAG, "$name：${it.importReason()}", it)
                         }
                         status =
-                            status.copy(
+                            imports.value.copy(
                                 done = status.done + 1,
                                 added = status.added + if (result.getOrNull() == true) 1 else 0,
                                 duplicates =
                                     status.duplicates + if (result.getOrNull() == false) 1 else 0,
                                 failures = status.failures + if (result.isFailure) 1 else 0,
-                                message = result.exceptionOrNull()?.localizedMessage ?: name,
-                                errors = status.errors + listOfNotNull(result.exceptionOrNull()?.let { "$name：${it.message}" }),
+                                message = result.exceptionOrNull()?.importReason() ?: name,
+                                errors = status.errors + listOfNotNull(result.exceptionOrNull()?.let { "$name：${it.importReason()}" }),
                             )
                         imports.value = status
+                        activeFile = null
                     }
-                    imports.value =
-                        status.copy(
-                            running = false,
-                            message =
-                                "已导入 ${status.added} 本 · 重复 ${status.duplicates} 本 · 失败 ${status.failures} 本" +
-                                    (lastFailure?.let { "\n$it" } ?: ""),
-                        )
+                    imports.value = status.completed()
                 } catch (e: CancellationException) {
-                    imports.value = imports.value.copy(running = false, message = "导入已停止")
+                    val status = imports.value
+                    val interrupted = if (activeFile != null) 1 else 0
+                    imports.value = status.copy(done = status.done + interrupted,
+                        failures = status.failures + interrupted,
+                        skipped = status.skipped + (status.total - status.done - interrupted).coerceAtLeast(0),
+                        errors = status.errors + (activeFile?.let { "$it：" }.orEmpty() + e.importReason())).completed()
                     throw e
                 } catch (e: Exception) {
                     imports.value =
-                        imports.value.copy(running = false, failures = imports.value.failures + 1,
-                            message = e.localizedMessage ?: "导入失败",
-                            errors = imports.value.errors + (e.message ?: "[导入] ${e.javaClass.simpleName}"))
+                        imports.value.copy(failures = imports.value.failures + 1,
+                            errors = imports.value.errors + e.importReason()).completed()
                     Log.e(ImportTrace.TAG, "导入终止", e)
                 } finally {
                     withContext(NonCancellable) { releaseUnusedGrants() }
@@ -521,7 +531,9 @@ class LibraryRepository(
                 try {
                     // Even with a parsed cache, check the source so revoked/missing files are
                     // explicit.
-                    ImportTrace.stage("打开阅读源") { source(row).open().use {} }
+                    try { ImportTrace.stage("打开阅读源") { source(row).open().use {} } }
+                    catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { throw SourceAccessException(e) }
                     // Books imported before 0.4.0-p0.3 as text may be image-only EPUBs: re-detect once.
                     if (row.extension == "epub" && row.contentType == ContentType.TEXT.name && row.contentRevision < 4)
                         redetectComic(row)?.let { return@withLock it }
@@ -573,6 +585,7 @@ class LibraryRepository(
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     dao.invalid(id, true)
+                    if (e is SourceAccessException) throw e
                     throw IllegalStateException(
                         "无法阅读：${e.localizedMessage ?: "文件丢失或授权失效"}。请在本地导入中重新选择原文件。",
                         e,

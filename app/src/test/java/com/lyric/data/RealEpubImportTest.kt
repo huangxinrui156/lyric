@@ -238,7 +238,7 @@ class RealEpubImportTest {
         assertTrue(picker.parseResult(android.app.Activity.RESULT_CANCELED, null).uris.isEmpty())
     }
 
-    @Test fun failedReadAndRoomFailureExposeStageClassAndMessageAndBatchContinues() = runBlocking {
+    @Test fun failedImportsShowReadableReasonsKeepDiagnosticLogsAndBatchContinues() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Application>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val db = Room.inMemoryDatabaseBuilder(context, LibraryDatabase::class.java).build()
@@ -249,20 +249,27 @@ class RealEpubImportTest {
             val repo = LibraryRepository(context, db, settings(context, scope))
             provider.denied = true
             repo.importUris(listOf(uri), grantFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            assertTrue(repo.imports.value.errors.single().contains("[ContentResolver/读取并复制] SecurityException: provider denied read"))
+            assertTrue(repo.imports.value.errors.single().endsWith("：无法读取文件，请重新选择"))
+            fun diagnosticContains(text: String) = org.robolectric.shadows.ShadowLog.getLogsForTag(ImportTrace.TAG)
+                .any { (it.msg + "\n" + it.throwable?.stackTraceToString()).contains(text) }
+            assertTrue(diagnosticContains("[ContentResolver/读取并复制] SecurityException: provider denied read"))
             provider.denied = false
             val good = File(context.cacheDir, "good-book.txt").apply { writeText("测试书名\n第1章\n正文内容".repeat(10)) }
             repo.importUris(listOf(uri, Uri.fromFile(good)))
             assertEquals(1, repo.imports.value.added)
             assertEquals(1, repo.imports.value.failures)
-            assertTrue(repo.imports.value.errors.single().contains("EPUB/ZIP"))
+            assertTrue(repo.imports.value.errors.single().endsWith("：压缩包目录已损坏"))
+            assertEquals("导入 1 · 跳过 0 · 失败 1", repo.imports.value.summary)
+            assertTrue(diagnosticContains("EPUB/ZIP"))
             // An insert trigger reproduces a real SQLite constraint failure, off the main thread.
             db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_insert BEFORE INSERT ON books BEGIN SELECT RAISE(ABORT, 'fixture constraint'); END")
             good.appendText("new hash")
             repo.importUris(listOf(Uri.fromFile(good)))
             val error = repo.imports.value.errors.single()
-            assertTrue(error, error.contains("[Room/插入书架]"))
-            assertTrue(error, error.contains("SQLiteConstraintException") && error.contains("fixture constraint"))
+            assertTrue(error, error.endsWith("：保存书籍失败，请重试"))
+            assertTrue(diagnosticContains("[Room/插入书架]"))
+            assertTrue(diagnosticContains("SQLiteConstraintException"))
+            assertTrue(diagnosticContains("fixture constraint"))
             assertFalse(repo.imports.value.running)
         } finally { db.close(); scope.cancel() }
     }

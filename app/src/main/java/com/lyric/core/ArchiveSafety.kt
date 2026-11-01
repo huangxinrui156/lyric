@@ -8,7 +8,7 @@ import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
 
 internal const val MAX_ARCHIVE_ENTRIES = 10_000
-internal class ProtectedBookException : FriendlyImportException("该书受 DRM 保护，无法打开")
+internal class ProtectedBookException : FriendlyImportException("这本书有版权保护，无法导入")
 internal class ArchiveLimitException : FriendlyImportException("压缩包文件条目过多（最多 10,000 条）")
 
 /** Retry only malformed input/legacy encodings, never cancellation, deadlines or policy failures. */

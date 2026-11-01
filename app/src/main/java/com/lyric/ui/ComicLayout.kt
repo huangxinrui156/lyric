@@ -5,11 +5,14 @@ import android.graphics.Bitmap
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
@@ -20,6 +23,26 @@ import com.lyric.reader.PageCrop
 import kotlin.math.roundToInt
 
 internal data class PageArtwork(val bitmap: Bitmap, val crop: PageCrop)
+
+/** Keep the safe inset outside scrolling and zooming so every viewport edge stays clear. */
+@Composable
+internal fun ComicArtworkViewport(art: List<PageArtwork>, trimmed: Boolean, fillWidth: Boolean,
+                                  scale: Float, offset: Offset) {
+    BoxWithConstraints(Modifier.fillMaxSize().padding(4.dp).clipToBounds()) {
+        val zoom = Modifier.graphicsLayer {
+            scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y
+        }
+        if (fillWidth) {
+            val ratio = remember(art, trimmed) { artworkRatio(art, trimmed) }
+            val viewportHeight = maxHeight
+            Box(Modifier.fillMaxSize().then(zoom).verticalScroll(rememberScrollState(), enabled = scale <= 1.01f),
+                contentAlignment = Alignment.Center) {
+                ComicArtwork(art, trimmed, Modifier.fillMaxWidth().heightIn(min = viewportHeight)
+                    .aspectRatio(ratio.coerceAtLeast(.05f), matchHeightConstraintsFirst = false))
+            }
+        } else ComicArtwork(art, trimmed, Modifier.fillMaxSize().then(zoom))
+    }
+}
 
 /** Animation reads stay in drawing. Two pages share one fitted height and meet at a single seam. */
 @Composable

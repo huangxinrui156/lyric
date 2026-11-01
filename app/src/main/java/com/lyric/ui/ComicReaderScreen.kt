@@ -31,13 +31,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -180,7 +178,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
             if (step != null && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0)
                 scope.launch {
                     if (prefs.comicDirection == "vertical") listState.animateScrollBy(step * listState.layoutInfo.viewportSize.height * 0.85f)
-                    else pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, spreads.lastIndex))
+                    else pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, spreads.lastIndex), animationSpec = tween(200))
                 }
             step != null
         }
@@ -257,11 +255,11 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
                                 when (val step = ComicTaps.step(x, w, rtl)) {
                                     0 -> chrome = !chrome
                                     else -> scope.launch {
-                                        pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, spreads.lastIndex))
+                                        pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, spreads.lastIndex), animationSpec = tween(200))
                                     }
                                 }
                             },
-                            onSkip = { scope.launch { pager.animateScrollToPage((index + 1).coerceAtMost(spreads.lastIndex)) } })
+                            onSkip = { scope.launch { pager.animateScrollToPage((index + 1).coerceAtMost(spreads.lastIndex), animationSpec = tween(200)) } })
                     }
                 }
             }
@@ -519,20 +517,7 @@ private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, s
                 { attempt++ }, onSkip)
             else -> trimmedArtwork(r.getOrThrow(), trim).let { art ->
                 val trimmed = trim && art.any { it.crop != PageCrop() }
-                val zoomLayer = Modifier.graphicsLayer {
-                    scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y
-                }
-                if (fillWidth) {
-                    // Landscape: fill the width, pan vertically inside the page/spread; taps still turn pages.
-                    val ratio = remember(art, trimmed) { artworkRatio(art, trimmed) }
-                    val scroll = rememberScrollState()
-                    Box(Modifier.fillMaxSize().then(zoomLayer).verticalScroll(scroll, enabled = scale <= 1.01f),
-                        contentAlignment = Alignment.Center) {
-                        ComicArtwork(art, trimmed, Modifier.fillMaxWidth().padding(horizontal = 4.dp)
-                            .heightIn(min = with(LocalDensity.current) { size.height.toDp() })
-                            .aspectRatio(ratio.coerceAtLeast(.05f), matchHeightConstraintsFirst = false))
-                    }
-                } else ComicArtwork(art, trimmed, Modifier.fillMaxSize().padding(4.dp).then(zoomLayer))
+                ComicArtworkViewport(art, trimmed, fillWidth, scale, offset)
             }
         }
         if (scale > 1.01f) Text("${"%.1f".format(scale)}×", color = ComicInk, fontSize = 11.sp,

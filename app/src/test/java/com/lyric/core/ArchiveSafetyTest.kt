@@ -64,7 +64,7 @@ class ArchiveSafetyTest {
                 val file = archive(epub(encryption("OPS/a.xhtml", algorithm), images))
                 try {
                     val error = assertThrows(ProtectedBookException::class.java) { EpubParser().parse(source(file)) }
-                    assertEquals("该书受 DRM 保护，无法打开", error.message)
+                    assertEquals("这本书有版权保护，无法导入", error.message)
                     assertThrows(ProtectedBookException::class.java) { ImageEpub.detect(file, "comic.epub") }
                 } finally { file.delete() }
             }
@@ -83,7 +83,7 @@ class ArchiveSafetyTest {
             }
             file.writeBytes(bytes)
             try {
-                assertEquals("该书受 DRM 保护，无法打开", assertThrows(ProtectedBookException::class.java) {
+                assertEquals("这本书有版权保护，无法导入", assertThrows(ProtectedBookException::class.java) {
                     if (isEpub) EpubParser().parse(source(file)) else ComicParser().parse(source(file))
                 }.message)
                 assertThrows(ProtectedBookException::class.java) { BookFormats.zipKind(file) }
