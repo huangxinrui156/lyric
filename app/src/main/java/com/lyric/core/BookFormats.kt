@@ -79,16 +79,24 @@ object BookFormats {
     }
     /**
      * Content sniff used by the system "open with" path.
-     * Only TXT / EPUB / PDF / CBZ / DOCX / MOBI are accepted; anything else is [UNSUPPORTED_OPEN_WITH].
+     * Accepts every format the in-app 「+」 importer can handle: TXT / EPUB / PDF / CBZ / DOCX / MOBI / AZW3 (and AZW/PRC as MOBI). Anything else is [UNSUPPORTED_OPEN_WITH].
      * Never throws: unreadable or ambiguous bytes return null.
      */
-    fun sniffOpenWith(file: File, prefix: ByteArray = file.inputStream().use { input -> ByteArray(68).let { buf -> val n = input.read(buf); if (n <= 0) byteArrayOf() else buf.copyOf(n) } }): String? = runCatching {
+    fun sniffOpenWith(
+        file: File,
+        prefix: ByteArray = file.inputStream().use { input -> ByteArray(68).let { buf -> val n = input.read(buf); if (n <= 0) byteArrayOf() else buf.copyOf(n) } },
+        displayName: String = "",
+        mimeType: String? = null,
+        uriName: String = "",
+    ): String? = runCatching {
         fun ascii(at: Int, s: String) = prefix.size >= at + s.length && String(prefix, at, s.length, Charsets.ISO_8859_1) == s
+        fun azw3Name() = displayName.endsWith(".azw3", true) || uriName.endsWith(".azw3", true) ||
+            mimeType?.substringBefore(';') in setOf("application/vnd.amazon.mobi8-ebook", "application/x-mobi8-ebook")
         when {
             ascii(0, "%PDF") -> "pdf"
             isZip(prefix) -> zipOpenWithKind(file)
             imageExtension(prefix) != null -> null
-            ascii(60, "BOOKMOBI") || ascii(60, "TEXtREAd") -> "mobi"
+            ascii(60, "BOOKMOBI") || ascii(60, "TEXtREAd") -> if (azw3Name()) "azw3" else "mobi"
             prefix.size >= 4 && (prefix[0].toInt() and 255) == 0xD0 && (prefix[1].toInt() and 255) == 0xCF &&
                 (prefix[2].toInt() and 255) == 0x11 && (prefix[3].toInt() and 255) == 0xE0 -> null
             isDecodableText(file) -> "txt"

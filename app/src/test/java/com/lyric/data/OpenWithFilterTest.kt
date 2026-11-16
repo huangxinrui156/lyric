@@ -27,6 +27,10 @@ class OpenWithFilterTest {
             "application/octet-stream" to "book.txt",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document" to "book.docx",
             "application/x-mobipocket-ebook" to "book.mobi",
+            "application/vnd.amazon.mobi8-ebook" to "book.azw3",
+            "application/x-mobi8-ebook" to "book.azw3",
+            "image/png" to "page.png",
+            "image/jpeg" to "page.jpg",
         )
         for ((mime, name) in cases) {
             val uri = Uri.parse("content://com.tencent.mm.external.fileprovider/share/$name")
@@ -39,7 +43,7 @@ class OpenWithFilterTest {
 
     @Test
     fun lyricAppearsWhenProviderOmitsMimeAndUsesExtension() {
-        for (name in listOf("book.txt", "book.epub", "book.pdf", "book.cbz", "book.docx", "book.mobi")) {
+        for (name in listOf("book.txt", "book.epub", "book.pdf", "book.cbz", "book.docx", "book.mobi", "book.azw3", "book.azw", "book.prc", "book.zip", "page.png", "page.jpg")) {
             val uri = Uri.parse("file:///storage/emulated/0/Download/$name")
             val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "*/*").addCategory(Intent.CATEGORY_DEFAULT)
             assertTrue("$name extension VIEW should resolve Lyric", resolves(view))
