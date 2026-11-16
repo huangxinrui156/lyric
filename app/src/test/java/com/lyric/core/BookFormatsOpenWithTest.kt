@@ -44,19 +44,19 @@ class BookFormatsOpenWithTest {
             writeBytes("第一章 雨声\n正文".toByteArray(charset("GBK")))
         }
         assertEquals("txt", BookFormats.sniffOpenWith(gbk))
-    }
 
-    @Test fun sniffRejectsDocxMobiImagesAndGenericZipsWithoutCrashing() {
         val docx = zip("word.bin", listOf("word/document.xml" to "<w:document/>".toByteArray()))
-        assertNull(BookFormats.sniffOpenWith(docx))
+        assertEquals("docx", BookFormats.sniffOpenWith(docx))
 
         val mobi = File.createTempFile("open-with-", ".bin").apply {
             writeBytes(ByteArray(80).also { bytes ->
                 "BOOKMOBI".toByteArray().copyInto(bytes, 60)
             })
         }
-        assertNull(BookFormats.sniffOpenWith(mobi))
+        assertEquals("mobi", BookFormats.sniffOpenWith(mobi))
+    }
 
+    @Test fun sniffRejectsImagesAndGenericZipsWithoutCrashing() {
         val png = File.createTempFile("open-with-", ".bin").apply { writeBytes(tinyPng(4, 4)) }
         assertNull(BookFormats.sniffOpenWith(png))
 

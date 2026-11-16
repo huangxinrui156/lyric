@@ -79,7 +79,7 @@ object BookFormats {
     }
     /**
      * Content sniff used by the system "open with" path.
-     * Only TXT / EPUB / PDF / CBZ are accepted; anything else is [UNSUPPORTED_OPEN_WITH].
+     * Only TXT / EPUB / PDF / CBZ / DOCX / MOBI are accepted; anything else is [UNSUPPORTED_OPEN_WITH].
      * Never throws: unreadable or ambiguous bytes return null.
      */
     fun sniffOpenWith(file: File, prefix: ByteArray = file.inputStream().use { input -> ByteArray(68).let { buf -> val n = input.read(buf); if (n <= 0) byteArrayOf() else buf.copyOf(n) } }): String? = runCatching {
@@ -88,7 +88,7 @@ object BookFormats {
             ascii(0, "%PDF") -> "pdf"
             isZip(prefix) -> zipOpenWithKind(file)
             imageExtension(prefix) != null -> null
-            ascii(60, "BOOKMOBI") || ascii(60, "TEXtREAd") -> null
+            ascii(60, "BOOKMOBI") || ascii(60, "TEXtREAd") -> "mobi"
             prefix.size >= 4 && (prefix[0].toInt() and 255) == 0xD0 && (prefix[1].toInt() and 255) == 0xCF &&
                 (prefix[2].toInt() and 255) == 0x11 && (prefix[3].toInt() and 255) == 0xE0 -> null
             isDecodableText(file) -> "txt"
@@ -100,13 +100,14 @@ object BookFormats {
         prefix.size >= 4 && prefix[0] == 0x50.toByte() && prefix[1] == 0x4b.toByte() &&
             prefix[2] == 3.toByte() && prefix[3] == 4.toByte()
 
-    /** EPUB = ZIP with a mimetype and/or container.xml; CBZ = ZIP of images. */
+    /** DOCX = word/document.xml; EPUB = mimetype or container.xml; CBZ = ZIP of images. */
     private fun zipOpenWithKind(file: File): String? =
         runCatching {
             ZipFile(file, Charsets.ISO_8859_1).use { zip ->
                 val mime = zip.getEntry("mimetype")?.let { entry ->
                     zip.getInputStream(entry).use { it.readBytes().toString(Charsets.US_ASCII).trim() }
                 }
+                if (zip.getEntry("word/document.xml") != null) return@use "docx"
                 if (mime == "application/epub+zip" || zip.getEntry("META-INF/container.xml") != null) return@use "epub"
                 val names = zip.entries().asSequence().filter { !it.isDirectory }.map { it.name }.toList()
                 when {
