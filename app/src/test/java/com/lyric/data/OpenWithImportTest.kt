@@ -152,15 +152,43 @@ class OpenWithImportTest {
     }
 
     @Test
-    fun imageOpenedFromTheSystemIsImportedAsAComic() = env { repo ->
+    fun imageOpenedFromTheSystemIsRejectedEvenAsOctetStream() = env { repo ->
         val app = ApplicationProvider.getApplicationContext<Application>()
         val file = File(app.cacheDir, "page.png").apply { writeBytes(tinyPng(4, 4)) }
         repo.importUris(listOf(Uri.fromFile(file)), openWith = true)
         val status = repo.imports.value
+        assertEquals(status.toString(), 0, status.added)
+        assertEquals(1, status.failures)
+        assertEquals(BookFormats.UNSUPPORTED_OPEN_WITH, status.message)
+        assertTrue(repo.dao.all().isEmpty())
+    }
+
+    @Test
+    fun inAppImportStillPacksASingleImageAsAComic() = env { repo ->
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(app.cacheDir, "page.png").apply { writeBytes(tinyPng(4, 4)) }
+        repo.importUris(listOf(Uri.fromFile(file)), openWith = false)
+        val status = repo.imports.value
         assertEquals(status.toString(), 1, status.added)
         assertEquals(0, status.failures)
-        assertNotEquals(BookFormats.UNSUPPORTED_OPEN_WITH, status.message)
         assertEquals("cbz", repo.dao.all().single().extension)
         assertNotNull(status.openBookId)
+    }
+
+    @Test
+    fun zipWithoutImagesOrABookFileIsRejectedAsUnsupported() = env { repo ->
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(app.cacheDir, "notes.zip")
+        java.util.zip.ZipOutputStream(file.outputStream()).use { zip ->
+            zip.putNextEntry(java.util.zip.ZipEntry("README.md"))
+            zip.write("# notes".toByteArray())
+            zip.closeEntry()
+        }
+        repo.importUris(listOf(Uri.fromFile(file)), openWith = true)
+        val status = repo.imports.value
+        assertEquals(status.toString(), 0, status.added)
+        assertEquals(1, status.failures)
+        assertEquals(BookFormats.UNSUPPORTED_OPEN_WITH, status.message)
+        assertTrue(repo.dao.all().isEmpty())
     }
 }
