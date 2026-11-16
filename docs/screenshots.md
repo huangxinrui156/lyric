@@ -48,3 +48,14 @@ PNGs are copied to `screens/` at the repo root (gitignored). After design picks,
 - 系统栏、字体渲染、OEM 皮肤与真机（ColorOS 等）不会完全一致。
 - 漫画为自制位图页；未渲染真实 PDF / 扫描件。若某张图空白或尺寸不是 1080×2400，以测试日志为准。
 - 这些文件不是 golden 回归图，不作像素对比。
+
+## README 选用 / Picked for the README
+
+美术设计已选定并写入 `docs/images/`、嵌入 README（在 `feat/visual-review-fixes` / PR #13，因字标修正也在该分支）：
+
+- `shelf-day.png` 书架日间
+- `reader-day.png` 阅读日间
+- `comic-day.png` 漫画日间
+- `shelf-night.png` 书架夜间
+
+未选用的渲染稿仍只留在 gitignored 的 `screens/`。

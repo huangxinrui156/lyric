@@ -23,15 +23,24 @@ The signed release will be published on [GitHub Releases](https://github.com/hua
 
 ## 截图 / Screenshots
 
-书架、阅读页、漫画与夜间模式的截图将在美术设计从 JVM 渲染稿中选定后放入。生成方法见 [docs/screenshots.md](docs/screenshots.md)：
+美术设计选定的界面稿（JVM 渲染，1080×2400，密度 2.75）。生成方法见 [docs/screenshots.md](docs/screenshots.md)。
+
+Design-selected shots (JVM-rendered, 1080×2400 at density 2.75). See [docs/screenshots.md](docs/screenshots.md).
+
+<p align="center">
+  <img src="docs/images/shelf-day.png" alt="书架 · 日间 / Shelf, day" width="200">
+  <img src="docs/images/reader-day.png" alt="阅读 · 日间 / Reader, day" width="200">
+  <img src="docs/images/comic-day.png" alt="漫画 · 日间 / Comic, day" width="200">
+  <img src="docs/images/shelf-night.png" alt="书架 · 夜间 / Shelf, night" width="200">
+</p>
+
+<p align="center">书架日间 · 阅读日间 · 漫画日间 · 书架夜间</p>
+
+其余渲染稿在 `screens/`（不进 git）。重新生成：
 
 ```bash
 bash tools/render-screens.sh
 ```
-
-输出在 `screens/`（不进 git）。本轮不先把未选定的 PNG 写进 README。
-
-Screenshots of the shelf, reading view, comic view, and night theme will be added after design picks from the JVM-rendered set. See [docs/screenshots.md](docs/screenshots.md). Run `bash tools/render-screens.sh`; PNGs land in `screens/` (not committed). Unpicked images are not embedded in this README yet.
 
 ## 构建 / Build
 
