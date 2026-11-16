@@ -1,0 +1,45 @@
+# 验证记录 · 2026-10-30
+
+## 已通过
+
+在本仓库环境（JDK 17、SDK 35、Build Tools 35.0.0、Gradle 8.9）运行：
+
+```sh
+./gradlew testDebugUnitTest assembleDebug assembleDebugAndroidTest lintDebug
+```
+
+- 19 项 JVM 单元测试，0 失败、0 错误；覆盖编码、TXT/EPUB、缓存与字符/漫画页定位。
+- 最新 TXT 基准：13,938,012 bytes，360 章，主机 JVM 177ms。该结果不代表 Android 实机速度。
+- Android Lint：0 errors，16 warnings（主要为固定版本依赖、kapt 和资源建议）。
+- Debug APK：39,476,428 bytes。
+- SHA-256：`4b96e63196804cc0899b1f3a67568171e4ce44c490b7af1336bdfd7f430eaef2`。
+
+## 设备验证限制
+
+尝试了 API 35 x86_64 AVD：KVM 模式在内核启动前停滞，改用 TCG 软件仿真后可启动并安装 APK，但 Android System UI 多次 ANR。`connectedDebugAndroidTest` 返回 `Instrumentation run failed due to Process crashed`，报告显示 **0 项用例执行**，不能记为通过。没有获得足以确认完整阅读流程的界面验证结果。
+
+已提供 3 项可在正常设备重跑的 Android 集成测试（`app/src/androidTest/java/com/lyric/RepositoryTest.kt`）：真实 Room + DataStore、100 个本地文件导入/去重/缓存/失效处理、字体变化下的 StaticLayout 页边界。批次测试使用应用私有临时文件，尚不等于真实 SAF 提供者的 100 本压力测试。
+
+```sh
+./gradlew connectedDebugAndroidTest
+```
+
+## 实机复验步骤
+
+1. 安装 APK，打开原创示例；翻页，改字号、行距、边距、四种翻页方式，核对同一段文字仍在当前页。
+2. 添加书签，退出与重新打开、切后台再返回，检查位置、摘录、时间和书签跳转。
+3. 搜索「竹林」，检查首条结果、章节与上下文，点击确认正文高亮；替换关键词检查旧搜索被取消。
+4. 导入含 UTF-8、GBK、GB18030 扩展字、UTF-16、Big5 的 TXT 和 EPUB 2/3；目录跳转；更改编码和章节规则后重开。
+5. SAF 多选与文件夹各导入一次同一组 100 本书，核对总数、逐本进度、去重；重启应用检查授权仍在。
+6. 移动原文件并返回书架，检查失效标记；重导入恢复。长按移出一本，确认原文件仍在。
+7. 放入 500 本书，检查网格/列表、标题排序及滚动帧时间；使用 `dumpsys gfxinfo com.lyric.reader framestats` 或 Macrobenchmark 记录，不能以软件仿真结果宣称 60fps。
+8. 检查夜间、深绿、纯黑、自定义主题、跟随系统、最低亮度叠加遮光，以及后台/退出后窗口亮度恢复。
+
+## 「我的」页增量验证
+
+详见 [逐项验收表](me-page-implementation.md)。`./gradlew assembleDebug test lintDebug` 已通过：37 项测试在 debug / release 各运行一次（74 次，0 失败），覆盖真实 SQLite v1→v2 升级、会话时序、zip / 可选字体往返、哈希匹配 / 重导入修复、重复恢复、继承层、缓存重建与来源保护。热力图一年数据准备 <100ms、10,000 条摘录过滤 <300ms 为主机断言，完整设备渲染 / 交互延迟仍待量测。以上早期 APK 大小与摘要属于 MVP；当前构建以 `app/build/outputs/apk/debug/app-debug.apk` 为准。
+
+9. 「我的」打开热力图日期，核对各书时长；目标默认关闭，开启 / 关闭与达成时无通知或弹窗。
+10. 分别备份含 / 不含字体；预览后取消应无变更，确认后重复恢复不重复统计 / 书签。未匹配书灰态，重新导入同一文件后可继续原进度 / 摘录。
+11. 外观选 6 色、系统 / 浅 / 深，核对无重启即时应用；全局阅读偏好修改不被本书层污染；批量恢复继承保留内容类型层。
+12. 清缓存前后核对外部原文件哈希、字体与封面；重新打开书籍应自动重建。读完并移出书架后，时长、完成本数与灰态摘录仍在。

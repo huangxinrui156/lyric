@@ -1,0 +1,32 @@
+{
+  "measurement": "主机测量; not device frame timing",
+  "command": "JAVA_HOME=/home/box/jdk17 ANDROID_HOME=/home/box/Android ./gradlew assembleDebug test",
+  "result": "BUILD SUCCESSFUL",
+  "variants": [
+    {
+      "variant": "Debug",
+      "tests": 209,
+      "skipped": 2,
+      "failures": 0,
+      "errors": 0,
+      "passed": 207
+    },
+    {
+      "variant": "Benchmark",
+      "tests": 200,
+      "skipped": 2,
+      "failures": 0,
+      "errors": 0,
+      "passed": 198
+    },
+    {
+      "variant": "Release",
+      "tests": 200,
+      "skipped": 2,
+      "failures": 0,
+      "errors": 0,
+      "passed": 198
+    }
+  ],
+  "opt_in_load_benchmark": "Separately ran on unmodified production HEAD and after changes, 1 passed each, two cold/disk/same-instance runs per sample."
+}

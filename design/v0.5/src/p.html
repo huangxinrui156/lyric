@@ -1,0 +1,64 @@
+<html><head><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1140px;background:#E6E0D5;font-family:"Noto Sans CJK SC",sans-serif;color:#2B2A27;padding:20px;display:grid;grid-template-columns:repeat(3,360px);gap:20px}
+.ph{width:360px;height:740px;background:#F4EFE6;border-radius:24px;overflow:hidden;position:relative;box-shadow:0 6px 24px rgba(0,0,0,.12)}
+.cap{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:12px;color:#8A8478}
+.bar{height:56px;display:flex;align-items:center;padding:0 20px;font-size:17px;font-weight:600;border-bottom:1px solid #E2DACB;gap:12px}
+.serif{font-family:"Noto Serif CJK SC",serif}
+.row{padding:14px 20px;border-bottom:1px solid #EAE3D6;font-size:15px;display:flex;justify-content:space-between;align-items:center}
+.sub{font-size:12px;color:#8A8478;margin-top:4px}
+.prog{width:48px;height:3px;background:#E2DACB;border-radius:2px;overflow:hidden}.prog i{display:block;height:100%;background:#5E6B4E}
+.cur{background:#EAE6D9;border-left:3px solid #B5563A}
+.dot{width:5px;height:5px;border-radius:50%;background:#B5563A;display:inline-block;margin-right:6px}
+.search{margin:12px 20px;height:40px;border-radius:20px;background:#EAE3D6;display:flex;align-items:center;padding:0 16px;font-size:14px;color:#8A8478}
+mark{background:rgba(181,86,58,.26);color:inherit}
+.hl{border-left:2px solid #B5563A;padding-left:10px;font-size:15px;line-height:1.7}
+.note{font-size:13px;color:#5E6B4E;margin-top:6px}
+.chip{display:inline-block;padding:5px 12px;border-radius:14px;font-size:13px;background:#EAE3D6;margin-right:6px}.chip.on{background:#5E6B4E;color:#F4EFE6}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:8px 20px}
+.cv{aspect-ratio:3/4;border-radius:4px;background:#CFC6B4}.cv.b{background:#A9B39A}.cv.c{background:#D9A895}
+.t{font-size:12px;margin-top:6px}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#FBF8F2;border-radius:20px 20px 0 0;padding:20px;box-shadow:0 -4px 20px rgba(0,0,0,.08)}
+.btn{height:44px;border-radius:22px;background:#5E6B4E;color:#F4EFE6;display:flex;align-items:center;justify-content:center;font-size:15px;margin-top:16px}
+</style></head><body>
+
+<div class="ph"><div class="bar serif">目录</div>
+<div class="row"><div>第一章 雨季<div class="sub">已读完</div></div><div class="prog"><i style="width:100%"></i></div></div>
+<div class="row"><div>第二章 旧书店<div class="sub">已读完</div></div><div class="prog"><i style="width:100%"></i></div></div>
+<div class="row cur"><div><span class="dot"></span>第三章 抒情诗<div class="sub">读到 42%</div></div><div class="prog"><i style="width:42%"></i></div></div>
+<div class="row"><div>第四章 远行<div class="sub">未读</div></div><div class="prog"><i style="width:0"></i></div></div>
+<div class="row"><div>第五章 回声<div class="sub">未读</div></div><div class="prog"><i style="width:0"></i></div></div>
+<div class="cap">① 目录：当前章朱红竖线加圆点，青苔色进度条</div></div>
+
+<div class="ph"><div class="bar serif">书内搜索</div>
+<div class="search">雨</div><div style="padding:0 20px;font-size:12px;color:#8A8478">共 23 处</div>
+<div class="row" style="display:block"><div class="sub" style="margin:0 0 4px">第一章 雨季</div><div class="serif" style="font-size:14px;line-height:1.7">……窗外的<mark>雨</mark>下了一整夜，她把书合上……</div></div>
+<div class="row" style="display:block"><div class="sub" style="margin:0 0 4px">第一章 雨季</div><div class="serif" style="font-size:14px;line-height:1.7">……<mark>雨</mark>声里，旧书页微微卷起……</div></div>
+<div class="row" style="display:block"><div class="sub" style="margin:0 0 4px">第三章 抒情诗</div><div class="serif" style="font-size:14px;line-height:1.7">……像一场迟到的<mark>雨</mark>，落在诗行之间……</div></div>
+<div class="cap">② 搜索：章节名小字在上，命中词用划线同色</div></div>
+
+<div class="ph"><div class="bar serif">书签<span style="margin-left:auto;font-size:13px;font-weight:400;color:#5E6B4E">按章节 ▾</span></div>
+<div class="row" style="display:block"><div class="sub" style="margin:0 0 4px">第一章 · 10月28日</div><div class="serif" style="font-size:14px">她把书合上，听见了雨。</div><div class="note">✎ 开头这句很好</div></div>
+<div class="row" style="display:block"><div class="sub" style="margin:0 0 4px">第三章 · 10月30日</div><div class="serif" style="font-size:14px">抒情诗不是为了被理解。</div></div>
+<div class="cap">③ 书签：备注用青苔色，排序在右上角切换</div></div>
+
+<div class="ph"><div class="bar serif">划线与笔记</div>
+<div style="padding:16px 20px 6px;font-size:13px;color:#8A8478">第一章 雨季 · 3 条</div>
+<div style="padding:8px 20px"><div class="hl serif">窗外的雨下了一整夜。</div><div class="note">✎ 想起高中那年</div></div>
+<div style="padding:8px 20px"><div class="hl serif">旧书页微微卷起，像在呼吸。</div></div>
+<div style="padding:16px 20px 6px;font-size:13px;color:#8A8478">第三章 抒情诗 · 1 条</div>
+<div style="padding:8px 20px"><div class="hl serif">抒情诗不是为了被理解。</div><div class="note">✎ 书名由来</div></div>
+<div class="cap">④ 划线列表：按章节分组，朱红竖线代表划线</div></div>
+
+<div class="ph"><div class="bar serif">书架</div>
+<div class="search">搜索书名或作者</div>
+<div style="padding:0 20px 8px"><span class="chip on">最近阅读</span><span class="chip">导入时间</span><span class="chip">书名</span></div>
+<div class="grid"><div><div class="cv"></div><div class="t">雨季</div></div><div><div class="cv b"></div><div class="t">抒情诗</div></div><div><div class="cv c"></div><div class="t">再见绘梨</div></div><div><div class="cv b"></div><div class="t">远行</div></div><div><div class="cv"></div><div class="t">回声</div></div></div>
+<div class="cap">⑤ 书架：搜索框和排序方式放在网格上方</div></div>
+
+<div class="ph"><div class="bar serif">书架</div><div class="grid" style="opacity:.35"><div class="cv"></div><div class="cv b"></div><div class="cv c"></div></div>
+<div class="sheet"><div class="serif" style="font-size:17px;font-weight:600">导入完成</div>
+<div style="font-size:14px;margin-top:12px;line-height:1.9">新增 <b style="color:#5E6B4E">12</b> 本<br>跳过重复 <b style="color:#B5563A">3</b> 本<br><span style="color:#8A8478;font-size:12px">来自 /Download/小说</span></div>
+<div class="btn">好的</div><div style="height:30px"></div></div>
+<div class="cap" style="z-index:2">⑥ 文件夹导入：底部弹出结果汇总</div></div>
+</body></html>

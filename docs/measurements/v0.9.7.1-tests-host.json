@@ -1,0 +1,20 @@
+{
+  "Debug": {
+    "tests": 217,
+    "skipped": 2,
+    "failures": 0,
+    "errors": 0
+  },
+  "Benchmark": {
+    "tests": 208,
+    "skipped": 2,
+    "failures": 0,
+    "errors": 0
+  },
+  "Release": {
+    "tests": 208,
+    "skipped": 2,
+    "failures": 0,
+    "errors": 0
+  }
+}

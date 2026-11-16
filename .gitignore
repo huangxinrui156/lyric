@@ -1,0 +1,15 @@
+local.properties
+build/
+.gradle/
+
+.kotlin/
+*.iml
+.idea/
+*.hprof
+
+# Local delivery/extraction artifacts and real-device measurement output.
+/Lyric.apk
+/x/
+/benchmark-results/
+
+__pycache__/

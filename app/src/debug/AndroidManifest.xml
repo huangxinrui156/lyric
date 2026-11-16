@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name="com.lyric.KillTestActivity" android:exported="true" />
+        <provider android:name="com.lyric.ReaderProbeProvider" android:authorities="com.lyric.reader.debug.probe" android:exported="true" />
+    </application>
+</manifest>
