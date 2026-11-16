@@ -314,14 +314,14 @@ private fun ShelfContent(
                         )
                         Spacer(Modifier.weight(1f))
                         ShelfSectionSwitch(section, switch)
-                        if (!empty) {
-                            IconButton(onClick = import, modifier = Modifier.size(LyricTokens.Component.searchHeight)) {
-                                Icon(Icons.Outlined.Add, LyricTokens.Shelf.emptyImportLabel)
-                            }
+                        IconButton(onClick = import, modifier = Modifier.size(LyricTokens.Component.searchHeight)) {
+                            Icon(Icons.Outlined.Add, LyricTokens.Shelf.addLabel)
                         }
                     }
                     if (empty) {
-                        EmptyShelf(emptyAnchor, importFiles)
+                        val copy = if (section == ShelfSection.COMIC) LyricTokens.Shelf.emptyComicCopy else LyricTokens.Shelf.emptyCopy
+                        val label = if (section == ShelfSection.COMIC) LyricTokens.Shelf.emptyComicImportLabel else LyricTokens.Shelf.emptyImportLabel
+                        EmptyShelf(emptyAnchor, copy, label, importFiles)
                     } else {
                     Text(
                         if (section == ShelfSection.COMIC) "本地珍藏 ${books.size} 部 · 一格一格画" else "本地珍藏 ${books.size} 本 · 一页一行诗",
@@ -626,7 +626,7 @@ private fun BookListRow(book: ShelfBook, open: () -> Unit, remove: () -> Unit) {
 }
 
 @Composable
-internal fun EmptyShelf(anchor: Dp, import: () -> Unit) {
+internal fun EmptyShelf(anchor: Dp, copy: String = LyricTokens.Shelf.emptyCopy, label: String = LyricTokens.Shelf.emptyImportLabel, import: () -> Unit) {
     val density = LocalDensity.current
     var top by remember { mutableFloatStateOf(0f) }
     val inset = (anchor - with(density) { top.toDp() }).coerceAtLeast(0.dp)
@@ -634,9 +634,9 @@ internal fun EmptyShelf(anchor: Dp, import: () -> Unit) {
         Modifier.fillMaxWidth().onGloballyPositioned { top = it.positionInParent().y }.padding(top = inset),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(LyricTokens.Shelf.emptyCopy, style = LyricTokens.Type.body, color = Stone)
+        Text(copy, style = LyricTokens.Type.body, color = Stone)
         Spacer(Modifier.height(LyricTokens.Space.lg))
-        Button(onClick = import, shape = RoundedCornerShape(LyricTokens.Radius.button)) { Text(LyricTokens.Shelf.emptyImportLabel) }
+        Button(onClick = import, shape = RoundedCornerShape(LyricTokens.Radius.button)) { Text(label) }
     }
 }
 
@@ -757,7 +757,8 @@ private fun FolderImportSheet(status: ImportStatus, dismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.background, shape = LyricTokens.Radius.cardShape) {
         Column(Modifier.padding(horizontal = LyricTokens.Space.xl).padding(bottom = LyricTokens.Space.xl)) {
             Text("导入完成", fontFamily = Serif, style = LyricTokens.Type.subtitle)
-            Text("新增 ${status.added} 本", style = LyricTokens.Type.body, modifier = Modifier.padding(top = LyricTokens.Space.md))
+            Text(status.summary, style = LyricTokens.Type.body, modifier = Modifier.padding(top = LyricTokens.Space.md))
+            Text("新增 ${status.added} 本", style = LyricTokens.Type.body, modifier = Modifier.padding(top = LyricTokens.Space.xs))
             Text(androidx.compose.ui.text.buildAnnotatedString {
                 append("跳过重复 ")
                 pushStyle(androidx.compose.ui.text.SpanStyle(color = Vermilion)); append("${status.duplicates}"); pop()
