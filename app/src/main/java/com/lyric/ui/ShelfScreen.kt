@@ -287,7 +287,7 @@ private fun ShelfContent(
         }
     val empty = books.isEmpty()
     val continuing =
-        books.firstOrNull { it.lastRead > 0 && !it.invalid } ?: books.firstOrNull { !it.invalid }
+        continueReadingBook(books)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val emptyAnchor = maxHeight * LyricTokens.emptyShelfHeightFraction
         LazyVerticalGrid(
@@ -797,6 +797,9 @@ private fun ImportFilterChips(filter: ImportFilter, change: (ImportFilter) -> Un
         FilterChip(selected = filter == ImportFilter.ALL, onClick = { change(ImportFilter.ALL) }, label = { Text("所有格式") }, shape = LyricTokens.Radius.pill)
     }
 }
+
+internal fun continueReadingBook(books: List<ShelfBook>): ShelfBook? =
+    books.filter { it.lastRead > 0 && !it.invalid }.maxByOrNull { it.lastRead }
 
 internal fun comicPageLabel(book: Book, progress: ProgressRow?): String {
     val total = book.chapters.sumOf { it.units.size }
