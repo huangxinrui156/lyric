@@ -53,9 +53,9 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 隐私 / Privacy
 
-所有书籍、进度、摘录、阅读统计与设置仅存本机。没有账号、广告、分析 SDK 或遥测。应用未声明 `INTERNET` 网络权限，不访问网络；本地文件仅使用系统文件选择器授予的权限读取。仅在你主动导出时，将备份或摘录写到你选择的位置。卸载应用将删除私有数据。
+不采集、不上传任何数据。所有书籍、进度、摘录、阅读统计与设置仅存本机。没有账号、广告、分析 SDK 或遥测。应用未声明 `INTERNET` 网络权限，不访问网络；本地文件仅使用系统文件选择器授予的权限读取。仅在你主动导出时，将备份或摘录写到你选择的位置。卸载应用将删除私有数据。
 
-All books, progress, highlights, reading stats, and settings stay on the device. There is no account, advertising, analytics SDK, or telemetry. The app does not declare the `INTERNET` permission and does not access the network. Local files are read only through permissions you grant with the system file picker. Backups or exported notes are written only when you choose a destination. Uninstalling the app removes its private data.
+Lyric does not collect or upload any data. All books, progress, highlights, reading stats, and settings stay on the device. There is no account, advertising, analytics SDK, or telemetry. The app does not declare the `INTERNET` permission and does not access the network. Local files are read only through permissions you grant with the system file picker. Backups or exported notes are written only when you choose a destination. Uninstalling the app removes its private data.
 
 ## 许可证 / License
 

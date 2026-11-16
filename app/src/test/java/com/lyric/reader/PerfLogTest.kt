@@ -33,4 +33,23 @@ class PerfLogTest {
         PerfLog.beginOpen(); PerfLog.stage("disabled_stage")
         assertEquals(snapshot, PerfLog.export(app).readText())
     }
+
+    @Test fun releaseBuildsCannotEnableRecordingEvenWithAStalePreference() = runBlocking {
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        app.getSharedPreferences("perf_log", 0).edit().putBoolean("enabled", true).commit()
+        val previous = PerfLog.recordingAllowedOverride
+        try {
+            PerfLog.recordingAllowedOverride = false
+            PerfLog.initialize(app)
+            assertFalse(PerfLog.enabled)
+            PerfLog.setEnabled(app, true)
+            assertFalse(PerfLog.enabled)
+            PerfLog.beginOpen(); PerfLog.source("epub", 123); PerfLog.stage("first_window")
+            assertFalse(File(app.filesDir, "performance/lyric-perf.log").exists())
+        } finally {
+            PerfLog.recordingAllowedOverride = previous
+            PerfLog.setEnabled(app, false)
+            app.getSharedPreferences("perf_log", 0).edit().clear().commit()
+        }
+    }
 }
