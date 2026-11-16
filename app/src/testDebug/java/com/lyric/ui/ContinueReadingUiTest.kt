@@ -49,11 +49,11 @@ class ContinueReadingUiTest {
         compose.waitUntil(10_000) {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
             vm.section.value == ShelfSection.BOOK && vm.books.value.any { it.id == "latest" && !it.invalid } &&
-                compose.onAllNodesWithText("继续阅读", substring = true).fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithText("第三章 · 40%").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onAllNodesWithText("刚才在读").assertCountEquals(2)
-        compose.onNodeWithText("继续阅读", substring = true).assertIsDisplayed()
-        compose.onNodeWithText("继续阅读", substring = true).performClick()
+        compose.onNodeWithText("第三章 · 40%").assertIsDisplayed()
+        compose.onNodeWithText("第三章 · 40%").performClick()
         compose.waitForIdle()
         assertEquals(listOf("latest"), opened)
     }

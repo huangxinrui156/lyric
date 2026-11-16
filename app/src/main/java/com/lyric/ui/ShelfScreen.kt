@@ -329,9 +329,10 @@ private fun ShelfContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(LyricTokens.Component.toolbarIcon))
-                    if (continuing != null)
-                        ContinueCard(continuing, section, vm.repository) { open(continuing.id) }
-                    Spacer(Modifier.height(LyricTokens.Space.lg))
+                    if (continuing != null) {
+                        ContinueCard(continuing, vm.repository) { open(continuing.id) }
+                        Spacer(Modifier.height(LyricTokens.Space.xl))
+                    }
                     Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                         filterLabels(section).forEachIndexed { index, label
                             ->
@@ -510,7 +511,7 @@ fun BookCover(book: ShelfBook, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ContinueCard(book: ShelfBook, section: ShelfSection, repository: LibraryRepository, open: () -> Unit) {
+private fun ContinueCard(book: ShelfBook, repository: LibraryRepository, open: () -> Unit) {
     val pages by produceState<String?>(null, book.id, book.lastRead, book.contentType) {
         value = null
         if (book.contentType == ContentType.COMIC.name) {
@@ -523,50 +524,40 @@ private fun ContinueCard(book: ShelfBook, section: ShelfSection, repository: Lib
             }
         }
     }
+    val progressLabel = if (book.contentType == ContentType.COMIC.name) pages ?: "正在读取页码…"
+        else "${book.chapterTitle} · ${(book.percent * 100).toInt()}%"
     Row(
         Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(LyricTokens.Radius.card))
+            .background(CardPaper, RoundedCornerShape(LyricTokens.Radius.card))
             .border(LyricTokens.strokeWidth, Linen, RoundedCornerShape(LyricTokens.Radius.card))
             .clickable(onClick = open)
             .padding(LyricTokens.Space.lg),
         horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         BookCover(book, Modifier.width(LyricTokens.Component.continueCoverWidth).height(LyricTokens.Component.continueCoverHeight))
         Column(Modifier.weight(1f)) {
             Text(
                 book.title,
-                fontFamily = Serif,
                 style = LyricTokens.Type.subtitle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                if (book.contentType == ContentType.COMIC.name) pages ?: "正在读取页码…"
-                else if (section == ShelfSection.COMIC) book.author else "${book.author} · ${book.chapterTitle}",
+                progressLabel,
                 style = LyricTokens.Type.auxiliary,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = LyricTokens.Space.xs),
             )
-            Text(
-                if (book.contentType == ContentType.COMIC.name) book.author else book.excerpt,
-                style = LyricTokens.Type.auxiliary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = LyricTokens.Space.sm),
-            )
             LinearProgressIndicator(
                 progress = { book.percent },
-                color = Vermilion,
+                color = MaterialTheme.colorScheme.secondary,
                 trackColor = MaterialTheme.colorScheme.outlineVariant,
-                modifier = Modifier.fillMaxWidth().height(LyricTokens.Component.progressStroke).padding(top = 0.dp),
-            )
-            Text(
-                "${(book.percent * 100).toInt()}% · 继续阅读 →",
-                style = LyricTokens.Type.auxiliary,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = LyricTokens.Space.xs),
+                modifier = Modifier.fillMaxWidth()
+                    .padding(top = LyricTokens.Space.sm)
+                    .height(LyricTokens.Component.continueProgressStroke),
             )
         }
     }

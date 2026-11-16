@@ -222,6 +222,7 @@ object LyricTokens {
 
     object Component {
         val indicatorStroke = 2.dp
+        val continueProgressStroke = 2.dp
         val progressStroke = 3.dp
         val statusDot = 5.dp
         val dashLength = 6.dp
@@ -241,10 +242,10 @@ object LyricTokens {
         val touchTarget = 48.dp
         val toolbarHeight = 56.dp
         val settingsLabelWidth = 58.dp
-        val continueCoverWidth = 64.dp
+        val continueCoverWidth = 48.dp
         val settingValueWidth = 68.dp
         val listCoverHeight = 78.dp
-        val continueCoverHeight = 96.dp
+        val continueCoverHeight = 72.dp
         val focusDial = 240.dp
         val drawerMaxWidth = 360.dp
         val dialogMaxHeight = 360.dp
