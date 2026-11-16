@@ -191,7 +191,11 @@ class LibraryRepository(
     @Volatile private var importJob: kotlinx.coroutines.Job? = null
     fun cancelImport() { importJob?.cancel(CancellationException("导入已取消")) }
     fun dismissScanned(id: String) { imports.value = imports.value.copy(scannedPdfs = imports.value.scannedPdfs.filterNot { it.first == id }) }
-    fun consumeOpenBook() { if (imports.value.openBookId != null) imports.value = imports.value.copy(openBookId = null) }
+    @Synchronized fun consumeOpenBook(): String? {
+        val id = imports.value.openBookId
+        if (id != null) imports.value = imports.value.copy(openBookId = null)
+        return id
+    }
 
     suspend fun importUris(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null) =
         withContext(Dispatchers.IO) {

@@ -50,7 +50,7 @@ class FirstOpenImportTest {
         val id = status.openBookId
         assertNotNull(id)
         assertEquals(id, repo.books.first().single().id)
-        repo.consumeOpenBook()
+        assertEquals(id, repo.consumeOpenBook())
         assertNull(repo.imports.value.openBookId)
         assertEquals(1, repo.books.first().size)
     }

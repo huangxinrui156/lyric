@@ -90,11 +90,8 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
         if (!status.running && status.message.isNotBlank() && !status.folder) snackbar.showSnackbar(status.message)
     }
     LaunchedEffect(status.running, status.batchId, status.openBookId) {
-        val id = status.openBookId
-        if (!status.running && id != null) {
-            vm.consumeOpenBook()
-            open(id)
-        }
+        if (status.running) return@LaunchedEffect
+        vm.consumeOpenBook()?.let(open)
     }
     val clipboard = LocalClipboardManager.current
     var dismissedErrorBatch by remember { mutableLongStateOf(-1L) }
