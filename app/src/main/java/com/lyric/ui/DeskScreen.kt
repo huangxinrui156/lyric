@@ -2,6 +2,8 @@
 
 package com.lyric.ui
 
+import com.lyric.ui.theme.LyricTokens
+
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -38,10 +40,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -51,12 +51,12 @@ import com.lyric.data.HighlightRow
 import kotlin.math.min
 import kotlinx.coroutines.launch
 
-private val FocusBg = Color(0xFF16171A)
-private val FocusRingTrack = Color(0xFF2A2B2F)
-private val FocusRing = Color(0xFFE08A6E)
-private val FocusMuted = Color(0xFF7D786E)
-private val FocusBtnFill = Color(0xFFD0CABE)
-private val FocusBtnBorder = Color(0xFF3A3B40)
+private val FocusBg = LyricTokens.Night.background
+private val FocusRingTrack = LyricTokens.Night.stroke
+private val FocusRing = LyricTokens.Night.vermilion
+private val FocusMuted = LyricTokens.Night.secondary
+private val FocusBtnFill = LyricTokens.Night.ink
+private val FocusBtnBorder = LyricTokens.Night.stroke
 
 @Composable
 fun DeskScreen(
@@ -79,50 +79,48 @@ fun DeskScreen(
 
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 24.dp),
+        contentPadding = PaddingValues(bottom = LyricTokens.Space.xl),
     ) {
       item(key = "header", contentType = "header") {
         Text(
             text = "",
-            modifier = Modifier.padding(start = 20.dp, top = 28.dp, end = 20.dp),
+            modifier = Modifier.padding(start = LyricTokens.Page.margin, top = LyricTokens.Space.xl, end = LyricTokens.Page.margin),
         )
-        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.Bottom) {
+        Row(Modifier.padding(horizontal = LyricTokens.Page.margin), verticalAlignment = Alignment.Bottom) {
             Text(
                 "Lyric",
                 fontFamily = Serif,
                 fontStyle = FontStyle.Italic,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 30.sp,
+                style = LyricTokens.Type.title,
             )
             Text(
                 " · 案头",
                 fontFamily = Serif,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 30.sp,
+                style = LyricTokens.Type.title,
             )
         }
         Text(
             "今天读了 ${summary.minutes} 分钟 · ${summary.pages} 页 · ${summary.notes} 条笔记",
-            fontSize = 13.sp,
+            style = LyricTokens.Type.body,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+            modifier = Modifier.padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.xs),
         )
 
       }
       item(key = "quote", contentType = "quote") {
         Card(
-            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp),
-            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = LyricTokens.Page.margin, end = LyricTokens.Page.margin, top = LyricTokens.Space.lg),
+            shape = RoundedCornerShape(LyricTokens.Radius.card),
             colors = CardDefaults.cardColors(containerColor = dCard),
             border = dCardStroke,
             elevation = CardDefaults.cardElevation(0.dp),
         ) {
-            Column(Modifier.padding(18.dp)) {
+            Column(Modifier.padding(LyricTokens.Space.lg)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("今日一句", fontSize = 12.sp, color = dSub)
+                    Text("今日一句", style = LyricTokens.Type.auxiliary, color = dSub)
                     Text(
                         "换一句 ↻",
-                        fontSize = 12.sp,
+                        style = LyricTokens.Type.auxiliary,
                         color = dLink,
                         modifier = Modifier.clickable { vm.reshuffleQuote() },
                     )
@@ -131,48 +129,46 @@ fun DeskScreen(
                     Text(
                         "还没有划线。读到喜欢的句子时，长按划下来。",
                         fontFamily = Serif,
-                        fontSize = 16.sp,
-                        lineHeight = 28.sp,
+                        style = LyricTokens.Type.subtitle,
                         color = dSub,
-                        modifier = Modifier.padding(top = 14.dp, bottom = 4.dp),
+                        modifier = Modifier.padding(top = LyricTokens.Space.md, bottom = LyricTokens.Space.xs),
                     )
                 } else {
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .height(IntrinsicSize.Min)
-                            .padding(top = 12.dp)
+                            .padding(top = LyricTokens.Space.md)
                             .clickable { openBook(quote!!.bookId, vm.openLocator(quote!!)) },
                     ) {
                         Box(
                             Modifier
-                                .width(2.dp)
+                                .width(LyricTokens.Pending.indicatorStroke)
                                 .fillMaxHeight()
                                 .background(dBar),
                         )
-                        Column(Modifier.padding(start = 12.dp)) {
+                        Column(Modifier.padding(start = LyricTokens.Space.md)) {
                             // 0.9: long notes no longer push the desk down — 4 lines, tap 展开/收起.
                             var expanded by rememberSaveable(quote!!.id) { mutableStateOf(false) }
                             val text = remember(quote!!.id, quote!!.text) { compactPreview(quote!!.text) }
                             Text(
                                 text,
                                 fontFamily = Serif,
-                                fontSize = 18.sp,
-                                lineHeight = (18 * 1.75).sp,
+                                style = LyricTokens.Type.subtitle,
                                 color = dText,
                                 maxLines = if (expanded) Int.MAX_VALUE else 4,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             if (text.length > 60) Text(
                                 if (expanded) "收起" else "展开",
-                                fontSize = 12.sp, color = dSub,
-                                modifier = Modifier.padding(top = 4.dp).clickable { expanded = !expanded },
+                                style = LyricTokens.Type.auxiliary, color = dSub,
+                                modifier = Modifier.padding(top = LyricTokens.Space.xs).clickable { expanded = !expanded },
                             )
                             Text(
                                 "— 《${quote!!.bookTitle.ifBlank { "未名" }}》 ${quote!!.chapterTitle}",
-                                fontSize = 12.sp,
+                                style = LyricTokens.Type.auxiliary,
                                 color = dLink,
-                                modifier = Modifier.padding(top = 10.dp),
+                                modifier = Modifier.padding(top = LyricTokens.Space.sm),
                             )
                         }
                     }
@@ -183,31 +179,31 @@ fun DeskScreen(
       }
       item(key = "focus", contentType = "focus") {
         Card(
-            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp),
-            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = LyricTokens.Page.margin, end = LyricTokens.Page.margin, top = LyricTokens.Space.lg),
+            shape = RoundedCornerShape(LyricTokens.Radius.card),
             colors = CardDefaults.cardColors(containerColor = dCard),
             border = dCardStroke,
             elevation = CardDefaults.cardElevation(0.dp),
         ) {
-            Column(Modifier.padding(18.dp)) {
-                Text("专注阅读", fontSize = 12.sp, color = dSub)
+            Column(Modifier.padding(LyricTokens.Space.lg)) {
+                Text("专注阅读", style = LyricTokens.Type.auxiliary, color = dSub)
                 val focusState by vm.focus.collectAsStateWithLifecycle()
                 // Only flips when a session starts/ends, not on every tick.
                 val active by remember { derivedStateOf { focusState.running } }
-                if (!active) Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!active) Row(Modifier.padding(top = LyricTokens.Space.md), horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm)) {
                     listOf(25, 45).forEach { min ->
                         val on = planned == min
                         Box(
                             Modifier
                                 .weight(1f)
-                                .height(36.dp)
-                                .background(if (on) dSegOn else dSegOff, RoundedCornerShape(18.dp))
+                                .height(LyricTokens.Pending.smallControl)
+                                .background(if (on) dSegOn else dSegOff, LyricTokens.Radius.pill)
                                 .clickable { vm.planned(min) },
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 "$min 分钟",
-                                fontSize = 14.sp,
+                                style = LyricTokens.Type.body,
                                 color = if (on) dSegOnText else dSegOffText,
                             )
                         }
@@ -216,33 +212,33 @@ fun DeskScreen(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(top = 10.dp)
+                        .padding(top = LyricTokens.Space.sm)
                         .clickable { pickingBook = true },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val b = book
-                    if (b != null) BookCover(b, Modifier.width(28.dp).height(36.dp))
-                    else Box(Modifier.width(28.dp).height(36.dp).background(Color(0xFFA9B39A), RoundedCornerShape(3.dp)))
+                    if (b != null) BookCover(b, Modifier.width(LyricTokens.Pending.smallCoverWidth).height(LyricTokens.Pending.smallControl))
+                    else Box(Modifier.width(LyricTokens.Pending.smallCoverWidth).height(LyricTokens.Pending.smallControl).background(LyricTokens.Pending.missingCover, RoundedCornerShape(LyricTokens.Radius.cover)))
                     Text(
                         book?.let { deskBookLabel(it.title, it.chapterTitle) } ?: "还没有可读的书",
-                        fontSize = 13.sp,
+                        style = LyricTokens.Type.body,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+                        modifier = Modifier.weight(1f).padding(horizontal = LyricTokens.Space.sm),
                     )
-                    Text("更换 ›", fontSize = 13.sp, color = dSub)
+                    Text("更换 ›", style = LyricTokens.Type.body, color = dSub)
                 }
                 FocusRunningRow(vm, openFocus, continueReading)
                 if (!active) Box(
                     Modifier
                         .fillMaxWidth()
-                        .padding(top = 12.dp)
-                        .height(44.dp)
-                        .background(dPrimary, RoundedCornerShape(22.dp))
+                        .padding(top = LyricTokens.Space.md)
+                        .height(LyricTokens.Pending.buttonHeight)
+                        .background(dPrimary, RoundedCornerShape(LyricTokens.Radius.button))
                         .clickable(enabled = book != null) { if (vm.startFocus()) openFocus() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("开始", fontSize = 15.sp, color = dPrimaryText)
+                    Text("开始", style = LyricTokens.Type.body, color = dPrimaryText)
                 }
             }
         }
@@ -250,21 +246,21 @@ fun DeskScreen(
       }
       item(key = "notes", contentType = "notes") {
         Card(
-            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp),
-            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = LyricTokens.Page.margin, end = LyricTokens.Page.margin, top = LyricTokens.Space.lg),
+            shape = RoundedCornerShape(LyricTokens.Radius.card),
             colors = CardDefaults.cardColors(containerColor = dCard),
             border = dCardStroke,
             elevation = CardDefaults.cardElevation(0.dp),
         ) {
-            Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+            Column(Modifier.padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.md)) {
                 Row(
-                    Modifier.fillMaxWidth().padding(top = 6.dp),
+                    Modifier.fillMaxWidth().padding(top = LyricTokens.Space.xs),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("笔记 · ${highlights.size} 条", fontSize = 12.sp, color = dSub)
+                    Text("笔记 · ${highlights.size} 条", style = LyricTokens.Type.auxiliary, color = dSub)
                     Text(
                         "全部 ›",
-                        fontSize = 12.sp,
+                        style = LyricTokens.Type.auxiliary,
                         color = dLink,
                         modifier = Modifier.clickable(onClick = openNotes),
                     )
@@ -273,9 +269,9 @@ fun DeskScreen(
                     Text(
                         "划线与想法会汇集在这里。",
                         fontFamily = Serif,
-                        fontSize = 14.sp,
+                        style = LyricTokens.Type.body,
                         color = dSub,
-                        modifier = Modifier.padding(vertical = 16.dp),
+                        modifier = Modifier.padding(vertical = LyricTokens.Space.lg),
                     )
                 } else {
                     preview.forEachIndexed { index, h ->
@@ -283,7 +279,7 @@ fun DeskScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .clickable { openBook(h.bookId, vm.openLocator(h)) }
-                                .padding(vertical = 10.dp)
+                                .padding(vertical = LyricTokens.Space.sm)
                                 .then(
                                     if (index < preview.lastIndex)
                                         Modifier.border(
@@ -293,16 +289,16 @@ fun DeskScreen(
                                     else Modifier,
                                 ),
                         ) {
-                            Text(remember(h.id, h.text) { compactPreview(h.text) }, fontFamily = Serif, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(remember(h.id, h.text) { compactPreview(h.text) }, fontFamily = Serif, style = LyricTokens.Type.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(
                                 "${h.bookTitle.ifBlank { "未名" }} · ${DeskViewModel.relativeDay(h.createdAt)}",
-                                fontSize = 11.sp,
+                                style = LyricTokens.Type.auxiliary,
                                 color = dSub,
-                                modifier = Modifier.padding(top = 3.dp),
+                                modifier = Modifier.padding(top = LyricTokens.Space.xs),
                             )
                             if (index < preview.lastIndex) {
                                 HorizontalDivider(
-                                    Modifier.padding(top = 10.dp),
+                                    Modifier.padding(top = LyricTokens.Space.sm),
                                     color = dDivider,
                                 )
                             }
@@ -323,24 +319,24 @@ fun DeskScreen(
 private fun BookPickSheet(vm: DeskViewModel, dismiss: () -> Unit) {
     val books by vm.books.collectAsStateWithLifecycle()
     val readable = remember(books) { books.filter { !it.invalid } }
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.background) {
-        Text("选择一本书", fontFamily = Serif, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 24.dp))
-        LazyColumn(Modifier.padding(bottom = 28.dp)) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.background, shape = LyricTokens.Radius.cardShape) {
+        Text("选择一本书", fontFamily = Serif, style = LyricTokens.Type.title, modifier = Modifier.padding(horizontal = LyricTokens.Page.margin))
+        LazyColumn(Modifier.padding(bottom = LyricTokens.Space.xl)) {
             if (readable.isEmpty()) {
-                item { Text("书架还是空的。", Modifier.padding(24.dp), color = dSub) }
+                item { Text("书架还是空的。", Modifier.padding(LyricTokens.Space.xl), color = dSub) }
             }
             items(readable, key = { it.id }) { book ->
                 Row(
                     Modifier
                         .fillMaxWidth()
                         .clickable { vm.pickBook(book.id); dismiss() }
-                        .padding(horizontal = 24.dp, vertical = 14.dp),
+                        .padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.md),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    BookCover(book, Modifier.width(36.dp).height(48.dp))
-                    Column(Modifier.padding(start = 14.dp)) {
-                        Text(book.title, fontFamily = Serif, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(book.chapterTitle, fontSize = 11.sp, color = dSub)
+                    BookCover(book, Modifier.width(LyricTokens.Pending.smallControl).height(LyricTokens.Pending.touchTarget))
+                    Column(Modifier.padding(start = LyricTokens.Space.md)) {
+                        Text(book.title, fontFamily = Serif, style = LyricTokens.Type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(book.chapterTitle, style = LyricTokens.Type.auxiliary, color = dSub)
                     }
                 }
             }
@@ -374,32 +370,32 @@ fun FocusTimerScreen(vm: DeskViewModel, focus: FocusUi, openBook: () -> Unit) {
     val meta = if (night) FocusMuted else Stone
     val accent = if (night) FocusRing else Vermilion
     Column(Modifier.fillMaxSize().background(background).navigationBarsPadding()
-        .verticalScroll(rememberScrollState()).padding(horizontal = 32.dp, vertical = 24.dp),
+        .verticalScroll(rememberScrollState()).padding(horizontal = LyricTokens.Space.xxl, vertical = LyricTokens.Space.xl),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(focus.bookTitle, color = meta, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(56.dp))
+        Text(focus.bookTitle, color = meta, style = LyricTokens.Type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(LyricTokens.Pending.toolbarHeight))
         FocusRingDisplay(focus, ink, meta, accent, if (night) FocusRingTrack else Linen)
-        Spacer(Modifier.height(48.dp))
+        Spacer(Modifier.height(LyricTokens.Pending.touchTarget))
         NoiseControls(vm, night)
-        Spacer(Modifier.height(24.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Spacer(Modifier.height(LyricTokens.Space.xl))
+        Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.lg)) {
             OutlinedButton(onClick = { if (focus.paused) vm.resumeFocus() else vm.pauseFocus() },
-                modifier = Modifier.weight(1f).height(48.dp), border = BorderStroke(1.dp, if (night) FocusBtnBorder else Linen)) {
+                modifier = Modifier.weight(1f).height(LyricTokens.Pending.touchTarget), border = BorderStroke(LyricTokens.strokeWidth, if (night) FocusBtnBorder else Linen), shape = LyricTokens.Radius.buttonShape) {
                 Text(if (focus.paused) "继续" else "暂停", color = ink)
             }
-            Button(onClick = openBook, modifier = Modifier.weight(1f).height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = ink, contentColor = background)) { Text("继续阅读") }
+            Button(onClick = openBook, modifier = Modifier.weight(1f).height(LyricTokens.Pending.touchTarget),
+                colors = ButtonDefaults.buttonColors(containerColor = ink, contentColor = background), shape = LyricTokens.Radius.buttonShape) { Text("继续阅读") }
         }
-        TextButton(onClick = { vm.resetFocus() }) { Text("重置", color = meta) }
-        Text(if (focus.paused) "已暂停 · 点「继续」恢复计时" else "计时结束轻震一下，自动记录时长", color = meta, fontSize = 12.sp)
+        TextButton(onClick = { vm.resetFocus() }, shape = LyricTokens.Radius.buttonShape) { Text("重置", color = meta) }
+        Text(if (focus.paused) "已暂停 · 点「继续」恢复计时" else "计时结束轻震一下，自动记录时长", color = meta, style = LyricTokens.Type.auxiliary)
     }
 }
 
 @Composable
 private fun FocusRingDisplay(focus: FocusUi, ink: Color, meta: Color, accent: Color, track: Color) {
-    Box(Modifier.size(240.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(LyricTokens.Pending.focusDial), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            val stroke = 3.dp.toPx()
+            val stroke = LyricTokens.Pending.progressStroke.toPx()
             val diameter = min(size.width, size.height) - stroke
             val top = Offset(stroke / 2, stroke / 2)
             val extent = Size(diameter, diameter)
@@ -408,8 +404,8 @@ private fun FocusRingDisplay(focus: FocusUi, ink: Color, meta: Color, accent: Co
             drawArc(accent, -90f, 360f * progress, false, top, extent, style = Stroke(stroke, cap = StrokeCap.Round))
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(DeskViewModel.formatRemain(focus.remainSec), fontFamily = Serif, fontSize = 52.sp, color = ink)
-            Text("共 ${focus.plannedMin} 分钟", color = meta, fontSize = 12.sp)
+            Text(DeskViewModel.formatRemain(focus.remainSec), fontFamily = Serif, style = LyricTokens.Pending.focusTime, color = ink)
+            Text("共 ${focus.plannedMin} 分钟", color = meta, style = LyricTokens.Type.auxiliary)
         }
     }
 }
@@ -417,24 +413,24 @@ private fun FocusRingDisplay(focus: FocusUi, ink: Color, meta: Color, accent: Co
 @Composable
 private fun NoiseControls(vm: DeskViewModel, night: Boolean) {
     val noise by vm.noise.collectAsStateWithLifecycle()
-    val selected = if (night) Color(0xFFA3B38A) else Moss
+    val selected = if (night) LyricTokens.Night.moss else Moss
     val fill = if (night) FocusRingTrack else CardPaper
     val meta = if (night) FocusMuted else Stone
-    Column(Modifier.widthIn(max = 360.dp).fillMaxWidth()) {
-        Text("环境声", color = meta, fontSize = 13.sp)
-        Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.widthIn(max = LyricTokens.Pending.dialogMaxHeight).fillMaxWidth()) {
+        Text("环境声", color = meta, style = LyricTokens.Type.body)
+        Spacer(Modifier.height(LyricTokens.Space.md))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm)) {
             com.lyric.audio.NoiseSound.entries.forEach { sound ->
                 val active = noise.sound == sound
-                Box(Modifier.width(68.dp).height(36.dp).background(if (active) selected else fill, RoundedCornerShape(18.dp))
+                Box(Modifier.width(LyricTokens.Pending.settingValueWidth).height(LyricTokens.Pending.smallControl).background(if (active) selected else fill, LyricTokens.Radius.pill)
                     .clickable { vm.noiseSound(sound) }, contentAlignment = Alignment.Center) {
-                    Text(sound.label, fontSize = 14.sp, color = if (active) { if (night) FocusBg else Paper } else { if (night) Color(0xFFA8A296) else Stone })
+                    Text(sound.label, style = LyricTokens.Type.body, color = if (active) { if (night) FocusBg else Paper } else { if (night) LyricTokens.Night.secondary else Stone })
                 }
             }
         }
         if (noise.sound != com.lyric.audio.NoiseSound.NONE) {
             NoiseVolumeSlider(noise.volume, vm::noiseVolume, active = selected,
-                inactive = if (night) FocusRingTrack else Linen, thumb = if (night) FocusBtnFill else Color(0xFFF4EFE6),
+                inactive = if (night) FocusRingTrack else Linen, thumb = if (night) FocusBtnFill else LyricTokens.Day.background,
                 thumbBorder = if (night) Color.Transparent else Linen)
         }
     }
@@ -463,9 +459,9 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
     exportNote?.let { note ->
         AlertDialog(onDismissRequest = { exportNote = null }, title = { Text("导出笔记") },
             text = { Column {
-                TextButton(onClick = { exportNote = null; share(note = note) }) { Text("分享图片卡片") }
-                TextButton(onClick = { exportNote = null; share(bookId = note.bookId) }) { Text("本书笔记 · Markdown") }
-            } }, confirmButton = { TextButton(onClick = { exportNote = null }) { Text("取消") } })
+                TextButton(onClick = { exportNote = null; share(note = note) }, shape = LyricTokens.Radius.buttonShape) { Text("分享图片卡片") }
+                TextButton(onClick = { exportNote = null; share(bookId = note.bookId) }, shape = LyricTokens.Radius.buttonShape) { Text("本书笔记 · Markdown") }
+            } }, confirmButton = { TextButton(onClick = { exportNote = null }, shape = LyricTokens.Radius.buttonShape) { Text("取消") } })
     }
     var query by rememberSaveable { mutableStateOf("") }
     var byBook by rememberSaveable { mutableStateOf(false) }
@@ -477,12 +473,12 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
             TopAppBar(
                 title = { Text("笔记", fontFamily = Serif) },
                 navigationIcon = {
-                    TextButton(onClick = back) { Text("返回", color = dLink) }
+                    TextButton(onClick = back, shape = LyricTokens.Radius.buttonShape) { Text("返回", color = dLink) }
                 },
                 actions = {
-                    TextButton(enabled = !exporting && highlights.isNotEmpty(), onClick = { share() }) { Text(if (exporting) "导出中…" else "导出全部", color = dLink, fontSize = 12.sp) }
-                    TextButton(onClick = { byBook = !byBook }) {
-                        Text(if (byBook) "按书 ▾" else "按时间 ▾", fontSize = 12.sp, color = dSub)
+                    TextButton(enabled = !exporting && highlights.isNotEmpty(), onClick = { share() }, shape = LyricTokens.Radius.buttonShape) { Text(if (exporting) "导出中…" else "导出全部", color = dLink, style = LyricTokens.Type.auxiliary) }
+                    TextButton(onClick = { byBook = !byBook }, shape = LyricTokens.Radius.buttonShape) {
+                        Text(if (byBook) "按书 ▾" else "按时间 ▾", style = LyricTokens.Type.auxiliary, color = dSub)
                     }
                 },
             )
@@ -495,22 +491,22 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
                 { query = it },
                 label = { Text("搜索划线、想法或书名") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.sm),
             )
             Text(
                 "${filtered.size} 条",
-                fontSize = 12.sp,
+                style = LyricTokens.Type.auxiliary,
                 color = dSub,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 4.dp),
+                modifier = Modifier.padding(start = LyricTokens.Page.margin, end = LyricTokens.Page.margin, bottom = LyricTokens.Space.xs),
             )
-            LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+            LazyColumn(contentPadding = PaddingValues(bottom = LyricTokens.Space.xl)) {
                 if (filtered.isEmpty()) {
                     item {
                         Text(
                             "还没有划线。",
                             fontFamily = Serif,
                             color = dSub,
-                            modifier = Modifier.padding(24.dp),
+                            modifier = Modifier.padding(LyricTokens.Space.xl),
                         )
                     }
                 }
@@ -520,8 +516,8 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
                             Text(
                                 list.first().bookTitle.ifBlank { "未名" },
                                 fontFamily = Serif,
-                                fontSize = 18.sp,
-                                modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 6.dp),
+                                style = LyricTokens.Type.subtitle,
+                                modifier = Modifier.padding(start = LyricTokens.Space.lg, top = LyricTokens.Space.lg, bottom = LyricTokens.Space.xs),
                             )
                         }
                         items(list, key = { it.id }, contentType = { "note" }) { h ->
@@ -544,23 +540,23 @@ private fun DeskNoteRow(h: HighlightRow, export: () -> Unit, open: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .clickable(onClick = open)
-            .padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 10.dp)
+            .padding(start = LyricTokens.Page.margin, end = LyricTokens.Page.margin, top = LyricTokens.Space.sm, bottom = LyricTokens.Space.sm)
             .height(IntrinsicSize.Min),
     ) {
-        Box(Modifier.width(2.dp).fillMaxHeight().background(dBar))
-        Column(Modifier.weight(1f).padding(start = 10.dp)) {
-            Text(h.text, fontFamily = Serif, fontSize = 14.sp, lineHeight = 22.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.width(LyricTokens.Pending.indicatorStroke).fillMaxHeight().background(dBar))
+        Column(Modifier.weight(1f).padding(start = LyricTokens.Space.sm)) {
+            Text(h.text, fontFamily = Serif, style = LyricTokens.Type.body, maxLines = 4, overflow = TextOverflow.Ellipsis)
             NoteLine(h.note)
             Text(
                 "${h.bookTitle.ifBlank { "未名" }} · ${h.chapterTitle} · ${DeskViewModel.relativeDay(h.createdAt)}",
-                fontSize = 11.sp,
+                style = LyricTokens.Type.auxiliary,
                 color = dSub,
-                modifier = Modifier.padding(top = 4.dp),
+                modifier = Modifier.padding(top = LyricTokens.Space.xs),
             )
         }
-        TextButton(onClick = export) { Text("导出", color = dLink, fontSize = 12.sp) }
+        TextButton(onClick = export, shape = LyricTokens.Radius.buttonShape) { Text("导出", color = dLink, style = LyricTokens.Type.auxiliary) }
     }
-    HorizontalDivider(color = if (deskDark()) dDivider else MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(start = 32.dp))
+    HorizontalDivider(color = if (deskDark()) dDivider else MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(start = LyricTokens.Space.xxl))
 }
 
 
@@ -593,25 +589,25 @@ private fun FocusRunningRow(vm: DeskViewModel, openFocus: () -> Unit, continueRe
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(top = 12.dp)
-            .then(if (deskDark()) Modifier.border(1.dp, FocusBtnBorder, RoundedCornerShape(18.dp)) else Modifier.background(Ink, RoundedCornerShape(18.dp)))
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(top = LyricTokens.Space.md)
+            .then(if (deskDark()) Modifier.border(LyricTokens.strokeWidth, FocusBtnBorder, LyricTokens.Radius.cardShape) else Modifier.background(Ink, LyricTokens.Radius.cardShape))
+            .padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.md),
     ) {
         Text(
             "${if (focus.paused) "已暂停" else "专注中"} ${DeskViewModel.formatRemain(focus.remainSec)} · ${focus.bookTitle}",
-            color = if (deskDark()) FocusMuted else Paper, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            color = if (deskDark()) FocusMuted else Paper, style = LyricTokens.Type.body, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
-        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(top = LyricTokens.Space.sm), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.height(34.dp).background(FocusBtnFill, RoundedCornerShape(17.dp))
-                    .clickable { continueReading(focus.bookId) }.padding(horizontal = 18.dp),
+                Modifier.height(LyricTokens.Pending.compactButtonHeight).background(FocusBtnFill, RoundedCornerShape(LyricTokens.Radius.button))
+                    .clickable { continueReading(focus.bookId) }.padding(horizontal = LyricTokens.Page.margin),
                 contentAlignment = Alignment.Center,
-            ) { Text("继续阅读", color = FocusBg, fontSize = 13.sp) }
+            ) { Text("继续阅读", color = FocusBg, style = LyricTokens.Type.body) }
             Spacer(Modifier.weight(1f))
-            Text("回到计时", color = FocusBtnFill, fontSize = 12.sp,
-                modifier = Modifier.clickable(onClick = openFocus).padding(8.dp))
-            Text("重置", color = FocusRing, fontSize = 12.sp,
-                modifier = Modifier.clickable { vm.resetFocus() }.padding(8.dp))
+            Text("回到计时", color = FocusBtnFill, style = LyricTokens.Type.auxiliary,
+                modifier = Modifier.clickable(onClick = openFocus).padding(LyricTokens.Space.sm))
+            Text("重置", color = FocusRing, style = LyricTokens.Type.auxiliary,
+                modifier = Modifier.clickable { vm.resetFocus() }.padding(LyricTokens.Space.sm))
         }
     }
 }
@@ -624,8 +620,8 @@ fun FocusRemainingLabel(vm: DeskViewModel, bookId: String) {
     Text(
         "${if (focus.paused) "已暂停" else "专注中"} · 剩余 ${DeskViewModel.formatRemain(focus.remainSec)}",
         color = if (focus.paused) dSub else if (deskDark()) FocusRing else dBar,
-        fontSize = 12.sp,
-        modifier = Modifier.padding(top = 6.dp),
+        style = LyricTokens.Type.auxiliary,
+        modifier = Modifier.padding(top = LyricTokens.Space.xs),
     )
 }
 
@@ -651,19 +647,19 @@ internal fun deskBookLabel(title: String, chapter: String): String {
 
 // 0.8.4 美术设计 dark spec for 案头; light values are the 0.8.0 ones, unchanged.
 @Composable internal fun deskDark() = MaterialTheme.colorScheme.background.luminance() < .5f
-private val dCard @Composable get() = if (deskDark()) Color(0xFF1E1F23) else CardPaper
-private val dCardStroke @Composable get() = if (deskDark()) BorderStroke(1.dp, Color(0xFF2A2B2F)) else null
-private val dText @Composable get() = if (deskDark()) Color(0xFFD0CABE) else Ink
-private val dSub @Composable get() = if (deskDark()) Color(0xFF7D786E) else Stone
-private val dLink @Composable get() = if (deskDark()) Color(0xFFA3B38A) else Moss
-private val dBar @Composable get() = if (deskDark()) Color(0xFFE08A6E) else Vermilion
-private val dSegOn @Composable get() = if (deskDark()) Color(0xFFA3B38A) else Moss
-private val dSegOnText @Composable get() = if (deskDark()) Color(0xFF16171A) else Paper
-private val dSegOff @Composable get() = if (deskDark()) Color(0xFF2A2B2F) else Paper
-private val dSegOffText @Composable get() = if (deskDark()) Color(0xFFA8A296) else Ink
-private val dPrimary @Composable get() = if (deskDark()) Color(0xFFD0CABE) else Ink
-private val dPrimaryText @Composable get() = if (deskDark()) Color(0xFF16171A) else Paper
-private val dDivider @Composable get() = if (deskDark()) Color(0xFF2A2B2F) else Color(0xFFDDD5C6)
+private val dCard @Composable get() = if (deskDark()) LyricTokens.Night.card else CardPaper
+private val dCardStroke @Composable get() = BorderStroke(LyricTokens.strokeWidth, LyricTokens.colors(deskDark()).stroke)
+private val dText @Composable get() = if (deskDark()) LyricTokens.Night.ink else Ink
+private val dSub @Composable get() = if (deskDark()) LyricTokens.Night.secondary else Stone
+private val dLink @Composable get() = if (deskDark()) LyricTokens.Night.moss else Moss
+private val dBar @Composable get() = if (deskDark()) LyricTokens.Night.vermilion else Vermilion
+private val dSegOn @Composable get() = if (deskDark()) LyricTokens.Night.moss else Moss
+private val dSegOnText @Composable get() = if (deskDark()) LyricTokens.Night.background else Paper
+private val dSegOff @Composable get() = if (deskDark()) LyricTokens.Night.stroke else Paper
+private val dSegOffText @Composable get() = if (deskDark()) LyricTokens.Night.secondary else Ink
+private val dPrimary @Composable get() = if (deskDark()) LyricTokens.Night.ink else Ink
+private val dPrimaryText @Composable get() = if (deskDark()) LyricTokens.Night.background else Paper
+private val dDivider @Composable get() = if (deskDark()) LyricTokens.Night.stroke else LyricTokens.Day.stroke
 
 /** Collapse blank paragraphs / line breaks into one spaced line for previews. */
 internal fun compactPreview(s: String): String =
@@ -675,15 +671,15 @@ internal fun compactPreview(s: String): String =
 @Composable
 private fun NoiseVolumeSlider(value: Float, onChange: (Float) -> Unit, active: Color, inactive: Color, thumb: Color, thumbBorder: Color) {
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    Slider(value, onChange, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(32.dp),
+    Slider(value, onChange, modifier = Modifier.fillMaxWidth().padding(top = LyricTokens.Space.sm).height(LyricTokens.Space.xxl),
         interactionSource = interaction,
         thumb = {
-            Box(Modifier.size(14.dp).background(thumb, androidx.compose.foundation.shape.CircleShape)
-                .border(1.dp, thumbBorder, androidx.compose.foundation.shape.CircleShape))
+            Box(Modifier.size(LyricTokens.Pending.sliderThumb).background(thumb, androidx.compose.foundation.shape.CircleShape)
+                .border(LyricTokens.strokeWidth, thumbBorder, androidx.compose.foundation.shape.CircleShape))
         },
         track = { state ->
             val fraction = state.value.coerceIn(0f, 1f)
-            Canvas(Modifier.fillMaxWidth().height(2.dp)) {
+            Canvas(Modifier.fillMaxWidth().height(LyricTokens.Pending.indicatorStroke)) {
                 val y = size.height / 2
                 val x = size.width * fraction
                 drawLine(inactive, Offset(0f, y), Offset(size.width, y), size.height, StrokeCap.Round)

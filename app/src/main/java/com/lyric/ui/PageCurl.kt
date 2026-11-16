@@ -1,5 +1,7 @@
 package com.lyric.ui
 
+import com.lyric.ui.theme.LyricTokens
+
 import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.LinearGradient
@@ -11,7 +13,6 @@ import android.graphics.RectF
 import android.graphics.Shader
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -56,7 +57,7 @@ internal fun PageCurl(frame: CurlFrame, paper: Color, modifier: Modifier, style:
             else { if (frame.direction > 0) w - .5f else .5f },
             if (frame.topCorner) .5f else h - .5f,
         )
-        animated.animateTo(end, tween(if (commit) 360 else 240))
+        animated.animateTo(end, LyricTokens.Motion.medium())
         frame.finishing = true
         latestFinished(commit)
     }
@@ -147,7 +148,7 @@ internal class CurlDrawing {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     val shadowColors = IntArray(3)
     val shadowStops = FloatArray(3)
-    val backColors = intArrayOf(0x18000000, 0x38ffffff, 0x68000000)
+    val backColors = LyricTokens.Pending.curlBackColors.copyOf()
     val backStops = floatArrayOf(0f, .55f, 1f)
 }
 
@@ -190,7 +191,7 @@ internal fun drawPageCurl(canvas: AndroidCanvas, current: Bitmap, target: Bitmap
         drawing.backColors, drawing.backStops, Shader.TileMode.CLAMP)
     canvas.drawRect(bounds, paint); canvas.restore()
     paint.shader = null
-    paint.color = if (style != null) a(style.highlightAlpha) or 0xFFFFFF else 0x33000000
+    paint.color = if (style != null) a(style.highlightAlpha) or LyricTokens.Pending.rgbMask.toInt() else LyricTokens.Pending.curlFallbackOutline
     paint.style = Paint.Style.STROKE; paint.strokeWidth = if (style != null) 1 * density else .8f
     canvas.drawPath(geometry.back, paint)
     canvas.restore()

@@ -1,5 +1,7 @@
 package com.lyric.ui
 
+import com.lyric.ui.theme.LyricTokens
+
 import android.content.Context
 import android.provider.Settings
 import androidx.compose.foundation.Canvas
@@ -27,11 +29,11 @@ import kotlin.math.sin
  * (at 2000ms: 0–650 draw book · 650–850 hold · 850–1450 morph to panels + figures + horizon ·
  * 1450–1650 hold · 1650–2000 line art fades, grid rises). Reduce-motion: 200ms crossfade.
  */
-const val SHELF_SWITCH_MS = 2000L
-private const val BOOK_END = 650f / 2000f
-private const val MORPH_START = 850f / 2000f
-private const val MORPH_END = 1450f / 2000f
-private const val FADE_START = 1650f / 2000f
+const val SHELF_SWITCH_MS = LyricTokens.Pending.shelfSwitchMs
+private const val BOOK_END = LyricTokens.Pending.shelfBookEnd
+private const val MORPH_START = LyricTokens.Pending.shelfMorphStart
+private const val MORPH_END = LyricTokens.Pending.shelfMorphEnd
+private const val FADE_START = LyricTokens.Pending.shelfFadeStart
 
 private fun phase(t: Float, a: Float, b: Float) = ((t - a) / (b - a)).coerceIn(0f, 1f)
 
@@ -79,7 +81,7 @@ internal fun shelfTransitionFrame(fraction: Float, toComic: Boolean, reduced: Bo
     val outgoing = if (toComic) book else comic
     val incoming = if (toComic) comic else book
     // The arriving grid rises from 12dp below into place.
-    return ShelfTransitionFrame(outgoing, incoming, 0f, 12f * (1f - incoming), m)
+    return ShelfTransitionFrame(outgoing, incoming, 0f, LyricTokens.Pending.shelfRise.value * (1f - incoming), m)
 }
 
 @Composable
@@ -88,11 +90,11 @@ internal fun ShelfTransition(state: ShelfTransitionState, content: @Composable (
         if (state.running) {
             // A frame clock intentionally bypasses Compose's duration-scale multiplier so the
             // accessibility fallback still crossfades for 200ms when the system scale is zero.
-            val duration = if (state.reduced) 200_000_000L else SHELF_SWITCH_MS * 1_000_000L
+            val duration = if (state.reduced) LyricTokens.Motion.mediumMs * 1_000_000L else SHELF_SWITCH_MS * 1_000_000L
             val start = withFrameNanos { it }
             do {
                 val linear = withFrameNanos { ((it - start).toDouble() / duration).toFloat().coerceIn(0f, 1f) }
-                state.fraction = if (state.reduced) linear else androidx.compose.animation.core.FastOutSlowInEasing.transform(linear)
+                state.fraction = LyricTokens.Motion.easeOut.transform(linear)
             } while (linear < 1f && state.running)
             state.finish()
         }
@@ -196,7 +198,7 @@ private fun ShelfMorph(time: () -> Float) {
     val measure = remember { PathMeasure() }
     val segment = remember { Path() }
     val night = MaterialTheme.colorScheme.background.luminance() < .5f
-    val ink = if (night) Color(0xFFD0CABE) else Color(0xFF2B2A27)
+    val ink = if (night) LyricTokens.Night.ink else LyricTokens.Day.ink
     Canvas(Modifier.fillMaxSize()) {
         val t = time().coerceIn(0f, 1f)
         val fade = 1f - phase(t, FADE_START, 1f)
@@ -204,7 +206,7 @@ private fun ShelfMorph(time: () -> Float) {
         // 美术设计: art 64% of screen width, centred horizontally, its centre at 42% of the height.
         val scale = size.width * .64f / 240f
         // Stroke stays 2dp on screen regardless of the art scale.
-        val stroke = Stroke(2.dp.toPx() / scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val stroke = Stroke(LyricTokens.Pending.indicatorStroke.toPx() / scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
         fun draw(paths: List<Path>, progress: Float, alpha: Float) {
             if (progress <= 0f || alpha <= 0f) return
             paths.forEach { p ->

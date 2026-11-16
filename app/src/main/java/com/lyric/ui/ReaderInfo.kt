@@ -1,5 +1,7 @@
 package com.lyric.ui
 
+import com.lyric.ui.theme.LyricTokens
+
 import android.content.*
 import android.os.BatteryManager
 import androidx.compose.foundation.background
@@ -43,14 +45,14 @@ fun readerClockAndBattery(): Pair<String, String> {
 }
 
 @Composable
-fun PaperSkeleton(paper: Color, ink: Color, margin: Float = 20f) {
-    val color = if (paper.luminance() < .2f) Color(0xFF2A2B2F) else Color(0xFFE9E2D6)
-    BoxWithConstraints(Modifier.fillMaxSize().background(paper).padding(horizontal = margin.dp, vertical = 32.dp)) {
-        val rows = ((maxHeight.value + 10) / 22).toInt().coerceAtLeast(1)
-        Column(Modifier.fillMaxSize().loadingBreathe(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+fun PaperSkeleton(paper: Color, ink: Color, margin: Float = LyricTokens.Reading.default.marginDp) {
+    val color = LyricTokens.colors(paper.luminance() < .2f).skeleton
+    BoxWithConstraints(Modifier.fillMaxSize().background(paper).padding(horizontal = margin.dp, vertical = LyricTokens.Space.xxl), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
+        val rows = ((maxHeight + LyricTokens.Space.sm) / (LyricTokens.Space.md + LyricTokens.Space.sm)).toInt().coerceAtLeast(1)
+        Column(Modifier.widthIn(max = LyricTokens.Reading.bodyMaxWidth).fillMaxSize().loadingBreathe(), verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm)) {
         repeat(rows) { row ->
-            Box(Modifier.fillMaxWidth(if (row == rows - 1) .6f else 1f).height(12.dp)
-                .background(color, RoundedCornerShape(2.dp)))
+            Box(Modifier.fillMaxWidth(if (row == rows - 1) .6f else 1f).height(LyricTokens.Space.md)
+                .background(color, RoundedCornerShape(LyricTokens.Radius.skeleton)))
         }
         }
     }

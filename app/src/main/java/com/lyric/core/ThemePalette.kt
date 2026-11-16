@@ -1,5 +1,7 @@
 package com.lyric.core
 
+import com.lyric.ui.theme.LyricTokens
+
 /** Per-theme colours from design/v0.4-visual.md §6 (selection) and §7 (curl paper back). */
 data class SelectionColors(val fill: Int, val handle: Int, val menuBg: Int, val menuInk: Int)
 data class CurlStyle(val back: Int, val showThrough: Float, val castAlpha: Float, val dimAlpha: Float, val highlightAlpha: Float)
@@ -49,7 +51,7 @@ object ThemePalette {
     fun markerLine(color: Int): Int = (0xFF000000L or marker[color.coerceIn(0, marker.lastIndex)].line).toInt()
 
     /** Highlight colours: 0 = theme vermilion fill, 1 moss, 2 ochre, 3 slate blue (all ~26%). */
-    val highlightColors = listOf(0xB5563AL, 0x5E6B4EL, 0xC08A2EL, 0x4F6D8AL)
+    val highlightColors = LyricTokens.Pending.highlightSwatches
     fun highlight(color: Int, themeFill: Int): Int =
         if (color <= 0 || color >= highlightColors.size) themeFill else argb(highlightColors[color], .26f)
 

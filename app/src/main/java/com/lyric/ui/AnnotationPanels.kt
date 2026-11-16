@@ -1,5 +1,7 @@
 package com.lyric.ui
 
+import com.lyric.ui.theme.LyricTokens
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -18,10 +20,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.lyric.core.Book
 import com.lyric.core.Locator
 import com.lyric.data.BookmarkRow
@@ -64,7 +63,7 @@ fun TocPanel(book: Book, locator: Locator, current: Int, state: LazyListState, g
     val ready = book.deferred?.lengthsReady?.collectAsState()?.value ?: true
     val progress = remember(book, ready) { TocProgressIndex(book) }
     val position = progress.position(locator)
-    LazyColumn(state = state, contentPadding = PaddingValues(vertical = 8.dp)) {
+    LazyColumn(state = state, contentPadding = PaddingValues(vertical = LyricTokens.Space.sm)) {
         itemsIndexed(book.toc, key = { i, _ -> i }) { i, entry ->
             val on = i == current
             val p = if (ready) progress.fraction(i, position) else if (entry.chapterIndex < locator.chapterIndex) 1f else 0f
@@ -74,19 +73,18 @@ fun TocPanel(book: Book, locator: Locator, current: Int, state: LazyListState, g
                     .clickable { go(Locator(entry.chapterIndex, entry.charOffset, fragment = entry.fragment)) },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.width(2.dp).fillMaxHeight().background(if (on) Vermilion else Color.Transparent))
-                Column(Modifier.weight(1f).padding(start = 22.dp, top = 12.dp, bottom = 12.dp)) {
+                Box(Modifier.width(LyricTokens.Pending.indicatorStroke).fillMaxHeight().background(if (on) Vermilion else Color.Transparent))
+                Column(Modifier.weight(1f).padding(start = LyricTokens.Space.xl, top = LyricTokens.Space.md, bottom = LyricTokens.Space.md)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (on) Box(Modifier.padding(end = 6.dp).size(5.dp).background(Vermilion, CircleShape))
-                        Text(entry.title, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                            fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal)
+                        if (on) Box(Modifier.padding(end = LyricTokens.Space.xs).size(LyricTokens.Pending.statusDot).background(Vermilion, CircleShape))
+                        Text(entry.title, style = LyricTokens.Type.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     Text(
                         when { p >= .995f -> "已读完"; p > 0f -> "读到 ${(p * 100).toInt()}%"; else -> "未读" },
-                        fontSize = 11.sp, color = Stone, modifier = Modifier.padding(top = 3.dp),
+                        style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.padding(top = LyricTokens.Space.xs),
                     )
                 }
-                Box(Modifier.padding(end = 20.dp, start = 12.dp).width(32.dp).height(3.dp).background(Linen)) {
+                Box(Modifier.padding(end = LyricTokens.Space.lg, start = LyricTokens.Space.md).width(LyricTokens.Space.xxl).height(LyricTokens.Pending.progressStroke).background(Linen)) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(p).background(Moss))
                 }
             }
@@ -96,34 +94,34 @@ fun TocPanel(book: Book, locator: Locator, current: Int, state: LazyListState, g
 
 @Composable
 fun NoteLine(note: String) {
-    if (note.isNotBlank()) Text("✎ $note", color = Moss, fontSize = 12.sp, lineHeight = 18.sp, modifier = Modifier.padding(top = 4.dp))
+    if (note.isNotBlank()) Text("✎ $note", color = Moss, style = LyricTokens.Type.auxiliary, modifier = Modifier.padding(top = LyricTokens.Space.xs))
 }
 
 @Composable
 fun BookmarkPanel(marks: List<BookmarkRow>, go: (BookmarkRow) -> Unit, note: (BookmarkRow) -> Unit, delete: (BookmarkRow) -> Unit) {
     var byChapter by rememberSaveable { mutableStateOf(false) }
     if (marks.isEmpty()) {
-        Text("还没有书签\n在喜欢的字句之间，夹一片叶子。", lineHeight = 25.sp, color = Stone, fontSize = 13.sp, modifier = Modifier.padding(24.dp))
+        Text("还没有书签\n在喜欢的字句之间，夹一片叶子。", color = Stone, style = LyricTokens.Type.body, modifier = Modifier.padding(LyricTokens.Space.xl))
         return
     }
     val sorted = remember(marks, byChapter) { sortBookmarks(marks, byChapter) }
     Column {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = { byChapter = !byChapter }) {
-                Text(if (byChapter) "按章节 ▾" else "按时间 ▾", fontSize = 11.sp, color = Stone)
+        Row(Modifier.fillMaxWidth().padding(horizontal = LyricTokens.Page.margin), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = { byChapter = !byChapter }, shape = LyricTokens.Radius.buttonShape) {
+                Text(if (byChapter) "按章节 ▾" else "按时间 ▾", style = LyricTokens.Type.auxiliary, color = Stone)
             }
         }
         LazyColumn {
             items(sorted, key = { it.id }) { mark ->
-                Row(Modifier.fillMaxWidth().clickable { go(mark) }.padding(start = 24.dp, top = 12.dp, bottom = 12.dp, end = 4.dp)) {
+                Row(Modifier.fillMaxWidth().clickable { go(mark) }.padding(start = LyricTokens.Space.xl, top = LyricTokens.Space.md, bottom = LyricTokens.Space.md, end = LyricTokens.Space.xs)) {
                     Column(Modifier.weight(1f)) {
-                        Text("${mark.chapterTitle} · ${dateFmt.format(Date(mark.createdAt))}", fontSize = 11.sp, color = Stone)
-                        Text(mark.excerpt, fontFamily = Serif, fontSize = 14.sp, lineHeight = 22.sp, maxLines = 3, modifier = Modifier.padding(top = 6.dp))
+                        Text("${mark.chapterTitle} · ${dateFmt.format(Date(mark.createdAt))}", style = LyricTokens.Type.auxiliary, color = Stone)
+                        Text(mark.excerpt, fontFamily = Serif, style = LyricTokens.Type.body, maxLines = 3, modifier = Modifier.padding(top = LyricTokens.Space.xs))
                         NoteLine(mark.note)
-                        Text(if (mark.note.isBlank()) "加备注" else "改备注", fontSize = 11.sp, color = Moss,
-                            modifier = Modifier.padding(top = 4.dp).clickable { note(mark) })
+                        Text(if (mark.note.isBlank()) "加备注" else "改备注", style = LyricTokens.Type.auxiliary, color = Moss,
+                            modifier = Modifier.padding(top = LyricTokens.Space.xs).clickable { note(mark) })
                     }
-                    IconButton(onClick = { delete(mark) }) { Icon(Icons.Outlined.Close, "删除书签", Modifier.size(18.dp), tint = Stone) }
+                    IconButton(onClick = { delete(mark) }) { Icon(Icons.Outlined.Close, "删除书签", Modifier.size(LyricTokens.Pending.smallIcon), tint = Stone) }
                 }
             }
         }
@@ -134,15 +132,15 @@ fun BookmarkPanel(marks: List<BookmarkRow>, go: (BookmarkRow) -> Unit, note: (Bo
 @Composable
 fun HighlightPanel(rows: List<HighlightRow>, go: (HighlightRow) -> Unit, note: (HighlightRow) -> Unit, delete: (HighlightRow) -> Unit) {
     if (rows.isEmpty()) {
-        Text("还没有划线\n长按选中文字，点「划线」或「笔记」。\n长按一条划线可以写想法或删除。", lineHeight = 25.sp, color = Stone, fontSize = 13.sp, modifier = Modifier.padding(24.dp))
+        Text("还没有划线\n长按选中文字，点「划线」或「笔记」。\n长按一条划线可以写想法或删除。", color = Stone, style = LyricTokens.Type.body, modifier = Modifier.padding(LyricTokens.Space.xl))
         return
     }
     val groups = remember(rows) { rows.groupBy { it.chapterIndex }.toSortedMap() }
-    LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
+    LazyColumn(contentPadding = PaddingValues(vertical = LyricTokens.Space.sm)) {
         groups.forEach { (_, list) ->
             item(key = "h-${list.first().chapterIndex}") {
-                Text("${list.first().chapterTitle} · ${list.size} 条", fontSize = 11.sp, color = Stone,
-                    modifier = Modifier.padding(start = 24.dp, top = 14.dp, bottom = 4.dp))
+                Text("${list.first().chapterTitle} · ${list.size} 条", style = LyricTokens.Type.auxiliary, color = Stone,
+                    modifier = Modifier.padding(start = LyricTokens.Space.xl, top = LyricTokens.Space.md, bottom = LyricTokens.Space.xs))
             }
             items(list, key = { it.id }) { h ->
                 var actions by remember { mutableStateOf(false) }
@@ -150,11 +148,11 @@ fun HighlightPanel(rows: List<HighlightRow>, go: (HighlightRow) -> Unit, note: (
                     Row(
                         Modifier.fillMaxWidth().height(IntrinsicSize.Min)
                             .combinedClickable(onClick = { go(h) }, onLongClick = { actions = true })
-                            .padding(start = 24.dp, end = 20.dp, top = 7.dp, bottom = 7.dp)
+                            .padding(start = LyricTokens.Space.xl, end = LyricTokens.Space.lg, top = LyricTokens.Space.sm, bottom = LyricTokens.Space.sm)
                     ) {
-                        Box(Modifier.width(2.dp).fillMaxHeight().background(Vermilion))
-                        Column(Modifier.padding(start = 10.dp)) {
-                            Text(h.text, fontFamily = Serif, fontSize = 14.sp, lineHeight = 22.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                        Box(Modifier.width(LyricTokens.Pending.indicatorStroke).fillMaxHeight().background(Vermilion))
+                        Column(Modifier.padding(start = LyricTokens.Space.sm)) {
+                            Text(h.text, fontFamily = Serif, style = LyricTokens.Type.body, maxLines = 4, overflow = TextOverflow.Ellipsis)
                             NoteLine(h.note)
                         }
                     }
@@ -175,8 +173,8 @@ fun NoteDialog(title: String, initial: String, save: (String) -> Unit, dismiss: 
         onDismissRequest = dismiss,
         title = { Text(title) },
         text = { OutlinedTextField(text, { text = it }, placeholder = { Text("写点什么…") }, minLines = 3, modifier = Modifier.fillMaxWidth()) },
-        confirmButton = { TextButton(onClick = { save(text); dismiss() }) { Text("保存") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("取消") } },
+        confirmButton = { TextButton(onClick = { save(text); dismiss() }, shape = LyricTokens.Radius.buttonShape) { Text("保存") } },
+        dismissButton = { TextButton(onClick = dismiss, shape = LyricTokens.Radius.buttonShape) { Text("取消") } },
     )
 }
 
@@ -184,25 +182,25 @@ fun NoteDialog(title: String, initial: String, save: (String) -> Unit, dismiss: 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HighlightOptionsSheet(h: HighlightRow, color: (Int) -> Unit, note: () -> Unit, delete: () -> Unit, dismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.background) {
-        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.background, shape = LyricTokens.Radius.cardShape) {
+        Column(Modifier.padding(horizontal = LyricTokens.Page.margin).padding(bottom = LyricTokens.Space.xl)) {
             Row(Modifier.height(IntrinsicSize.Min)) {
-                Box(Modifier.width(2.dp).fillMaxHeight().background(Vermilion))
-                Text(h.text, fontFamily = Serif, fontSize = 14.sp, lineHeight = 22.sp, maxLines = 3,
-                    overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 10.dp))
+                Box(Modifier.width(LyricTokens.Pending.indicatorStroke).fillMaxHeight().background(Vermilion))
+                Text(h.text, fontFamily = Serif, style = LyricTokens.Type.body, maxLines = 3,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = LyricTokens.Space.sm))
             }
             NoteLine(h.note)
-            Text("颜色", fontSize = 12.sp, color = Stone, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("颜色", style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.padding(top = LyricTokens.Space.lg, bottom = LyricTokens.Space.sm))
+            Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md)) {
                 com.lyric.core.ThemePalette.highlightColors.forEachIndexed { i, rgb ->
-                    val c = Color(0xFF000000 or rgb)
-                    Box(Modifier.size(32.dp).background(c.copy(alpha = if (i == h.color) 1f else .55f), CircleShape)
+                    val c = Color(LyricTokens.Pending.opaqueArgb or rgb)
+                    Box(Modifier.size(LyricTokens.Space.xxl).background(c.copy(alpha = if (i == h.color) 1f else .55f), CircleShape)
                         .clickable { color(i); dismiss() })
                 }
             }
-            Row(Modifier.padding(top = 16.dp)) {
-                TextButton(onClick = { dismiss(); note() }) { Text(if (h.note.isBlank()) "写想法" else "改想法", color = Moss) }
-                TextButton(onClick = { dismiss(); delete() }) { Text("删除划线", color = Vermilion) }
+            Row(Modifier.padding(top = LyricTokens.Space.lg)) {
+                TextButton(onClick = { dismiss(); note() }, shape = LyricTokens.Radius.buttonShape) { Text(if (h.note.isBlank()) "写想法" else "改想法", color = Moss) }
+                TextButton(onClick = { dismiss(); delete() }, shape = LyricTokens.Radius.buttonShape) { Text("删除划线", color = Vermilion) }
             }
         }
     }

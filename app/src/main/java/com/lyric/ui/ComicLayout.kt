@@ -1,9 +1,10 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.lyric.ui
 
+import com.lyric.ui.theme.LyricTokens
+
 import android.graphics.Bitmap
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -28,7 +29,7 @@ internal data class PageArtwork(val bitmap: Bitmap, val crop: PageCrop)
 @Composable
 internal fun ComicArtworkViewport(art: List<PageArtwork>, trimmed: Boolean, fillWidth: Boolean,
                                   scale: Float, offset: Offset) {
-    BoxWithConstraints(Modifier.fillMaxSize().padding(4.dp).clipToBounds()) {
+    BoxWithConstraints(Modifier.fillMaxSize().padding(LyricTokens.Space.xs).clipToBounds()) {
         val zoom = Modifier.graphicsLayer {
             scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y
         }
@@ -47,7 +48,7 @@ internal fun ComicArtworkViewport(art: List<PageArtwork>, trimmed: Boolean, fill
 /** Animation reads stay in drawing. Two pages share one fitted height and meet at a single seam. */
 @Composable
 internal fun ComicArtwork(pages: List<PageArtwork>, trim: Boolean, modifier: Modifier) {
-    val fraction = animateFloatAsState(if (trim) 1f else 0f, tween(200), label = "trim")
+    val fraction = animateFloatAsState(if (trim) 1f else 0f, LyricTokens.Motion.short(), label = "trim")
     val images = remember(pages.map { it.bitmap }) { pages.map { it.bitmap.asImageBitmap() } }
     Canvas(modifier) {
         val f = fraction.value
@@ -73,10 +74,10 @@ internal fun ComicArtwork(pages: List<PageArtwork>, trim: Boolean, modifier: Mod
             x = next; if (i == 0) seam = next
         }
         if (pages.size == 2) {
-            val half = 12.dp.toPx()
-            drawRect(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .08f)), seam - half, seam),
+            val half = LyricTokens.Space.md.toPx()
+            drawRect(Brush.horizontalGradient(listOf(Color.Transparent, LyricTokens.Pending.overlayBlack.copy(alpha = .08f)), seam - half, seam),
                 Offset(seam - half, y), Size(half, height))
-            drawRect(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = .08f), Color.Transparent), seam, seam + half),
+            drawRect(Brush.horizontalGradient(listOf(LyricTokens.Pending.overlayBlack.copy(alpha = .08f), Color.Transparent), seam, seam + half),
                 Offset(seam, y), Size(half, height))
         }
     }
@@ -85,19 +86,19 @@ internal fun ComicArtwork(pages: List<PageArtwork>, trim: Boolean, modifier: Mod
 @Composable
 internal fun ComicLayoutSheet(prefs: ReaderSettings, vertical: Boolean, largeScreen: Boolean, dismiss: () -> Unit, update: (ReaderSettings) -> Unit) {
     val night = prefs.theme in listOf(ReaderTheme.NIGHT, ReaderTheme.BLACK, ReaderTheme.GREEN)
-    val bg = if (night) Color(0xFF2A2B2F) else Paper
-    val ink = if (night) Color(0xFFD0CABE) else Ink
-    val meta = if (night) Color(0xFF7D786E) else Stone
-    val divider = if (night) Color(0xFF3A3B40) else Linen
-    val selected = if (night) Color(0xFFA3B38A) else Moss
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = bg) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 32.dp).padding(bottom = 24.dp)) {
-            Text("版面 · 仅对本书生效", color = meta, fontSize = 13.sp)
+    val bg = LyricTokens.colors(night).card
+    val ink = if (night) LyricTokens.Night.ink else Ink
+    val meta = if (night) LyricTokens.Night.secondary else Stone
+    val divider = if (night) LyricTokens.Night.stroke else Linen
+    val selected = if (night) LyricTokens.Night.moss else Moss
+    ModalBottomSheet(onDismissRequest = dismiss, containerColor = bg, shape = LyricTokens.Radius.cardShape) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = LyricTokens.Space.xxl).padding(bottom = LyricTokens.Space.xl)) {
+            Text("版面 · 仅对本书生效", color = meta, style = LyricTokens.Type.body)
             @Composable fun toggle(title: String, subtitle: String, checked: Boolean, enabled: Boolean = true, change: (Boolean) -> Unit) {
-                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().padding(vertical = LyricTokens.Space.md), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(title, color = ink, fontSize = 16.sp)
-                        Text(subtitle, color = meta, fontSize = 12.sp)
+                        Text(title, color = ink, style = LyricTokens.Type.subtitle)
+                        Text(subtitle, color = meta, style = LyricTokens.Type.auxiliary)
                     }
                     Switch(checked, change, enabled = enabled, colors = SwitchDefaults.colors(
                         checkedTrackColor = selected, uncheckedTrackColor = divider,

@@ -1,5 +1,8 @@
 package com.lyric.export
 
+import com.lyric.ui.theme.LyricTokens
+import androidx.compose.ui.graphics.toArgb
+
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -53,8 +56,8 @@ object NoteExport {
         "—— " + (if (author.isNotBlank()) author.trim() else "") + "《${h.bookTitle.ifBlank { "未名" }}》"
 
     fun cardLayout(h: HighlightRow, night: Boolean = false, font: Typeface = Typeface.create("serif", Typeface.NORMAL), author: String = ""): CardLayout {
-        val ink = Color.parseColor(if (night) "#D0CABE" else "#2B2A27")
-        val muted = Color.parseColor(if (night) "#7D786E" else "#8A8478")
+        val ink = LyricTokens.colors(night).ink.toArgb()
+        val muted = LyricTokens.colors(night).secondary.toArgb()
         val hasNote = h.note.isNotBlank()
         if (!hasNote) {
             val q = fit(h.text, 72f, 1080 - 168 - 120, 860, ink, font)
@@ -70,10 +73,10 @@ object NoteExport {
         return CardLayout(q, n, top, divider)
     }
     fun render(h: HighlightRow, author: String, night: Boolean, font: Typeface = Typeface.create("serif", Typeface.NORMAL)): Bitmap {
-        val bg = Color.parseColor(if (night) "#16171A" else "#F4EFE6")
-        val muted = Color.parseColor(if (night) "#7D786E" else "#8A8478")
-        val accent = Color.parseColor(if (night) "#E08A6E" else "#B5563A")
-        val divider = Color.parseColor(if (night) "#2A2B2F" else "#D9D1C3")
+        val bg = LyricTokens.colors(night).background.toArgb()
+        val muted = LyricTokens.colors(night).secondary.toArgb()
+        val accent = LyricTokens.colors(night).vermilion.toArgb()
+        val divider = (if (night) LyricTokens.Night.stroke else LyricTokens.Pending.exportDayDivider).toArgb()
         val l = cardLayout(h, night, font, author)
         val bitmap = Bitmap.createBitmap(1080, 1440, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)

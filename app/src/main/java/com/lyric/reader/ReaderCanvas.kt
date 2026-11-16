@@ -1,5 +1,8 @@
 package com.lyric.reader
 
+import com.lyric.ui.theme.LyricTokens
+import androidx.compose.ui.graphics.toArgb
+
 import android.animation.ValueAnimator
 import android.content.Context
 import android.content.ClipData
@@ -44,8 +47,8 @@ class ReaderCanvas(context: Context) : View(context) {
     private var book: Book? = null
     private var locator = Locator()
     private var prefs = ReaderSettings()
-    private var ink = 0xFF2B2A27.toInt()
-    private var paper = 0xFFF4EFE6.toInt()
+    private var ink = LyricTokens.Day.ink.toArgb()
+    private var paper = LyricTokens.Day.background.toArgb()
     private var highlight = ""
     private val serifFont by lazy {
         ResourcesCompat.getFont(context, R.font.noto_serif_sc) ?: Typeface.SERIF
@@ -124,7 +127,7 @@ class ReaderCanvas(context: Context) : View(context) {
         get() = resources.displayMetrics.density
 
     private val horizontal
-        get() = prefs.margin * density
+        get() = maxOf(prefs.margin * density, (width - LyricTokens.Reading.bodyMaxWidthDp * density) / 2f)
 
     private val bodyHeight
         get() = height.coerceAtLeast(1)
@@ -251,7 +254,8 @@ class ReaderCanvas(context: Context) : View(context) {
             name.startsWith('/') ->
                 runCatching { Typeface.createFromFile(File(name)) }.getOrDefault(Typeface.SERIF)
             settings.useBookStyle && book?.suggestedStyle?.serif == false -> Typeface.SANS_SERIF
-            name == "serif" -> serifFont
+            name == LyricTokens.Fonts.songKey -> serifFont
+            name == LyricTokens.Fonts.heiKey -> Typeface.DEFAULT
             else -> Typeface.create(name, Typeface.NORMAL)
         }
 
@@ -439,13 +443,14 @@ class ReaderCanvas(context: Context) : View(context) {
     }
 
     private fun drawSkeleton(canvas: Canvas) {
-        val paint = skeletonPaint.apply { color = ink; alpha = 18 }
+        val paint = skeletonPaint.apply { color = LyricTokens.colors(ThemePalette.isNight(prefs.theme, prefs.customBg)).skeleton.toArgb() }
+        val radius = LyricTokens.Radius.skeleton.value * density
         val line = prefs.fontSize * resources.displayMetrics.scaledDensity
         var y = line
         var row = 0
         while (y < height - line) {
             val right = width - horizontal - if (row % 4 == 3) width * .18f else 0f
-            canvas.drawRoundRect(horizontal, y, right, y + line * .38f, 3f, 3f, paint)
+            canvas.drawRoundRect(horizontal, y, right, y + line * .38f, radius, radius, paint)
             y += line * prefs.lineHeight
             row++
         }
@@ -525,8 +530,8 @@ class ReaderCanvas(context: Context) : View(context) {
                 animOffset = step * width.toFloat()
                 animator =
                     ValueAnimator.ofFloat(animOffset, 0f).apply {
-                        duration = 280
-                        interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+                        duration = LyricTokens.Motion.mediumMs.toLong()
+                        interpolator = android.animation.TimeInterpolator { LyricTokens.Motion.easeOut.transform(it) }
                         addUpdateListener {
                             animOffset = it.animatedValue as Float
                             invalidate()
@@ -774,7 +779,7 @@ class ReaderCanvas(context: Context) : View(context) {
             val origin = IntArray(2).also { getLocationInWindow(it) }
             popup.showAtLocation(this, android.view.Gravity.NO_GRAVITY, origin[0] + pos.x, origin[1] + pos.y)
             menu.alpha = 0f; menu.scaleX = .96f; menu.scaleY = .96f
-            menu.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(150).start()
+            menu.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(LyricTokens.Motion.shortMs.toLong()).setInterpolator { LyricTokens.Motion.easeOut.transform(it) }.start()
         }
     }
 

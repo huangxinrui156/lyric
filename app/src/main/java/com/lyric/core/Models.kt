@@ -1,5 +1,7 @@
 package com.lyric.core
 
+import com.lyric.ui.theme.LyricTokens
+
 import java.io.InputStream
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
@@ -109,13 +111,13 @@ enum class PageMode(val label: String) {
 }
 
 enum class ReaderTheme(val label: String, val bg: Long, val ink: Long, val meta: Long) {
-    PAPER("日间", 0xFFF4EFE6, 0xFF2B2A27, 0xFF9C9384),
-    BEIGE("纸张", 0xFFE8E1CF, 0xFF3A362F, 0xFF9C9384),
-    MOSS("青苔", 0xFFC9D3C0, 0xFF2F3529, 0xFF7A8470),
-    NIGHT("夜间", 0xFF16171A, 0xFFB8B2A6, 0xFF5C5A55),
-    GREEN("深绿", 0xFF182820, 0xFFB8C3B1, 0xFF7A897A),
-    BLACK("纯黑", 0xFF000000, 0xFFB8B2A6, 0xFF5C5A55),
-    CUSTOM("自定", 0xFFF4EFE6, 0xFF2B2A27, 0xFF9C9384),
+    PAPER("日间", LyricTokens.Pending.ReaderContent.paperBackground, LyricTokens.Pending.ReaderContent.paperInk, LyricTokens.Pending.ReaderContent.paperMeta),
+    BEIGE("纸张", LyricTokens.Pending.ReaderContent.beigeBackground, LyricTokens.Pending.ReaderContent.beigeInk, LyricTokens.Pending.ReaderContent.paperMeta),
+    MOSS("青苔", LyricTokens.Pending.ReaderContent.mossBackground, LyricTokens.Pending.ReaderContent.mossInk, LyricTokens.Pending.ReaderContent.mossMeta),
+    NIGHT("夜间", LyricTokens.Pending.ReaderContent.nightBackground, LyricTokens.Pending.ReaderContent.nightInk, LyricTokens.Pending.ReaderContent.nightMeta),
+    GREEN("深绿", LyricTokens.Pending.ReaderContent.greenBackground, LyricTokens.Pending.ReaderContent.greenInk, LyricTokens.Pending.ReaderContent.greenMeta),
+    BLACK("纯黑", LyricTokens.Pending.ReaderContent.blackBackground, LyricTokens.Pending.ReaderContent.nightInk, LyricTokens.Pending.ReaderContent.nightMeta),
+    CUSTOM("自定", LyricTokens.Pending.ReaderContent.paperBackground, LyricTokens.Pending.ReaderContent.paperInk, LyricTokens.Pending.ReaderContent.paperMeta),
 }
 
 @Serializable
@@ -134,13 +136,13 @@ data class ReaderSettings(
     val showBattery: Boolean = false,
     val keepScreenOn: Boolean = false,
     val orientation: String = "system",
-    val fontSize: Float = 17f,
-    val lineHeight: Float = 1.9f,
-    val paragraphSpace: Float = .3f,
-    val margin: Float = 20f,
+    val fontSize: Float = LyricTokens.Reading.default.fontSizeSp,
+    val lineHeight: Float = LyricTokens.Reading.default.lineHeight,
+    val paragraphSpace: Float = LyricTokens.Reading.default.paragraphEm,
+    val margin: Float = LyricTokens.Reading.default.marginDp,
     val indent: Boolean = true,
     val justify: Boolean = true,
-    val font: String = "serif",
+    val font: String = LyricTokens.Fonts.songKey,
     val pageMode: PageMode = PageMode.SLIDE,
     val theme: ReaderTheme = ReaderTheme.PAPER,
     val followSystem: Boolean = false,
@@ -150,8 +152,8 @@ data class ReaderSettings(
     val tapRight: Float = .72f,
     val reverseTaps: Boolean = false,
     val useBookStyle: Boolean = false,
-    val customBg: Long = 0xFFF4EFE6,
-    val customInk: Long = 0xFF2B2A27,
+    val customBg: Long = LyricTokens.Pending.ReaderContent.paperBackground,
+    val customInk: Long = LyricTokens.Pending.ReaderContent.paperInk,
     /** Comic reading direction: "rtl" (default, manga), "ltr" or "vertical" (条漫). Stored per book via SettingsScope.BOOK. */
     val comicDirection: String = "rtl",
     /** null = automatic: two-page spread in landscape only on large screens (smallest width >= 600dp). */
