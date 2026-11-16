@@ -1,0 +1,96 @@
+主机测量；2026-11-16；JDK17 / Robolectric SDK35 native graphics
+基线 feature/0.9 HEAD 74b4882，生产源未修改时执行。
+首窗/图不含 Compose/GPU/加载层停留和淡入。
+修改后增加计时区间外的后台完成屏障，准备完整磁盘暖缓存；首窗计时代码和尺寸不变。
+
+8368c9b1a06a5ce8ba156fda5892cb20020b008680dbc8a99de2d833cc789940  /workspace/epub-real/jianlai.epub
+906b0108ce7c8b30cf774154f28bef534f019e04675b261c065013810008c934  /tmp/lyric-load-10m.txt
+db3269a3b229bc6f75e351ab10e94175a8bbbea63383eba66f229e48f841a4c7  /workspace/lyric-test-500p.cbz
+
+0.9.7 baseline:
+LOAD_HOST epub import1 wall_ms=2676 ui_queue_max_ms=0
+LOAD_HOST epub cold1 open_ms=1965 chapters=1248 chars=13307323
+LOAD_HOST epub cold1 wall_ms=2058 ui_queue_max_ms=0
+LOAD_HOST epub disk1 open_ms=431 chapters=1248 chars=13307323
+LOAD_HOST epub disk1 wall_ms=434 ui_queue_max_ms=0
+LOAD_HOST epub memory1 open_ms=306 chapters=1248 chars=13307323
+LOAD_HOST epub memory1 wall_ms=309 ui_queue_max_ms=0
+LOAD_HOST epub import2 wall_ms=1903 ui_queue_max_ms=0
+LOAD_HOST epub cold2 open_ms=1655 chapters=1248 chars=13307323
+LOAD_HOST epub cold2 wall_ms=1657 ui_queue_max_ms=2
+LOAD_HOST epub disk2 open_ms=218 chapters=1248 chars=13307323
+LOAD_HOST epub disk2 wall_ms=220 ui_queue_max_ms=0
+LOAD_HOST epub memory2 open_ms=220 chapters=1248 chars=13307323
+LOAD_HOST epub memory2 wall_ms=223 ui_queue_max_ms=0
+LOAD_HOST txt import1 wall_ms=123 ui_queue_max_ms=0
+LOAD_HOST txt cold1 open_ms=66 chapters=1049 chars=10485760
+LOAD_HOST txt cold1 wall_ms=106 ui_queue_max_ms=0
+LOAD_HOST txt disk1 open_ms=33 chapters=1049 chars=10485760
+LOAD_HOST txt disk1 wall_ms=59 ui_queue_max_ms=0
+LOAD_HOST txt memory1 open_ms=3 chapters=1049 chars=10485760
+LOAD_HOST txt memory1 wall_ms=23 ui_queue_max_ms=0
+LOAD_HOST txt import2 wall_ms=101 ui_queue_max_ms=0
+LOAD_HOST txt cold2 open_ms=65 chapters=1049 chars=10485760
+LOAD_HOST txt cold2 wall_ms=83 ui_queue_max_ms=0
+LOAD_HOST txt disk2 open_ms=33 chapters=1049 chars=10485760
+LOAD_HOST txt disk2 wall_ms=49 ui_queue_max_ms=0
+LOAD_HOST txt memory2 open_ms=2 chapters=1049 chars=10485760
+LOAD_HOST txt memory2 wall_ms=15 ui_queue_max_ms=0
+LOAD_HOST cbz import1 wall_ms=846 ui_queue_max_ms=0
+LOAD_HOST cbz cold1 open_ms=26 chapters=10 chars=0
+LOAD_HOST cbz cold1 wall_ms=41 ui_queue_max_ms=0
+LOAD_HOST cbz disk1 open_ms=23 chapters=10 chars=0
+LOAD_HOST cbz disk1 wall_ms=40 ui_queue_max_ms=0
+LOAD_HOST cbz memory1 open_ms=3 chapters=10 chars=0
+LOAD_HOST cbz memory1 wall_ms=17 ui_queue_max_ms=0
+LOAD_HOST cbz import2 wall_ms=570 ui_queue_max_ms=0
+LOAD_HOST cbz cold2 open_ms=25 chapters=10 chars=0
+LOAD_HOST cbz cold2 wall_ms=37 ui_queue_max_ms=0
+LOAD_HOST cbz disk2 open_ms=6 chapters=10 chars=0
+LOAD_HOST cbz disk2 wall_ms=20 ui_queue_max_ms=0
+LOAD_HOST cbz memory2 open_ms=2 chapters=10 chars=0
+LOAD_HOST cbz memory2 wall_ms=16 ui_queue_max_ms=0
+
+0.9.7.1 after:
+LOAD_HOST epub import1 wall_ms=2924 ui_queue_max_ms=3
+LOAD_HOST epub cold1 open_ms=300 chapters=1248 chars=0
+LOAD_HOST epub cold1 wall_ms=387 ui_queue_max_ms=0
+LOAD_HOST epub disk1 open_ms=23 chapters=1248 chars=13307323
+LOAD_HOST epub disk1 wall_ms=25 ui_queue_max_ms=0
+LOAD_HOST epub memory1 open_ms=6 chapters=1248 chars=13307323
+LOAD_HOST epub memory1 wall_ms=7 ui_queue_max_ms=0
+LOAD_HOST epub import2 wall_ms=1956 ui_queue_max_ms=0
+LOAD_HOST epub cold2 open_ms=260 chapters=1248 chars=0
+LOAD_HOST epub cold2 wall_ms=262 ui_queue_max_ms=0
+LOAD_HOST epub disk2 open_ms=15 chapters=1248 chars=13307323
+LOAD_HOST epub disk2 wall_ms=18 ui_queue_max_ms=0
+LOAD_HOST epub memory2 open_ms=4 chapters=1248 chars=13307323
+LOAD_HOST epub memory2 wall_ms=6 ui_queue_max_ms=0
+LOAD_HOST txt import1 wall_ms=159 ui_queue_max_ms=0
+LOAD_HOST txt cold1 open_ms=68 chapters=1049 chars=10485760
+LOAD_HOST txt cold1 wall_ms=107 ui_queue_max_ms=0
+LOAD_HOST txt disk1 open_ms=114 chapters=1049 chars=10485760
+LOAD_HOST txt disk1 wall_ms=139 ui_queue_max_ms=0
+LOAD_HOST txt memory1 open_ms=2 chapters=1049 chars=10485760
+LOAD_HOST txt memory1 wall_ms=22 ui_queue_max_ms=0
+LOAD_HOST txt import2 wall_ms=95 ui_queue_max_ms=0
+LOAD_HOST txt cold2 open_ms=56 chapters=1049 chars=10485760
+LOAD_HOST txt cold2 wall_ms=74 ui_queue_max_ms=0
+LOAD_HOST txt disk2 open_ms=30 chapters=1049 chars=10485760
+LOAD_HOST txt disk2 wall_ms=46 ui_queue_max_ms=0
+LOAD_HOST txt memory2 open_ms=2 chapters=1049 chars=10485760
+LOAD_HOST txt memory2 wall_ms=15 ui_queue_max_ms=0
+LOAD_HOST cbz import1 wall_ms=632 ui_queue_max_ms=3
+LOAD_HOST cbz cold1 open_ms=27 chapters=10 chars=0
+LOAD_HOST cbz cold1 wall_ms=42 ui_queue_max_ms=0
+LOAD_HOST cbz disk1 open_ms=19 chapters=10 chars=0
+LOAD_HOST cbz disk1 wall_ms=32 ui_queue_max_ms=0
+LOAD_HOST cbz memory1 open_ms=2 chapters=10 chars=0
+LOAD_HOST cbz memory1 wall_ms=16 ui_queue_max_ms=0
+LOAD_HOST cbz import2 wall_ms=593 ui_queue_max_ms=0
+LOAD_HOST cbz cold2 open_ms=26 chapters=10 chars=0
+LOAD_HOST cbz cold2 wall_ms=39 ui_queue_max_ms=0
+LOAD_HOST cbz disk2 open_ms=6 chapters=10 chars=0
+LOAD_HOST cbz disk2 wall_ms=19 ui_queue_max_ms=0
+LOAD_HOST cbz memory2 open_ms=2 chapters=10 chars=0
+LOAD_HOST cbz memory2 wall_ms=15 ui_queue_max_ms=0

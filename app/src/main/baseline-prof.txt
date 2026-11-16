@@ -1,0 +1,16 @@
+# Conservative offline seed. Replace/extend with captured device profiles.
+HSPLcom/lyric/LyricApp;->onCreate()V
+HSPLcom/lyric/MainActivity;->onCreate(Landroid/os/Bundle;)V
+HSPLcom/lyric/ui/ShelfScreenKt;->**(**)**
+HSPLcom/lyric/ui/ReaderScreenKt;->**(**)**
+HSPLcom/lyric/ui/DeskScreenKt;->**(**)**
+HSPLcom/lyric/reader/ReaderCanvas;->**(**)**
+HSPLcom/lyric/reader/Typesetter;->**(**)**
+HSPLcom/lyric/reader/PrePaginator;->**(**)**
+# 0.9.7.1 worker paths; conservative offline seed, not a captured device profile.
+HSPLcom/lyric/core/EpubParser;->**(**)**
+HSPLcom/lyric/core/DeferredChapters;->**(**)**
+HSPLcom/lyric/core/EpubChapterCache;->**(**)**
+HSPLcom/lyric/data/LibraryRepository;->load**(**)**
+HSPLcom/lyric/reader/ComicArchive;->**(**)**
+HSPLcom/lyric/reader/PdfPageSource;->**(**)**

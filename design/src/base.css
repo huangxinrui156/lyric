@@ -1,0 +1,5 @@
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:360px;height:800px;overflow:hidden;font-family:"Noto Sans CJK SC",sans-serif;background:#F4EFE6;color:#2B2A27}
+.grain{position:absolute;inset:0;pointer-events:none;opacity:.06;background:repeating-radial-gradient(circle at 30% 20%,#000 0 1px,transparent 1px 3px)}
+.status{height:28px;display:flex;justify-content:space-between;padding:6px 20px;font-size:12px;opacity:.7}
+.serif{font-family:"Noto Serif CJK SC",serif}

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 780" width="360" height="780"><rect width="360" height="780" fill="#0E0F11"/><rect x="40" y="60" width="280" height="360" fill="#3A3B40" opacity=".5"/>
+<rect y="410" width="360" height="370" rx="20" fill="#2A2B2F"/><rect x="164" y="422" width="32" height="4" rx="2" fill="#5A574F"/>
+<text font-family="Noto Serif CJK SC" x="32" y="470" font-size="13" fill="#7D786E">版面 · 仅对本书生效</text>
+<text font-family="Noto Serif CJK SC" x="32" y="520" font-size="16" fill="#D0CABE">双页</text><text font-family="Noto Serif CJK SC" x="32" y="542" font-size="12" fill="#7D786E">横屏时自动开启</text><rect x="280" y="504" width="48" height="28" rx="14" fill="#A3B38A"/><circle cx="312" cy="518" r="11" fill="#F4EFE6"/>
+<line x1="32" y1="560" x2="328" y2="560" stroke="#3A3B40"/>
+<text font-family="Noto Serif CJK SC" x="32" y="600" font-size="16" fill="#D0CABE">页码偏移</text><text font-family="Noto Serif CJK SC" x="32" y="622" font-size="12" fill="#7D786E">双页错位时调整</text>
+<rect x="220" y="582" width="108" height="32" rx="16" fill="none" stroke="#3A3B40"/><text font-family="Noto Serif CJK SC" x="240" y="604" font-size="18" text-anchor="middle" fill="#D0CABE">−</text><text font-family="Noto Serif CJK SC" x="274" y="604" font-size="15" text-anchor="middle" fill="#A3B38A">0</text><text font-family="Noto Serif CJK SC" x="308" y="604" font-size="18" text-anchor="middle" fill="#D0CABE">+</text>
+<line x1="32" y1="650" x2="328" y2="650" stroke="#3A3B40"/>
+<text font-family="Noto Serif CJK SC" x="32" y="690" font-size="16" fill="#D0CABE">裁白边</text><text font-family="Noto Serif CJK SC" x="32" y="712" font-size="12" fill="#7D786E">去掉扫描页四周空白</text><rect x="280" y="674" width="48" height="28" rx="14" fill="#3A3B40"/><circle cx="292" cy="688" r="11" fill="#F4EFE6"/>
+</svg>
