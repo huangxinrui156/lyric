@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import android.content.Context
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,8 +30,6 @@ class OpenWithFilterTest {
             "application/x-mobipocket-ebook" to "book.mobi",
             "application/vnd.amazon.mobi8-ebook" to "book.azw3",
             "application/x-mobi8-ebook" to "book.azw3",
-            "image/png" to "page.png",
-            "image/jpeg" to "page.jpg",
         )
         for ((mime, name) in cases) {
             val uri = Uri.parse("content://com.tencent.mm.external.fileprovider/share/$name")
@@ -43,10 +42,27 @@ class OpenWithFilterTest {
 
     @Test
     fun lyricAppearsWhenProviderOmitsMimeAndUsesExtension() {
-        for (name in listOf("book.txt", "book.epub", "book.pdf", "book.cbz", "book.docx", "book.mobi", "book.azw3", "book.azw", "book.prc", "book.zip", "page.png", "page.jpg")) {
+        for (name in listOf("book.txt", "book.epub", "book.pdf", "book.cbz", "book.docx", "book.mobi", "book.azw3", "book.azw", "book.prc", "book.zip")) {
             val uri = Uri.parse("file:///storage/emulated/0/Download/$name")
             val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "*/*").addCategory(Intent.CATEGORY_DEFAULT)
             assertTrue("$name extension VIEW should resolve Lyric", resolves(view))
+        }
+    }
+
+    @Test
+    fun lyricDoesNotAppearForGalleryPhotos() {
+        for (mime in listOf("image/jpeg", "image/png")) {
+            val name = if (mime.endsWith("jpeg")) "page.jpg" else "page.png"
+            val uri = Uri.parse("content://media/external/images/media/42/$name")
+            val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime).addCategory(Intent.CATEGORY_DEFAULT)
+            assertFalse("$mime VIEW must not resolve Lyric", resolves(view))
+            val send = Intent(Intent.ACTION_SEND).setType(mime).putExtra(Intent.EXTRA_STREAM, uri)
+            assertFalse("$mime SEND must not resolve Lyric", resolves(send))
+            val fileView = Intent(Intent.ACTION_VIEW).setDataAndType(
+                Uri.parse("file:///storage/emulated/0/DCIM/$name"),
+                mime,
+            ).addCategory(Intent.CATEGORY_DEFAULT)
+            assertFalse("$mime file VIEW must not resolve Lyric", resolves(fileView))
         }
     }
 
