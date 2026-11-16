@@ -94,7 +94,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
         AlertDialog(
             onDismissRequest = { dismissedErrorBatch = status.batchId },
             title = { Text("导入失败") },
-            text = { Text(status.summary + "\n\n" + status.errors.joinToString("\n\n"), modifier = Modifier.heightIn(max = LyricTokens.Pending.dialogMaxHeight).verticalScroll(rememberScrollState())) },
+            text = { Text(status.summary + "\n\n" + status.errors.joinToString("\n\n"), modifier = Modifier.heightIn(max = LyricTokens.Component.dialogMaxHeight).verticalScroll(rememberScrollState())) },
             confirmButton = { TextButton(onClick = {
                 clipboard.setText(AnnotatedString(status.errors.joinToString("\n\n")))
             }, shape = LyricTokens.Radius.buttonShape) { Text("复制错误信息") } },
@@ -155,7 +155,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
                             NavigationBarItem(
                                 selected = tab == i,
                                 onClick = { if (!transition.running) tab = i },
-                                icon = { Icon(icon, label, modifier = Modifier.size(LyricTokens.Pending.navigationIcon)) },
+                                icon = { Icon(icon, label, modifier = Modifier.size(LyricTokens.Component.navigationIcon)) },
                                 label = { Text(label, style = LyricTokens.Type.auxiliary) },
                                 colors = navColors,
                             )
@@ -199,7 +199,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
         ) {
             Column(Modifier.padding(horizontal = LyricTokens.Space.xl).padding(bottom = LyricTokens.Space.xxl)) {
                 Text(if (section == ShelfSection.COMIC) "把一部漫画带进来" else "把一本书带进来", fontFamily = Serif, style = LyricTokens.Type.title)
-                Spacer(Modifier.height(LyricTokens.Pending.mediumIcon))
+                Spacer(Modifier.height(LyricTokens.Component.mediumIcon))
                 ImportFilterChips(importFilter) { importFilter = it }
                 Spacer(Modifier.height(LyricTokens.Space.md))
                 ImportOption(Icons.Outlined.InsertDriveFile, "选择文件", if (importFilter == ImportFilter.COMIC) "CBZ / ZIP / EPUB / 图片 · 支持多选" else "所有格式 · 支持多选") {
@@ -302,7 +302,7 @@ private fun ShelfContent(
                         )
                         Spacer(Modifier.weight(1f))
                         ShelfSectionSwitch(section, switch)
-                        IconButton(onClick = import, modifier = Modifier.size(LyricTokens.Pending.searchHeight)) {
+                        IconButton(onClick = import, modifier = Modifier.size(LyricTokens.Component.searchHeight)) {
                             Icon(Icons.Outlined.Add, "导入书籍")
                         }
                     }
@@ -312,7 +312,7 @@ private fun ShelfContent(
 
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.height(LyricTokens.Pending.toolbarIcon))
+                    Spacer(Modifier.height(LyricTokens.Component.toolbarIcon))
                     if (continuing != null)
                         ContinueCard(continuing, section, vm.repository) { open(continuing.id) }
                     else EmptyShelf(emptyAnchor, import)
@@ -334,10 +334,10 @@ private fun ShelfContent(
                                             MaterialTheme.colorScheme.onBackground
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                Spacer(Modifier.height(LyricTokens.Pending.statusDot))
+                                Spacer(Modifier.height(LyricTokens.Component.statusDot))
                                 Box(
-                                    Modifier.width(LyricTokens.Pending.toolbarIcon)
-                                        .height(LyricTokens.Pending.indicatorStroke)
+                                    Modifier.width(LyricTokens.Component.toolbarIcon)
+                                        .height(LyricTokens.Component.indicatorStroke)
                                         .background(
                                             if (filter == index) Vermilion
                                             else Color.Transparent
@@ -348,13 +348,13 @@ private fun ShelfContent(
                         Spacer(Modifier.weight(1f))
                         IconButton(
                             onClick = { vm.grid(!grid) },
-                            modifier = Modifier.size(LyricTokens.Pending.smallControl),
+                            modifier = Modifier.size(LyricTokens.Component.smallControl),
                         ) {
                             Icon(
                                 if (grid) Icons.Outlined.ViewList
                                 else Icons.Outlined.GridView,
                                 if (grid) "切换列表" else "切换网格",
-                                Modifier.size(LyricTokens.Pending.mediumIcon),
+                                Modifier.size(LyricTokens.Component.mediumIcon),
                             )
                         }
                     }
@@ -403,7 +403,7 @@ private fun ShelfContent(
                                 Icons.Outlined.Add,
                                 "导入",
                                 tint = Stone,
-                                modifier = Modifier.size(LyricTokens.Pending.switchWidth),
+                                modifier = Modifier.size(LyricTokens.Component.switchWidth),
                             )
                         }
                         Text(
@@ -430,15 +430,13 @@ private fun ShelfContent(
     }
 }
 
-private val coverColors = LyricTokens.Pending.coverColors
-
 @Composable
 fun BookCover(book: ShelfBook, modifier: Modifier = Modifier) {
     Box(
         modifier
             .clip(RoundedCornerShape(LyricTokens.Radius.cover))
             .background(
-                Color(coverColors[(book.title.hashCode() and Int.MAX_VALUE) % coverColors.size]),
+                LyricTokens.Accents.cover(book.title),
                 RoundedCornerShape(LyricTokens.Radius.cover),
             )
             .paperGrain(deskDark()),
@@ -472,7 +470,7 @@ fun BookCover(book: ShelfBook, modifier: Modifier = Modifier) {
                 Modifier.align(Alignment.CenterStart)
                     .fillMaxHeight()
                     .width(LyricTokens.Space.xs)
-                    .background(LyricTokens.Pending.overlayBlack.copy(alpha = .08f))
+                    .background(LyricTokens.Overlay.black.copy(alpha = .08f))
             )
             Text(
                 book.title.take(12).map { it.toString() }.joinToString("\n"),
@@ -487,7 +485,7 @@ fun BookCover(book: ShelfBook, modifier: Modifier = Modifier) {
         if (book.invalid)
             Box(
                 Modifier.fillMaxSize()
-                    .background(LyricTokens.Pending.overlayBlack.copy(alpha = .55f), RoundedCornerShape(LyricTokens.Radius.cover)),
+                    .background(LyricTokens.Overlay.black.copy(alpha = .55f), RoundedCornerShape(LyricTokens.Radius.cover)),
                 contentAlignment = Alignment.Center,
             ) {
                 Text("文件失效", color = LyricTokens.Day.background, style = LyricTokens.Type.auxiliary)
@@ -517,7 +515,7 @@ private fun ContinueCard(book: ShelfBook, section: ShelfSection, repository: Lib
             .padding(LyricTokens.Space.lg),
         horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md),
     ) {
-        BookCover(book, Modifier.width(LyricTokens.Pending.continueCoverWidth).height(LyricTokens.Pending.continueCoverHeight))
+        BookCover(book, Modifier.width(LyricTokens.Component.continueCoverWidth).height(LyricTokens.Component.continueCoverHeight))
         Column(Modifier.weight(1f)) {
             Text(
                 book.title,
@@ -546,7 +544,7 @@ private fun ContinueCard(book: ShelfBook, section: ShelfSection, repository: Lib
                 progress = { book.percent },
                 color = Vermilion,
                 trackColor = MaterialTheme.colorScheme.outlineVariant,
-                modifier = Modifier.fillMaxWidth().height(LyricTokens.Pending.progressStroke).padding(top = 0.dp),
+                modifier = Modifier.fillMaxWidth().height(LyricTokens.Component.progressStroke).padding(top = 0.dp),
             )
             Text(
                 "${(book.percent * 100).toInt()}% · 继续阅读 →",
@@ -584,7 +582,7 @@ private fun BookListRow(book: ShelfBook, open: () -> Unit, remove: () -> Unit) {
         Modifier.fillMaxWidth().combinedClickable(onClick = open, onLongClick = remove),
         horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.lg),
     ) {
-        BookCover(book, Modifier.width(LyricTokens.Pending.toolbarHeight).height(LyricTokens.Pending.listCoverHeight))
+        BookCover(book, Modifier.width(LyricTokens.Component.toolbarHeight).height(LyricTokens.Component.listCoverHeight))
         Column(Modifier.weight(1f).padding(top = LyricTokens.Space.xs)) {
             Text(
                 book.title,
@@ -636,7 +634,7 @@ private fun ImportOption(icon: ImageVector, title: String, subtitle: String, cli
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.lg),
     ) {
-        Icon(icon, title, Modifier.size(LyricTokens.Pending.smallCoverWidth), tint = MaterialTheme.colorScheme.secondary)
+        Icon(icon, title, Modifier.size(LyricTokens.Component.smallCoverWidth), tint = MaterialTheme.colorScheme.secondary)
         Column {
             Text(title, style = LyricTokens.Type.subtitle)
             Text(
@@ -700,13 +698,13 @@ fun sortShelf(books: List<ShelfBook>, mode: Int): List<ShelfBook> = when (mode) 
 @Composable
 private fun ShelfSearchBox(query: String, section: ShelfSection, change: (String) -> Unit) {
     Row(
-        Modifier.padding(vertical = LyricTokens.Space.sm).fillMaxWidth().height(LyricTokens.Pending.searchHeight)
+        Modifier.padding(vertical = LyricTokens.Space.sm).fillMaxWidth().height(LyricTokens.Component.searchHeight)
             .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(LyricTokens.Radius.card))
             .border(LyricTokens.strokeWidth, Linen, RoundedCornerShape(LyricTokens.Radius.card))
             .padding(horizontal = LyricTokens.Space.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Outlined.Search, null, Modifier.size(LyricTokens.Pending.smallIcon), tint = Stone)
+        Icon(Icons.Outlined.Search, null, Modifier.size(LyricTokens.Component.smallIcon), tint = Stone)
         Box(Modifier.weight(1f).padding(start = LyricTokens.Space.sm)) {
             if (query.isEmpty()) Text("搜索书名或作者", style = LyricTokens.Type.body, color = Stone)
             androidx.compose.foundation.text.BasicTextField(
@@ -716,7 +714,7 @@ private fun ShelfSearchBox(query: String, section: ShelfSection, change: (String
                 modifier = Modifier.fillMaxWidth().semantics { contentDescription = "搜索${section.label}" },
             )
         }
-        if (query.isNotEmpty()) Icon(Icons.Outlined.Close, "清空", Modifier.size(LyricTokens.Pending.smallIcon).clickable { change("") }, tint = Stone)
+        if (query.isNotEmpty()) Icon(Icons.Outlined.Close, "清空", Modifier.size(LyricTokens.Component.smallIcon).clickable { change("") }, tint = Stone)
     }
 }
 
@@ -726,7 +724,7 @@ private fun ShelfSortChips(mode: Int, pick: (Int) -> Unit) {
         listOf("最近阅读", "导入时间", "书名").forEachIndexed { i, label ->
             val on = i == mode
             Box(
-                Modifier.height(LyricTokens.Pending.smallCoverWidth).background(if (on) Moss else MaterialTheme.colorScheme.surfaceVariant, LyricTokens.Radius.pill)
+                Modifier.height(LyricTokens.Component.smallCoverWidth).background(if (on) Moss else MaterialTheme.colorScheme.surfaceVariant, LyricTokens.Radius.pill)
                     .clickable { pick(i) }.padding(horizontal = LyricTokens.Space.md),
                 contentAlignment = Alignment.Center,
             ) {
@@ -751,7 +749,7 @@ private fun FolderImportSheet(status: ImportStatus, dismiss: () -> Unit) {
             if (status.failures > 0) Text("失败 ${status.failures} 本", style = LyricTokens.Type.body, color = Stone, modifier = Modifier.padding(top = LyricTokens.Space.xs))
             if (status.source.isNotEmpty()) Text("来自 ${status.source}", style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.padding(top = LyricTokens.Space.xs))
             Button(onClick = dismiss, colors = ButtonDefaults.buttonColors(),
-                modifier = Modifier.fillMaxWidth().padding(top = LyricTokens.Space.lg).height(LyricTokens.Pending.buttonHeight), shape = RoundedCornerShape(LyricTokens.Radius.button)) { Text("好的") }
+                modifier = Modifier.fillMaxWidth().padding(top = LyricTokens.Space.lg).height(LyricTokens.Component.buttonHeight), shape = RoundedCornerShape(LyricTokens.Radius.button)) { Text("好的") }
         }
     }
 }
@@ -765,7 +763,7 @@ private fun ShelfSectionSwitch(section: ShelfSection, switch: (ShelfSection) -> 
         ShelfSection.entries.forEachIndexed { index, item ->
             if (index == 1) Text("⇄", color = Stone, style = LyricTokens.Type.auxiliary)
             Box(
-                Modifier.width(LyricTokens.Pending.switchWidth).fillMaxHeight()
+                Modifier.width(LyricTokens.Component.switchWidth).fillMaxHeight()
                     .background(if (section == item) Moss else Color.Transparent, LyricTokens.Radius.pill)
                     .clickable { switch(item) }
                     .semantics { contentDescription = "切换到${item.label}" },

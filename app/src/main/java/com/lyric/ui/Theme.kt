@@ -46,19 +46,19 @@ private fun colorScheme(night: Boolean): ColorScheme {
         error = p.vermilion, onError = p.background,
         errorContainer = p.card, onErrorContainer = p.vermilion,
         inverseSurface = p.ink, inverseOnSurface = p.background, inversePrimary = p.moss,
-        scrim = LyricTokens.Pending.overlayBlack,
+        scrim = LyricTokens.Overlay.black,
     )
 }
 val LightColors = colorScheme(false)
 val DarkColors = colorScheme(true)
-val AccentPresets = LyricTokens.Pending.accentPresets
-val AccentNames = LyricTokens.Pending.accentNames
+val AccentPresets = LyricTokens.Accents.presets
+val AccentNames = LyricTokens.Accents.names
 
 @Composable
 fun LyricTheme(prefs: ReaderSettings = ReaderSettings(), content: @Composable () -> Unit) {
     val dark = when (prefs.appTheme) { "light" -> false; "dark" -> true; else -> isSystemInDarkTheme() }
     val p = LyricTokens.colors(dark)
-    val accent by animateColorAsState(LyricTokens.Pending.accent(prefs.accentColor, dark), LyricTokens.Motion.short(), label = "accent")
+    val accent by animateColorAsState(LyricTokens.Accents.color(prefs.accentColor, dark), LyricTokens.Motion.short(), label = "accent")
     val base = if (dark) DarkColors else LightColors
     val bg by animateColorAsState(p.background, LyricTokens.Motion.short(), label = "background")
     val surface by animateColorAsState(p.card, LyricTokens.Motion.short(), label = "surface")
@@ -84,7 +84,7 @@ fun Modifier.paperGrain(dark: Boolean = false): Modifier = if (!dark) this else 
     androidx.compose.ui.graphics.Canvas(bitmap).drawPoints(
         PointMode.Points, points,
         androidx.compose.ui.graphics.Paint().apply {
-            color = LyricTokens.Pending.overlayWhite.copy(alpha = LyricTokens.nightGrainAlpha)
+            color = LyricTokens.Overlay.white.copy(alpha = LyricTokens.nightGrainAlpha)
             strokeWidth = .7f
         },
     )

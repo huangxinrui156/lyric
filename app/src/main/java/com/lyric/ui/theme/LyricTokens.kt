@@ -8,7 +8,6 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -18,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lyric.R
 
-/** Mirrors design/v1.0/tokens.md. Unspecified legacy artwork is isolated in Pending below. */
+/** Mirrors design/v1.0/tokens.md, including the PR #2 answers appended there. */
 object LyricTokens {
     data class Palette(
         val background: Color, val card: Color, val stroke: Color, val ink: Color,
@@ -47,6 +46,13 @@ object LyricTokens {
         const val heiKey = "sans-serif"
         const val songLabel = "宋体"
         const val heiLabel = "黑体"
+        /** Saved "monospace" and any unknown built-in key render as 黑体. Custom paths are unchanged. */
+        fun resolveKey(name: String) = when {
+            name.startsWith('/') -> name
+            name == songKey -> songKey
+            else -> heiKey
+        }
+        fun isCustom(name: String) = name.startsWith('/')
     }
     object Type {
         val title = TextStyle(fontFamily = Fonts.hei, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium)
@@ -112,6 +118,13 @@ object LyricTokens {
         fun <T> medium(): TweenSpec<T> = duration(mediumMs)
         fun <T> long(): TweenSpec<T> = duration(longMs)
         fun <T> duration(ms: Int): TweenSpec<T> = tween(durationMillis = ms, easing = easeOut)
+        // Choreography phase fractions kept; total duration is the approved 300ms.
+        const val shelfSwitchMs = 300L
+        const val shelfBookEnd = 650f / 2000f
+        const val shelfMorphStart = 850f / 2000f
+        const val shelfMorphEnd = 1450f / 2000f
+        const val shelfFadeStart = 1650f / 2000f
+        val shelfRise = 12.dp
     }
     object Skeleton {
         const val skipMs = 300L
@@ -119,72 +132,81 @@ object LyricTokens {
         const val fadeMs = Motion.shortMs
         const val breatheMinAlpha = .6f
         const val breatheMaxAlpha = 1f
-        // Requested 0.6 → 1.0 rise over 1.2 seconds, then reverse; no shimmer.
         const val breatheLegMs = 1200
         const val breatheCycleMs = breatheLegMs * 2
     }
 
-    /** pending 美术设计: preserve product artwork/geometry not specified by the 1.0 tables.
-     * These are not additions to the approved spacing or UI type scales. */
-    object Pending {
-        val accentNames = listOf("苔绿", "朱红", "枯茶", "黛蓝", "灰紫", "石色")
-        val accentPresets = listOf(Day.moss, Day.vermilion, Color(0xFF8A6A4F), Color(0xFF626D83), Color(0xFF7E667D), Color(0xFF73766C))
-        fun accent(index: Int, night: Boolean): Color {
-            val i = index.coerceIn(0, accentPresets.lastIndex)
-            return when {
-                !night -> accentPresets[i]
-                i == 0 -> Night.moss
-                i == 1 -> Night.vermilion
-                else -> lerp(accentPresets[i], Day.background, .42f)
-            }
-        }
-        // Existing HEAD uses 2000ms, not 1400ms. Preserve phase proportions and reversible art.
-        const val shelfSwitchMs = 2000L
-        const val shelfBookEnd = 650f / 2000f
-        const val shelfMorphStart = 850f / 2000f
-        const val shelfMorphEnd = 1450f / 2000f
-        const val shelfFadeStart = 1650f / 2000f
-        val shelfRise = 12.dp
-        const val comicHintMs = 2400L
-        const val comicHintFlashMs = 1200L
-        val comicBackground = Color(0xFF111111)
-        val comicBar = Color(0xE0111111)
-        val comicInk = Color(0xFFD0CABE)
-        val comicMeta = Color(0xFF8E897F)
-        val comicTrack = Color(0xFF3A3A3E)
-        val comicErrorPanel = Color(0xFF1A1A1D)
-        val comicOutline = Color(0xFF45444A)
-        val overlayBlack = Color.Black
-        val overlayWhite = Color.White
+    data class Accent(val name: String, val day: Color, val night: Color) {
+        fun color(isNight: Boolean) = if (isNight) night else day
+    }
+    object Accents {
+        val moss = Accent("苔绿", Day.moss, Night.moss)
+        val vermilion = Accent("朱红", Day.vermilion, Night.vermilion)
+        val tea = Accent("枯茶", Color(0xFF8A6A4A), Color(0xFFC2A07E))
+        val indigo = Accent("黛蓝", Color(0xFF4A5A6B), Color(0xFF8FA3B8))
+        val mauve = Accent("灰紫", Color(0xFF6E6278), Color(0xFFA99BB5))
+        val stone = Accent("石色", Color(0xFF7A7770), Color(0xFFADA89D))
+        val all = listOf(moss, vermilion, tea, indigo, mauve, stone)
+        val names = all.map { it.name }
+        val presets = all.map { it.day }
+        const val highlightDayAlpha = .25f
+        const val highlightNightAlpha = .30f
+        // Four persisted highlight indices map onto 朱/苔/枯茶/黛蓝.
+        val highlightAccents = listOf(vermilion, moss, tea, indigo)
+        fun color(index: Int, night: Boolean) = all[index.coerceIn(0, all.lastIndex)].color(night)
+        fun highlight(index: Int, night: Boolean): Color =
+            highlightAccents[index.coerceIn(0, highlightAccents.lastIndex)].color(night)
+                .copy(alpha = if (night) highlightNightAlpha else highlightDayAlpha)
+        fun cover(title: String, night: Boolean = false) =
+            color((title.hashCode() and Int.MAX_VALUE) % all.size, night)
+    }
+
+    object Comic {
+        const val hintMs = 2400L
+        const val hintFlashMs = 1200L
+        fun background(night: Boolean) = if (night) Color(0xFF0E0F11) else Day.background
+        val bar = Color(0xE0111111)
+        val ink = Color(0xFFD0CABE)
+        val meta = Color(0xFF8E897F)
+        val track = Color(0xFF3A3A3E)
+        val errorPanel = Color(0xFF1A1A1D)
+        val outline = Color(0xFF45444A)
+    }
+
+    /** 8% black fading to transparent; explicitly not a palette color. */
+    object Curl {
+        const val shadowAlpha = .08f
+        val shadowColors = intArrayOf(0x14000000, 0x0A000000, 0x00000000)
+        const val fallbackOutline = 0x14000000
+    }
+
+    object Overlay {
+        val black = Color.Black
+        val white = Color.White
         const val opaqueArgb = 0xFF000000L
         const val rgbMask = 0xFFFFFFL
-        val curlBackColors = intArrayOf(0x18000000, 0x38FFFFFF, 0x68000000)
-        const val curlFallbackOutline = 0x33000000
-        val coverColors = listOf(0xFF5E6B4E, 0xFF8A6A4F, 0xFF3E4A52, 0xFFB5563A, 0xFF9A9178, 0xFF6F5B6E)
-        val missingCover = Color(0xFFA9B39A)
-        val exportDayDivider = Color(0xFFD9D1C3)
-        val highlightSwatches = listOf(0xB5563AL, 0x5E6B4EL, 0xC08A2EL, 0x4F6D8AL)
+    }
 
-        // Reading content palettes are persisted choices, independent of Compose chrome.
-        object ReaderContent {
-            const val paperBackground = 0xFFF4EFE6L
-            const val paperInk = 0xFF2B2A27L
-            const val paperMeta = 0xFF9C9384L
-            const val beigeBackground = 0xFFE8E1CFL
-            const val beigeInk = 0xFF3A362FL
-            const val mossBackground = 0xFFC9D3C0L
-            const val mossInk = 0xFF2F3529L
-            const val mossMeta = 0xFF7A8470L
-            const val nightBackground = 0xFF16171AL
-            const val nightInk = 0xFFB8B2A6L
-            const val nightMeta = 0xFF5C5A55L
-            const val greenBackground = 0xFF182820L
-            const val greenInk = 0xFFB8C3B1L
-            const val greenMeta = 0xFF7A897AL
-            const val blackBackground = 0xFF000000L
-        }
+    /** PAPER/NIGHT follow the UI palette; other user-selectable themes keep their own colors. */
+    object ReaderContent {
+        const val paperBackground = 0xFFF4EFE6L
+        const val paperInk = 0xFF2B2A27L
+        const val paperMeta = 0xFF8A8478L
+        const val beigeBackground = 0xFFE8E1CFL
+        const val beigeInk = 0xFF3A362FL
+        const val mossBackground = 0xFFC9D3C0L
+        const val mossInk = 0xFF2F3529L
+        const val mossMeta = 0xFF7A8470L
+        const val nightBackground = 0xFF16171AL
+        const val nightInk = 0xFFD0CABEL
+        const val nightMeta = 0xFF7D786EL
+        const val greenBackground = 0xFF182820L
+        const val greenInk = 0xFFB8C3B1L
+        const val greenMeta = 0xFF7A897AL
+        const val blackBackground = 0xFF000000L
+    }
 
-        // Component dimensions, not spacing: retain touch targets, image ratios, viewport caps.
+    object Component {
         val indicatorStroke = 2.dp
         val progressStroke = 3.dp
         val statusDot = 5.dp
@@ -197,11 +219,11 @@ object LyricTokens {
         val navigationIcon = 23.dp
         val smallCoverWidth = 28.dp
         val switchWidth = 30.dp
-        val compactButtonHeight = 34.dp
-        val smallControl = 36.dp
-        val searchHeight = 40.dp
+        val compactButtonHeight = 48.dp
+        val smallControl = 48.dp
+        val searchHeight = 48.dp
         val goalRing = 42.dp
-        val buttonHeight = 44.dp
+        val buttonHeight = 48.dp
         val touchTarget = 48.dp
         val toolbarHeight = 56.dp
         val settingsLabelWidth = 58.dp
@@ -216,6 +238,7 @@ object LyricTokens {
         val settingsMaxHeight = 680.dp
         val readerToolbarElevation = 2.dp
         val readerSheetElevation = 6.dp
+        val missingCover = Color(0xFFA9B39A)
         val focusTime = TextStyle(fontFamily = Fonts.song, fontSize = 52.sp, lineHeight = 60.sp)
     }
 }

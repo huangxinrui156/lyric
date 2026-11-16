@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -61,12 +62,11 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val ComicBg = LyricTokens.Pending.comicBackground
-private val BarBg = LyricTokens.Pending.comicBar
-private val ComicInk = LyricTokens.Pending.comicInk
-private val ComicMeta = LyricTokens.Pending.comicMeta
+private val BarBg = LyricTokens.Comic.bar
+private val ComicInk = LyricTokens.Comic.ink
+private val ComicMeta = LyricTokens.Comic.meta
 private val ComicAccent = LyricTokens.Night.vermilion
-private val Track = LyricTokens.Pending.comicTrack
+private val Track = LyricTokens.Comic.track
 private val Skeleton = LyricTokens.Night.skeleton
 
 data class ComicPageRef(val chapter: Int, val page: Int, val unit: ContentUnit.ImagePage)
@@ -93,6 +93,11 @@ object ComicTaps {
 @Composable
 fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirstReady: (Float?) -> Unit = {}) {
     val prefs by vm.settings.collectAsStateWithLifecycle()
+    val comicNight = com.lyric.core.ThemePalette.isNight(
+        if (prefs.followSystem && isSystemInDarkTheme()) com.lyric.core.ReaderTheme.NIGHT else prefs.theme,
+        prefs.customBg,
+    )
+    val comicBg = LyricTokens.Comic.background(comicNight)
     val locator by vm.locator.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val isPdf = book.chapters.firstOrNull()?.units?.firstOrNull().let { it is com.lyric.core.ContentUnit.ImagePage && it.resource.startsWith(com.lyric.reader.PDF_PAGE_PREFIX) }
@@ -217,7 +222,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
         if (!hints.getBoolean(chosenKey, false)) book.readingDirection?.takeIf { it in ComicDirections.all }?.let { apply(it) }
         if (hint) hints.edit().putBoolean(hintKey, true).apply()
     }
-    LaunchedEffect(hint) { if (hint) { delay(LyricTokens.Pending.comicHintMs); hint = false } }
+    LaunchedEffect(hint) { if (hint) { delay(LyricTokens.Comic.hintMs); hint = false } }
     LaunchedEffect(listState, vertical) {
         if (vertical) snapshotFlow { listState.firstVisibleItemIndex }.collect { i ->
             vm.readingActivity(pages.locator(i)); if (i == pages.pages.lastIndex) vm.finished()
@@ -241,7 +246,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
         }
     }
     Box(Modifier.fillMaxSize().onSizeChanged { viewport = it }
-        .background(if (isPdf) Color(prefs.theme.bg) else ComicBg).testTag("comic-reader")) {
+        .background(if (isPdf) Color(prefs.theme.bg) else comicBg).testTag("comic-reader")) {
         if (archive == null) {
             Box(Modifier.fillMaxSize().background(Skeleton))
         } else if (pages.pages.isEmpty() || archive.isFailure) {
@@ -286,20 +291,20 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
         AnimatedVisibility(hint && !vertical, enter = fadeIn(LyricTokens.Motion.short()), exit = fadeOut(LyricTokens.Motion.short()),
             modifier = Modifier.fillMaxHeight().fillMaxWidth(1f / 3).align(if (rtl) Alignment.CenterStart else Alignment.CenterEnd)) {
             var flash by remember { mutableStateOf(true) }
-            LaunchedEffect(Unit) { delay(LyricTokens.Pending.comicHintFlashMs); flash = false }
-            Box(Modifier.fillMaxSize().background(LyricTokens.Pending.overlayWhite.copy(alpha = if (flash) .08f else 0f)))
+            LaunchedEffect(Unit) { delay(LyricTokens.Comic.hintFlashMs); flash = false }
+            Box(Modifier.fillMaxSize().background(LyricTokens.Overlay.white.copy(alpha = if (flash) .08f else 0f)))
         }
         AnimatedVisibility(hint, enter = fadeIn(LyricTokens.Motion.short()), exit = fadeOut(LyricTokens.Motion.short()),
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = LyricTokens.Space.xxl)) {
             Row(Modifier.height(LyricTokens.Space.xxl).background(BarBg, LyricTokens.Radius.pill).padding(start = LyricTokens.Space.md, end = LyricTokens.Space.xs)
                 .testTag("direction-hint"), verticalAlignment = Alignment.CenterVertically) {
                 Text(ComicDirections.hint(dir), color = ComicInk, style = LyricTokens.Type.auxiliary)
-                Spacer(Modifier.width(LyricTokens.Pending.dashLength))
+                Spacer(Modifier.width(LyricTokens.Component.dashLength))
                 ComicDirections.all.forEach { d ->
                     Box(Modifier.size(LyricTokens.Space.xxl).clickable { choose(d); hint = false }
                         .semantics { contentDescription = ComicDirections.label(d) + if (d == dir) "（当前）" else "" },
                         contentAlignment = Alignment.Center) {
-                        DirectionIcon(d, if (d == dir) ComicAccent else ComicInk, Modifier.size(LyricTokens.Pending.mediumIcon))
+                        DirectionIcon(d, if (d == dir) ComicAccent else ComicInk, Modifier.size(LyricTokens.Component.mediumIcon))
                     }
                 }
             }
@@ -307,7 +312,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
         val current = pages.pages.getOrNull(currentIndex)
         AnimatedVisibility(chrome, enter = fadeIn(LyricTokens.Motion.short()),
             exit = fadeOut(LyricTokens.Motion.short()), modifier = Modifier.align(Alignment.TopCenter)) {
-            Row(Modifier.fillMaxWidth().background(BarBg).statusBarsPadding().height(LyricTokens.Pending.toolbarHeight).padding(horizontal = LyricTokens.Space.xs),
+            Row(Modifier.fillMaxWidth().background(BarBg).statusBarsPadding().height(LyricTokens.Component.toolbarHeight).padding(horizontal = LyricTokens.Space.xs),
                 verticalAlignment = Alignment.CenterVertically) {
                 IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = ComicInk) }
                 Column(Modifier.weight(1f)) {
@@ -350,15 +355,15 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
             vm.updateSettings(SettingsScope.BOOK, next)
         }
         if (chapters) Dialog({ chapters = false }) {
-            Surface(color = LyricTokens.Pending.comicErrorPanel, shape = RoundedCornerShape(LyricTokens.Radius.button)) {
-                LazyColumn(Modifier.heightIn(max = LyricTokens.Pending.outlineMaxHeight).padding(vertical = LyricTokens.Space.sm)) {
+            Surface(color = LyricTokens.Comic.errorPanel, shape = RoundedCornerShape(LyricTokens.Radius.button)) {
+                LazyColumn(Modifier.heightIn(max = LyricTokens.Component.outlineMaxHeight).padding(vertical = LyricTokens.Space.sm)) {
                     if (isPdf) {
                         if (outline.isNotEmpty()) itemsIndexed(outline) { _, entry ->
                             Text("${entry.title} · ${entry.page + 1}", color = if (entry.page == currentIndex) ComicAccent else ComicInk,
                                 style = LyricTokens.Type.body, modifier = Modifier.fillMaxWidth().clickable {
                                     chapters = false
                                     scope.launch { jumpToPage(entry.page) }
-                                }.padding(start = LyricTokens.Page.margin + LyricTokens.Space.lg * entry.level.coerceAtMost(10), end = LyricTokens.Pending.mediumIcon, top = LyricTokens.Space.md, bottom = LyricTokens.Space.md))
+                                }.padding(start = LyricTokens.Page.margin + LyricTokens.Space.lg * entry.level.coerceAtMost(10), end = LyricTokens.Component.mediumIcon, top = LyricTokens.Space.md, bottom = LyricTokens.Space.md))
                         } else items(pages.pages.size) { page ->
                             Text("第 ${page + 1} 页", color = ComicInk, modifier = Modifier.fillMaxWidth().clickable {
                                 chapters = false
@@ -555,14 +560,14 @@ private fun ComicError(title: String, reason: String, retry: (() -> Unit)?, skip
         Column(Modifier.padding(LyricTokens.Space.lg).fillMaxWidth().aspectRatio(1 / 1.4f, matchHeightConstraintsFirst = false)
             .background(Skeleton, RoundedCornerShape(LyricTokens.Radius.skeleton))
             .drawBehindDashed(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(Icons.Outlined.BrokenImage, null, tint = ComicMeta, modifier = Modifier.size(LyricTokens.Pending.smallControl))
+            Icon(Icons.Outlined.BrokenImage, null, tint = ComicMeta, modifier = Modifier.size(LyricTokens.Component.smallControl))
             Spacer(Modifier.height(LyricTokens.Space.md))
             Text(title, color = ComicInk, style = LyricTokens.Type.body, fontFamily = Serif)
             Text(reason, color = ComicMeta, style = LyricTokens.Type.auxiliary, modifier = Modifier.padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.xs))
             Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md)) {
                 retry?.let { OutlinedButton(it, Modifier.height(LyricTokens.Space.xxl), border = BorderStroke(LyricTokens.strokeWidth, ComicAccent),
                     contentPadding = PaddingValues(horizontal = LyricTokens.Space.lg), shape = LyricTokens.Radius.buttonShape) { Text("重试", color = ComicAccent, style = LyricTokens.Type.auxiliary) } }
-                skip?.let { OutlinedButton(it, Modifier.height(LyricTokens.Space.xxl), border = BorderStroke(LyricTokens.strokeWidth, LyricTokens.Pending.comicOutline),
+                skip?.let { OutlinedButton(it, Modifier.height(LyricTokens.Space.xxl), border = BorderStroke(LyricTokens.strokeWidth, LyricTokens.Comic.outline),
                     contentPadding = PaddingValues(horizontal = LyricTokens.Space.lg), shape = LyricTokens.Radius.buttonShape) { Text("跳过此页", color = ComicInk, style = LyricTokens.Type.auxiliary) } }
             }
         }
@@ -571,6 +576,6 @@ private fun ComicError(title: String, reason: String, retry: (() -> Unit)?, skip
 
 private fun Modifier.drawBehindDashed() = this.then(Modifier.drawWithCacheDashed())
 private fun Modifier.drawWithCacheDashed() = this.drawBehind {
-    drawRoundRect(LyricTokens.Pending.comicOutline, cornerRadius = androidx.compose.ui.geometry.CornerRadius(LyricTokens.Pending.dashLength.toPx()),
-        style = Stroke(LyricTokens.strokeWidth.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(LyricTokens.Pending.dashLength.toPx(), LyricTokens.Space.xs.toPx()))))
+    drawRoundRect(LyricTokens.Comic.outline, cornerRadius = androidx.compose.ui.geometry.CornerRadius(LyricTokens.Component.dashLength.toPx()),
+        style = Stroke(LyricTokens.strokeWidth.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(LyricTokens.Component.dashLength.toPx(), LyricTokens.Space.xs.toPx()))))
 }

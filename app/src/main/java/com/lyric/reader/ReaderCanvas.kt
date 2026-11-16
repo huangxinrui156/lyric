@@ -255,8 +255,7 @@ class ReaderCanvas(context: Context) : View(context) {
                 runCatching { Typeface.createFromFile(File(name)) }.getOrDefault(Typeface.SERIF)
             settings.useBookStyle && book?.suggestedStyle?.serif == false -> Typeface.SANS_SERIF
             name == LyricTokens.Fonts.songKey -> serifFont
-            name == LyricTokens.Fonts.heiKey -> Typeface.DEFAULT
-            else -> Typeface.create(name, Typeface.NORMAL)
+            else -> Typeface.DEFAULT // 黑体, including previously saved monospace
         }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {

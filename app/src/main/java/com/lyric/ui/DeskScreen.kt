@@ -143,7 +143,7 @@ fun DeskScreen(
                     ) {
                         Box(
                             Modifier
-                                .width(LyricTokens.Pending.indicatorStroke)
+                                .width(LyricTokens.Component.indicatorStroke)
                                 .fillMaxHeight()
                                 .background(dBar),
                         )
@@ -196,7 +196,7 @@ fun DeskScreen(
                         Box(
                             Modifier
                                 .weight(1f)
-                                .height(LyricTokens.Pending.smallControl)
+                                .height(LyricTokens.Component.smallControl)
                                 .background(if (on) dSegOn else dSegOff, LyricTokens.Radius.pill)
                                 .clickable { vm.planned(min) },
                             contentAlignment = Alignment.Center,
@@ -217,8 +217,8 @@ fun DeskScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val b = book
-                    if (b != null) BookCover(b, Modifier.width(LyricTokens.Pending.smallCoverWidth).height(LyricTokens.Pending.smallControl))
-                    else Box(Modifier.width(LyricTokens.Pending.smallCoverWidth).height(LyricTokens.Pending.smallControl).background(LyricTokens.Pending.missingCover, RoundedCornerShape(LyricTokens.Radius.cover)))
+                    if (b != null) BookCover(b, Modifier.width(LyricTokens.Component.smallCoverWidth).height(LyricTokens.Component.smallControl))
+                    else Box(Modifier.width(LyricTokens.Component.smallCoverWidth).height(LyricTokens.Component.smallControl).background(LyricTokens.Component.missingCover, RoundedCornerShape(LyricTokens.Radius.cover)))
                     Text(
                         book?.let { deskBookLabel(it.title, it.chapterTitle) } ?: "还没有可读的书",
                         style = LyricTokens.Type.body,
@@ -233,7 +233,7 @@ fun DeskScreen(
                     Modifier
                         .fillMaxWidth()
                         .padding(top = LyricTokens.Space.md)
-                        .height(LyricTokens.Pending.buttonHeight)
+                        .height(LyricTokens.Component.buttonHeight)
                         .background(dPrimary, RoundedCornerShape(LyricTokens.Radius.button))
                         .clickable(enabled = book != null) { if (vm.startFocus()) openFocus() },
                     contentAlignment = Alignment.Center,
@@ -333,7 +333,7 @@ private fun BookPickSheet(vm: DeskViewModel, dismiss: () -> Unit) {
                         .padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.md),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    BookCover(book, Modifier.width(LyricTokens.Pending.smallControl).height(LyricTokens.Pending.touchTarget))
+                    BookCover(book, Modifier.width(LyricTokens.Component.smallControl).height(LyricTokens.Component.touchTarget))
                     Column(Modifier.padding(start = LyricTokens.Space.md)) {
                         Text(book.title, fontFamily = Serif, style = LyricTokens.Type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(book.chapterTitle, style = LyricTokens.Type.auxiliary, color = dSub)
@@ -373,17 +373,17 @@ fun FocusTimerScreen(vm: DeskViewModel, focus: FocusUi, openBook: () -> Unit) {
         .verticalScroll(rememberScrollState()).padding(horizontal = LyricTokens.Space.xxl, vertical = LyricTokens.Space.xl),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text(focus.bookTitle, color = meta, style = LyricTokens.Type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(LyricTokens.Pending.toolbarHeight))
+        Spacer(Modifier.height(LyricTokens.Component.toolbarHeight))
         FocusRingDisplay(focus, ink, meta, accent, if (night) FocusRingTrack else Linen)
-        Spacer(Modifier.height(LyricTokens.Pending.touchTarget))
+        Spacer(Modifier.height(LyricTokens.Component.touchTarget))
         NoiseControls(vm, night)
         Spacer(Modifier.height(LyricTokens.Space.xl))
         Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.lg)) {
             OutlinedButton(onClick = { if (focus.paused) vm.resumeFocus() else vm.pauseFocus() },
-                modifier = Modifier.weight(1f).height(LyricTokens.Pending.touchTarget), border = BorderStroke(LyricTokens.strokeWidth, if (night) FocusBtnBorder else Linen), shape = LyricTokens.Radius.buttonShape) {
+                modifier = Modifier.weight(1f).height(LyricTokens.Component.touchTarget), border = BorderStroke(LyricTokens.strokeWidth, if (night) FocusBtnBorder else Linen), shape = LyricTokens.Radius.buttonShape) {
                 Text(if (focus.paused) "继续" else "暂停", color = ink)
             }
-            Button(onClick = openBook, modifier = Modifier.weight(1f).height(LyricTokens.Pending.touchTarget),
+            Button(onClick = openBook, modifier = Modifier.weight(1f).height(LyricTokens.Component.touchTarget),
                 colors = ButtonDefaults.buttonColors(containerColor = ink, contentColor = background), shape = LyricTokens.Radius.buttonShape) { Text("继续阅读") }
         }
         TextButton(onClick = { vm.resetFocus() }, shape = LyricTokens.Radius.buttonShape) { Text("重置", color = meta) }
@@ -393,9 +393,9 @@ fun FocusTimerScreen(vm: DeskViewModel, focus: FocusUi, openBook: () -> Unit) {
 
 @Composable
 private fun FocusRingDisplay(focus: FocusUi, ink: Color, meta: Color, accent: Color, track: Color) {
-    Box(Modifier.size(LyricTokens.Pending.focusDial), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(LyricTokens.Component.focusDial), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
-            val stroke = LyricTokens.Pending.progressStroke.toPx()
+            val stroke = LyricTokens.Component.progressStroke.toPx()
             val diameter = min(size.width, size.height) - stroke
             val top = Offset(stroke / 2, stroke / 2)
             val extent = Size(diameter, diameter)
@@ -404,7 +404,7 @@ private fun FocusRingDisplay(focus: FocusUi, ink: Color, meta: Color, accent: Co
             drawArc(accent, -90f, 360f * progress, false, top, extent, style = Stroke(stroke, cap = StrokeCap.Round))
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(DeskViewModel.formatRemain(focus.remainSec), fontFamily = Serif, style = LyricTokens.Pending.focusTime, color = ink)
+            Text(DeskViewModel.formatRemain(focus.remainSec), fontFamily = Serif, style = LyricTokens.Component.focusTime, color = ink)
             Text("共 ${focus.plannedMin} 分钟", color = meta, style = LyricTokens.Type.auxiliary)
         }
     }
@@ -416,13 +416,13 @@ private fun NoiseControls(vm: DeskViewModel, night: Boolean) {
     val selected = if (night) LyricTokens.Night.moss else Moss
     val fill = if (night) FocusRingTrack else CardPaper
     val meta = if (night) FocusMuted else Stone
-    Column(Modifier.widthIn(max = LyricTokens.Pending.dialogMaxHeight).fillMaxWidth()) {
+    Column(Modifier.widthIn(max = LyricTokens.Component.dialogMaxHeight).fillMaxWidth()) {
         Text("环境声", color = meta, style = LyricTokens.Type.body)
         Spacer(Modifier.height(LyricTokens.Space.md))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm)) {
             com.lyric.audio.NoiseSound.entries.forEach { sound ->
                 val active = noise.sound == sound
-                Box(Modifier.width(LyricTokens.Pending.settingValueWidth).height(LyricTokens.Pending.smallControl).background(if (active) selected else fill, LyricTokens.Radius.pill)
+                Box(Modifier.width(LyricTokens.Component.settingValueWidth).height(LyricTokens.Component.smallControl).background(if (active) selected else fill, LyricTokens.Radius.pill)
                     .clickable { vm.noiseSound(sound) }, contentAlignment = Alignment.Center) {
                     Text(sound.label, style = LyricTokens.Type.body, color = if (active) { if (night) FocusBg else Paper } else { if (night) LyricTokens.Night.secondary else Stone })
                 }
@@ -543,7 +543,7 @@ private fun DeskNoteRow(h: HighlightRow, export: () -> Unit, open: () -> Unit) {
             .padding(start = LyricTokens.Page.margin, end = LyricTokens.Page.margin, top = LyricTokens.Space.sm, bottom = LyricTokens.Space.sm)
             .height(IntrinsicSize.Min),
     ) {
-        Box(Modifier.width(LyricTokens.Pending.indicatorStroke).fillMaxHeight().background(dBar))
+        Box(Modifier.width(LyricTokens.Component.indicatorStroke).fillMaxHeight().background(dBar))
         Column(Modifier.weight(1f).padding(start = LyricTokens.Space.sm)) {
             Text(h.text, fontFamily = Serif, style = LyricTokens.Type.body, maxLines = 4, overflow = TextOverflow.Ellipsis)
             NoteLine(h.note)
@@ -599,7 +599,7 @@ private fun FocusRunningRow(vm: DeskViewModel, openFocus: () -> Unit, continueRe
         )
         Row(Modifier.fillMaxWidth().padding(top = LyricTokens.Space.sm), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.height(LyricTokens.Pending.compactButtonHeight).background(FocusBtnFill, RoundedCornerShape(LyricTokens.Radius.button))
+                Modifier.height(LyricTokens.Component.compactButtonHeight).background(FocusBtnFill, RoundedCornerShape(LyricTokens.Radius.button))
                     .clickable { continueReading(focus.bookId) }.padding(horizontal = LyricTokens.Page.margin),
                 contentAlignment = Alignment.Center,
             ) { Text("继续阅读", color = FocusBg, style = LyricTokens.Type.body) }
@@ -674,12 +674,12 @@ private fun NoiseVolumeSlider(value: Float, onChange: (Float) -> Unit, active: C
     Slider(value, onChange, modifier = Modifier.fillMaxWidth().padding(top = LyricTokens.Space.sm).height(LyricTokens.Space.xxl),
         interactionSource = interaction,
         thumb = {
-            Box(Modifier.size(LyricTokens.Pending.sliderThumb).background(thumb, androidx.compose.foundation.shape.CircleShape)
+            Box(Modifier.size(LyricTokens.Component.sliderThumb).background(thumb, androidx.compose.foundation.shape.CircleShape)
                 .border(LyricTokens.strokeWidth, thumbBorder, androidx.compose.foundation.shape.CircleShape))
         },
         track = { state ->
             val fraction = state.value.coerceIn(0f, 1f)
-            Canvas(Modifier.fillMaxWidth().height(LyricTokens.Pending.indicatorStroke)) {
+            Canvas(Modifier.fillMaxWidth().height(LyricTokens.Component.indicatorStroke)) {
                 val y = size.height / 2
                 val x = size.width * fraction
                 drawLine(inactive, Offset(0f, y), Offset(size.width, y), size.height, StrokeCap.Round)

@@ -66,7 +66,7 @@ fun MeScreen(vm: MeViewModel, navigate: (String) -> Unit) {
                 val progress by animateFloatAsState((todaySeconds / (target * 60f)).coerceIn(0f, 1f), animationSpec = LyricTokens.Motion.short(), label = "goal")
                 Row(Modifier.fillMaxWidth().clickable { navigate("settings/goal") }.padding(vertical = LyricTokens.Space.sm),
                     verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(LyricTokens.Pending.goalRing), strokeWidth = LyricTokens.Pending.indicatorStroke,
+                    CircularProgressIndicator(progress = { progress }, modifier = Modifier.size(LyricTokens.Component.goalRing), strokeWidth = LyricTokens.Component.indicatorStroke,
                         trackColor = MaterialTheme.colorScheme.outlineVariant)
                     Column(Modifier.padding(start = LyricTokens.Space.lg)) {
                         Text("每天 ${target} 分钟", fontFamily = Serif)
@@ -177,7 +177,7 @@ internal fun Heatmap(days: List<DailyStat>, today: LocalDate, select: (LocalDate
                 week.forEach { day ->
                     val future = day.date > today
                     val bg = if (day.level == 0 || future) Color.Transparent else color.copy(alpha = listOf(0f, .22f, .42f, .68f, 1f)[day.level])
-                    Box(Modifier.size(LyricTokens.Pending.heatmapCell).background(bg, RoundedCornerShape(LyricTokens.Radius.skeleton))
+                    Box(Modifier.size(LyricTokens.Component.heatmapCell).background(bg, RoundedCornerShape(LyricTokens.Radius.skeleton))
                         .border(LyricTokens.strokeWidth, if (future) Color.Transparent else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(LyricTokens.Radius.skeleton))
                         .semantics { contentDescription = "${day.date} 阅读 ${day.seconds / 60} 分钟" }
                         .clickable(enabled = !future) { select(day.date) })
@@ -187,7 +187,7 @@ internal fun Heatmap(days: List<DailyStat>, today: LocalDate, select: (LocalDate
     }
     Row(Modifier.padding(top = LyricTokens.Space.md), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs)) {
         Text("少", style = LyricTokens.Type.auxiliary)
-        listOf(.22f, .42f, .68f, 1f).forEach { alpha -> Box(Modifier.size(LyricTokens.Pending.heatmapCell).background(color.copy(alpha = alpha))) }
+        listOf(.22f, .42f, .68f, 1f).forEach { alpha -> Box(Modifier.size(LyricTokens.Component.heatmapCell).background(color.copy(alpha = alpha))) }
         Text("多 · 15 / 30 / 60 分", style = LyricTokens.Type.auxiliary)
     }
 }
@@ -221,7 +221,7 @@ private fun DayDialog(vm: MeViewModel) {
     val day by vm.selectedDay.collectAsStateWithLifecycle()
     val books by vm.dayBooks.collectAsStateWithLifecycle()
     if (day != null) AlertDialog(onDismissRequest = { vm.selectedDay.value = null }, title = { Text(day.toString()) },
-        text = { Column(Modifier.heightIn(max = LyricTokens.Pending.dialogMaxHeight).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.md)) {
+        text = { Column(Modifier.heightIn(max = LyricTokens.Component.dialogMaxHeight).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.md)) {
             if (books.isEmpty()) Text("这一天留白。")
             books.forEach { Text("${it.title} · ${it.durationSec / 60} 分 ${it.durationSec % 60} 秒") }
         } }, confirmButton = { TextButton(onClick = { vm.selectedDay.value = null }, shape = LyricTokens.Radius.buttonShape) { Text("收起") } })
@@ -233,7 +233,7 @@ internal fun MeNotices(vm: MeViewModel) {
     val notice by vm.notice.collectAsStateWithLifecycle()
     if (busy) androidx.compose.ui.window.Dialog(onDismissRequest = {}) {
         Surface(shape = RoundedCornerShape(LyricTokens.Radius.card)) { Row(Modifier.padding(LyricTokens.Space.xl), verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(Modifier.size(LyricTokens.Space.xl), strokeWidth = LyricTokens.Pending.indicatorStroke); Text("  正在处理…")
+            CircularProgressIndicator(Modifier.size(LyricTokens.Space.xl), strokeWidth = LyricTokens.Component.indicatorStroke); Text("  正在处理…")
         } }
     }
     notice?.let { message -> AlertDialog(onDismissRequest = { vm.notice.value = null },

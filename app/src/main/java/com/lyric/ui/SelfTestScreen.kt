@@ -71,7 +71,7 @@ fun SelfTestDialog(dismiss: () -> Unit) {
                     }
                 }, shape = LyricTokens.Radius.buttonShape) { Text(if (running) "运行中…" else "开始基准测试") }
                 if (running || progress.isNotBlank()) Text(progress, style = LyricTokens.Type.auxiliary)
-                Spacer(Modifier.height(LyricTokens.Pending.mediumIcon))
+                Spacer(Modifier.height(LyricTokens.Component.mediumIcon))
                 Text("二、杀进程自检", fontFamily = Serif, style = LyricTokens.Type.subtitle)
                 Text("打开开关后去读一本书：翻几页、停 2 秒，然后从最近任务划掉 Lyric，或在 设置 › 应用 › Lyric 里「强制停止」。" +
                     "重新打开 Lyric 后回到这里查看结果。每种方式各做 20 次。判定：进度偏差 0、时长损失 ≤15 秒。",
@@ -83,7 +83,7 @@ fun SelfTestDialog(dismiss: () -> Unit) {
                     TextButton({ kills = KillCheck.results(context) }, shape = LyricTokens.Radius.buttonShape) { Text("刷新") }
                     TextButton({ KillCheck.clear(context); kills = emptyList() }, shape = LyricTokens.Radius.buttonShape) { Text("清空") }
                 }
-                Spacer(Modifier.height(LyricTokens.Pending.mediumIcon))
+                Spacer(Modifier.height(LyricTokens.Component.mediumIcon))
                 Text("结果", fontFamily = Serif, style = LyricTokens.Type.subtitle)
                 Text(report, fontFamily = LyricTokens.Fonts.hei, style = LyricTokens.Type.auxiliary, )
                 Row {

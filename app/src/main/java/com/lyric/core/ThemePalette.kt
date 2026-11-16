@@ -1,5 +1,6 @@
 package com.lyric.core
 
+import androidx.compose.ui.graphics.toArgb
 import com.lyric.ui.theme.LyricTokens
 
 /** Per-theme colours from design/v0.4-visual.md §6 (selection) and §7 (curl paper back). */
@@ -28,14 +29,7 @@ object ThemePalette {
         ReaderTheme.CUSTOM -> SelectionColors(argb(accent, .24f), accent.toInt(), customInk.toInt(), customBg.toInt())
     }
 
-    /** 美术设计 0.5.3 highlighter: (fill rgb, day alpha, night rgb, night alpha, line rgb) per colour index. */
-    private class Marker(val day: Long, val dayA: Float, val night: Long, val nightA: Float, val line: Long)
-    private val marker = listOf(
-        Marker(0xE08A6E, .38f, 0xE08A6E, .30f, 0xB5563A),
-        Marker(0x9AAA7E, .42f, 0xA3B38A, .28f, 0x5E6B4E),
-        Marker(0xE3B860, .40f, 0xD9B36A, .26f, 0xA87A2A),
-        Marker(0x8FA3B8, .40f, 0x93A8BF, .28f, 0x4E6680),
-    )
+    /** Highlight fill is the accent overlay: 25% day / 30% night. Indices map to 朱/苔/枯茶/黛蓝. */
     fun isNight(theme: ReaderTheme, customBg: Long = theme.bg) = when (theme) {
         ReaderTheme.NIGHT, ReaderTheme.GREEN, ReaderTheme.BLACK -> true
         ReaderTheme.CUSTOM -> dark(customBg)
@@ -43,17 +37,19 @@ object ThemePalette {
     }
     /** Marker fill; an active (tapped) highlight gets alpha x1.6 capped at 0.65. */
     fun markerFill(color: Int, night: Boolean, active: Boolean = false): Int {
-        val m = marker[color.coerceIn(0, marker.lastIndex)]
-        var a = if (night) m.nightA else m.dayA
+        var a = if (night) LyricTokens.Accents.highlightNightAlpha else LyricTokens.Accents.highlightDayAlpha
         if (active) a = minOf(a * 1.6f, .65f)
-        return argb(if (night) m.night else m.day, a)
+        return LyricTokens.Accents.highlight(color, night).copy(alpha = a).toArgb()
     }
-    fun markerLine(color: Int): Int = (0xFF000000L or marker[color.coerceIn(0, marker.lastIndex)].line).toInt()
+    fun markerLine(color: Int): Int = LyricTokens.Accents.highlight(color, false).copy(alpha = 1f).toArgb()
 
-    /** Highlight colours: 0 = theme vermilion fill, 1 moss, 2 ochre, 3 slate blue (all ~26%). */
-    val highlightColors = LyricTokens.Pending.highlightSwatches
+    /** Opaque swatch RGB for the four persisted highlight indices (朱/苔/枯茶/黛蓝). */
+    val highlightColors: List<Long> = LyricTokens.Accents.highlightAccents.map {
+        it.day.toArgb().toLong() and 0xFFFFFFL
+    }
     fun highlight(color: Int, themeFill: Int): Int =
-        if (color <= 0 || color >= highlightColors.size) themeFill else argb(highlightColors[color], .26f)
+        if (color <= 0 || color >= highlightColors.size) themeFill
+        else LyricTokens.Accents.highlight(color, false).toArgb()
 
     fun curl(theme: ReaderTheme, customBg: Long = theme.bg, customInk: Long = theme.ink): CurlStyle = when (theme) {
         ReaderTheme.PAPER -> CurlStyle(0xFFECE6DB.toInt(), .10f, .18f, .10f, .20f)

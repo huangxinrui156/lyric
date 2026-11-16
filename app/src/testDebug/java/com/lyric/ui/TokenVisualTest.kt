@@ -56,7 +56,7 @@ class TokenVisualTest {
                     assertEquals(0xFF16171A.toInt(), scheme.onPrimary.toArgb())
                     assertEquals(0xFFD0CABE.toInt(), ink.toArgb())
                     assertEquals(0xFF7D786E.toInt(), secondary.toArgb())
-                    assertEquals(LyricTokens.Pending.accent(3, true), scheme.secondary)
+                    assertEquals(LyricTokens.Accents.color(3, true), scheme.secondary)
                     assertEquals(14f, typography.bodyLarge.fontSize.value)
                     assertEquals(20f, typography.bodyLarge.lineHeight.value)
                 }

@@ -29,11 +29,11 @@ import kotlin.math.sin
  * (at 2000ms: 0–650 draw book · 650–850 hold · 850–1450 morph to panels + figures + horizon ·
  * 1450–1650 hold · 1650–2000 line art fades, grid rises). Reduce-motion: 200ms crossfade.
  */
-const val SHELF_SWITCH_MS = LyricTokens.Pending.shelfSwitchMs
-private const val BOOK_END = LyricTokens.Pending.shelfBookEnd
-private const val MORPH_START = LyricTokens.Pending.shelfMorphStart
-private const val MORPH_END = LyricTokens.Pending.shelfMorphEnd
-private const val FADE_START = LyricTokens.Pending.shelfFadeStart
+const val SHELF_SWITCH_MS = LyricTokens.Motion.shelfSwitchMs
+private const val BOOK_END = LyricTokens.Motion.shelfBookEnd
+private const val MORPH_START = LyricTokens.Motion.shelfMorphStart
+private const val MORPH_END = LyricTokens.Motion.shelfMorphEnd
+private const val FADE_START = LyricTokens.Motion.shelfFadeStart
 
 private fun phase(t: Float, a: Float, b: Float) = ((t - a) / (b - a)).coerceIn(0f, 1f)
 
@@ -81,7 +81,7 @@ internal fun shelfTransitionFrame(fraction: Float, toComic: Boolean, reduced: Bo
     val outgoing = if (toComic) book else comic
     val incoming = if (toComic) comic else book
     // The arriving grid rises from 12dp below into place.
-    return ShelfTransitionFrame(outgoing, incoming, 0f, LyricTokens.Pending.shelfRise.value * (1f - incoming), m)
+    return ShelfTransitionFrame(outgoing, incoming, 0f, LyricTokens.Motion.shelfRise.value * (1f - incoming), m)
 }
 
 @Composable
@@ -206,7 +206,7 @@ private fun ShelfMorph(time: () -> Float) {
         // 美术设计: art 64% of screen width, centred horizontally, its centre at 42% of the height.
         val scale = size.width * .64f / 240f
         // Stroke stays 2dp on screen regardless of the art scale.
-        val stroke = Stroke(LyricTokens.Pending.indicatorStroke.toPx() / scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val stroke = Stroke(LyricTokens.Component.indicatorStroke.toPx() / scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
         fun draw(paths: List<Path>, progress: Float, alpha: Float) {
             if (progress <= 0f || alpha <= 0f) return
             paths.forEach { p ->

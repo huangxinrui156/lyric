@@ -75,9 +75,9 @@ internal fun ComicArtwork(pages: List<PageArtwork>, trim: Boolean, modifier: Mod
         }
         if (pages.size == 2) {
             val half = LyricTokens.Space.md.toPx()
-            drawRect(Brush.horizontalGradient(listOf(Color.Transparent, LyricTokens.Pending.overlayBlack.copy(alpha = .08f)), seam - half, seam),
+            drawRect(Brush.horizontalGradient(listOf(Color.Transparent, LyricTokens.Overlay.black.copy(alpha = .08f)), seam - half, seam),
                 Offset(seam - half, y), Size(half, height))
-            drawRect(Brush.horizontalGradient(listOf(LyricTokens.Pending.overlayBlack.copy(alpha = .08f), Color.Transparent), seam, seam + half),
+            drawRect(Brush.horizontalGradient(listOf(LyricTokens.Overlay.black.copy(alpha = .08f), Color.Transparent), seam, seam + half),
                 Offset(seam, y), Size(half, height))
         }
     }
