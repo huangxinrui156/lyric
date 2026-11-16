@@ -9,6 +9,8 @@ if ! command -v adb >/dev/null 2>&1; then
     exit 1
 fi
 # ANDROID_SERIAL selects exactly one device. adb fails if selection is ambiguous.
+# TIER=reference (default) is the required 1.0 path for Find X9 Pro.
+# TIER=entry is optional P1 (~4GB); same numeric limits, do not block 1.0.
 if ! adb get-state >/dev/null; then
     echo "ERROR: no authorized device selected; connect one device or set ANDROID_SERIAL." >&2
     exit 1
