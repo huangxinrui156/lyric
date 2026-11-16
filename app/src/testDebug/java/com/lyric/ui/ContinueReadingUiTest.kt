@@ -7,6 +7,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
 import com.lyric.LyricApp
+import com.lyric.data.ProgressRow
 import com.lyric.data.ShelfBook
 import com.lyric.data.ShelfSection
 import kotlinx.coroutines.Dispatchers
@@ -49,12 +50,42 @@ class ContinueReadingUiTest {
         compose.waitUntil(10_000) {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
             vm.section.value == ShelfSection.BOOK && vm.books.value.any { it.id == "latest" && !it.invalid } &&
-                compose.onAllNodesWithText("第三章 · 40%").fetchSemanticsNodes().isNotEmpty()
+                compose.onAllNodesWithText(" · 40%").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onAllNodesWithText("刚才在读").assertCountEquals(2)
-        compose.onNodeWithText("第三章 · 40%").assertIsDisplayed()
-        compose.onNodeWithText("第三章 · 40%").performClick()
+        compose.onNodeWithText("第三章").assertIsDisplayed()
+        compose.onNodeWithText(" · 40%").assertIsDisplayed()
+        compose.onNodeWithText(" · 40%").performClick()
         compose.waitForIdle()
         assertEquals(listOf("latest"), opened)
+    }
+
+    @Test fun emptyChapterTitleFallsBackToNumberedChapterAndKeepsPercentVisible() {
+        org.robolectric.shadows.ShadowBuild.setFingerprint("lyric-native-curl-test")
+        val app = ApplicationProvider.getApplicationContext<LyricApp>()
+        runBlocking(Dispatchers.IO) {
+            app.repository.settings.shelfSection(ShelfSection.BOOK)
+            app.repository.books.first().forEach { app.repository.remove(it.id) }
+            val file = File(app.cacheDir, "no-chapter.txt").apply { writeText("正文示例\n\n段落。") }
+            app.repository.dao.insert(
+                ShelfBook(
+                    "no-title", android.net.Uri.fromFile(file).toString(), file.name,
+                    "没有章名的书", "示例", "txt", totalChars = 80, chapterCount = 3,
+                    encoding = "UTF-8", lastRead = 10, chapterTitle = "", percent = 0.12f,
+                )
+            )
+            app.repository.dao.saveProgress(ProgressRow("no-title", chapterIndex = 2, charOffset = 0))
+        }
+        lateinit var vm: ShelfViewModel
+        compose.runOnUiThread { vm = ShelfViewModel(app) }
+        compose.setContent { LyricTheme { ShelfScreen(vm, me = {}, desk = {}, open = {}) } }
+        compose.waitUntil(10_000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            vm.section.value == ShelfSection.BOOK &&
+                compose.onAllNodesWithText("第 3 章").fetchSemanticsNodes().isNotEmpty() &&
+                compose.onAllNodesWithText(" · 12%").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("第 3 章").assertIsDisplayed()
+        compose.onNodeWithText(" · 12%").assertIsDisplayed()
     }
 }
