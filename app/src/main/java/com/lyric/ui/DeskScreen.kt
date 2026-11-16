@@ -233,7 +233,7 @@ fun DeskScreen(
                     Modifier
                         .fillMaxWidth()
                         .padding(top = LyricTokens.Space.md)
-                        .height(LyricTokens.Component.buttonHeight)
+                        .heightIn(min = LyricTokens.Component.buttonHeight)
                         .background(dPrimary, RoundedCornerShape(LyricTokens.Radius.button))
                         .clickable(enabled = book != null) { if (vm.startFocus()) openFocus() },
                     contentAlignment = Alignment.Center,
@@ -369,7 +369,7 @@ fun FocusTimerScreen(vm: DeskViewModel, focus: FocusUi, openBook: () -> Unit) {
     val ink = if (night) FocusBtnFill else Ink
     val meta = if (night) FocusMuted else Stone
     val accent = if (night) FocusRing else Vermilion
-    Column(Modifier.fillMaxSize().background(background).navigationBarsPadding()
+    Column(Modifier.fillMaxSize().background(background).windowInsetsPadding(readerSafeInsets())
         .verticalScroll(rememberScrollState()).padding(horizontal = LyricTokens.Space.xxl, vertical = LyricTokens.Space.xl),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text(focus.bookTitle, color = meta, style = LyricTokens.Type.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -380,10 +380,10 @@ fun FocusTimerScreen(vm: DeskViewModel, focus: FocusUi, openBook: () -> Unit) {
         Spacer(Modifier.height(LyricTokens.Space.xl))
         Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.lg)) {
             OutlinedButton(onClick = { if (focus.paused) vm.resumeFocus() else vm.pauseFocus() },
-                modifier = Modifier.weight(1f).height(LyricTokens.Component.touchTarget), border = BorderStroke(LyricTokens.strokeWidth, if (night) FocusBtnBorder else Linen), shape = LyricTokens.Radius.buttonShape) {
+                modifier = Modifier.weight(1f).heightIn(min = LyricTokens.Component.touchTarget), border = BorderStroke(LyricTokens.strokeWidth, if (night) FocusBtnBorder else Linen), shape = LyricTokens.Radius.buttonShape) {
                 Text(if (focus.paused) "继续" else "暂停", color = ink)
             }
-            Button(onClick = openBook, modifier = Modifier.weight(1f).height(LyricTokens.Component.touchTarget),
+            Button(onClick = openBook, modifier = Modifier.weight(1f).heightIn(min = LyricTokens.Component.touchTarget),
                 colors = ButtonDefaults.buttonColors(containerColor = ink, contentColor = background), shape = LyricTokens.Radius.buttonShape) { Text("继续阅读") }
         }
         TextButton(onClick = { vm.resetFocus() }, shape = LyricTokens.Radius.buttonShape) { Text("重置", color = meta) }
@@ -422,7 +422,7 @@ private fun NoiseControls(vm: DeskViewModel, night: Boolean) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm)) {
             com.lyric.audio.NoiseSound.entries.forEach { sound ->
                 val active = noise.sound == sound
-                Box(Modifier.width(LyricTokens.Component.settingValueWidth).height(LyricTokens.Component.smallControl).background(if (active) selected else fill, LyricTokens.Radius.pill)
+                Box(Modifier.weight(1f).heightIn(min = LyricTokens.Component.smallControl).background(if (active) selected else fill, LyricTokens.Radius.pill)
                     .clickable { vm.noiseSound(sound) }, contentAlignment = Alignment.Center) {
                     Text(sound.label, style = LyricTokens.Type.body, color = if (active) { if (night) FocusBg else Paper } else { if (night) LyricTokens.Night.secondary else Stone })
                 }
@@ -469,8 +469,10 @@ fun DeskNotesScreen(vm: DeskViewModel, openBook: (String, Locator) -> Unit, back
     val groups = remember(filtered, byBook) { if (byBook) filtered.groupBy { it.bookId } else emptyMap() }
     BackHandler(onBack = back)
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
+                windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
                 title = { Text("笔记", fontFamily = Serif) },
                 navigationIcon = {
                     TextButton(onClick = back, shape = LyricTokens.Radius.buttonShape) { Text("返回", color = dLink) }

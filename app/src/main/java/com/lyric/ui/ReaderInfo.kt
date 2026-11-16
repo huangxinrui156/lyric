@@ -112,3 +112,9 @@ internal fun ReaderProgressLabel(
         )
     }
 }
+
+/** Keep content clear even while immersive bars are hidden; backgrounds stay outside this inset. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun readerSafeInsets(): WindowInsets =
+    WindowInsets.systemBarsIgnoringVisibility.union(WindowInsets.displayCutout)

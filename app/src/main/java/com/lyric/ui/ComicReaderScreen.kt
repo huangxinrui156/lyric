@@ -152,7 +152,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
     }
     var layoutMenu by remember { mutableStateOf(false) }
     var chrome by remember { mutableStateOf(false) }
-    // 0.9.2: landscape comic reading is fully immersive (system bars hidden, content under the cutout).
+    // Landscape keeps an immersive background; artwork and chrome reserve safe insets.
     val comicActivity = LocalContext.current as? android.app.Activity
     if (comicActivity != null && landscape) DisposableEffect(comicActivity) {
         val window = comicActivity.window
@@ -253,7 +253,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
             ComicError(if (isPdf) "这份 PDF 没能打开" else "这本漫画没能打开", archive.exceptionOrNull()?.localizedMessage ?: "没有图片", null, null)
         } else if (vertical) {
             // 条漫: images fill the screen width, stacked without gaps.
-            LazyColumn(Modifier.fillMaxSize().testTag("comic-strip"), state = listState) {
+            LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(readerSafeInsets()).testTag("comic-strip"), state = listState) {
                 items(pages.pages.size, key = { it }) { index ->
                     ComicStripPage(archive.getOrThrow(), pages.pages[index],
                         decodeEnabled = firstPageReady || index == currentIndex,
@@ -263,7 +263,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
             }
         } else {
             CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-                HorizontalPager(pager, Modifier.fillMaxSize(), beyondViewportPageCount = if (firstPageReady) 2 else 0,
+                HorizontalPager(pager, Modifier.fillMaxSize().windowInsetsPadding(readerSafeInsets()), beyondViewportPageCount = if (firstPageReady) 2 else 0,
                     userScrollEnabled = !zoomed, key = { it }) { index ->
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                         val pair = spreads[index].let { if (rtl) it.reversed() else it }
@@ -295,39 +295,19 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
             Box(Modifier.fillMaxSize().background(LyricTokens.Overlay.white.copy(alpha = if (flash) .08f else 0f)))
         }
         AnimatedVisibility(hint, enter = fadeIn(LyricTokens.Motion.short()), exit = fadeOut(LyricTokens.Motion.short()),
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = LyricTokens.Space.xxl)) {
-            Row(Modifier.height(LyricTokens.Space.xxl).background(BarBg, LyricTokens.Radius.pill).padding(start = LyricTokens.Space.md, end = LyricTokens.Space.xs)
-                .testTag("direction-hint"), verticalAlignment = Alignment.CenterVertically) {
-                Text(ComicDirections.hint(dir), color = ComicInk, style = LyricTokens.Type.auxiliary)
-                Spacer(Modifier.width(LyricTokens.Component.dashLength))
-                ComicDirections.all.forEach { d ->
-                    Box(Modifier.size(LyricTokens.Space.xxl).clickable { choose(d); hint = false }
-                        .semantics { contentDescription = ComicDirections.label(d) + if (d == dir) "（当前）" else "" },
-                        contentAlignment = Alignment.Center) {
-                        DirectionIcon(d, if (d == dir) ComicAccent else ComicInk, Modifier.size(LyricTokens.Component.mediumIcon))
-                    }
-                }
-            }
+            modifier = Modifier.align(Alignment.BottomCenter).windowInsetsPadding(readerSafeInsets().only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).padding(bottom = LyricTokens.Space.xxl)) {
+            ComicDirectionHint(dir) { choose(it); hint = false }
         }
+
         val current = pages.pages.getOrNull(currentIndex)
         AnimatedVisibility(chrome, enter = fadeIn(LyricTokens.Motion.short()),
             exit = fadeOut(LyricTokens.Motion.short()), modifier = Modifier.align(Alignment.TopCenter)) {
-            Row(Modifier.fillMaxWidth().background(BarBg).statusBarsPadding().height(LyricTokens.Component.toolbarHeight).padding(horizontal = LyricTokens.Space.xs),
-                verticalAlignment = Alignment.CenterVertically) {
-                IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = ComicInk) }
-                Column(Modifier.weight(1f)) {
-                    Text(book.title, color = ComicInk, style = LyricTokens.Type.body, maxLines = 1)
-                    current?.let { Text(book.chapters[it.chapter].title, color = ComicMeta, style = LyricTokens.Type.auxiliary, maxLines = 1) }
-                }
-                IconButton({ choose(ComicDirections.next(dir)) },
-                    Modifier.semantics { contentDescription = "当前${ComicDirections.label(dir)}，切换为${ComicDirections.label(ComicDirections.next(dir))}" }) {
-                    DirectionIcon(dir, ComicAccent)
-                }
-            }
+            ComicTopBar(book.title, current?.let { book.chapters[it.chapter].title }, dir,
+                back = back, changeDirection = { choose(ComicDirections.next(dir)) })
         }
         AnimatedVisibility(chrome, enter = fadeIn(LyricTokens.Motion.short()),
             exit = fadeOut(LyricTokens.Motion.short()), modifier = Modifier.align(Alignment.BottomCenter)) {
-            Column(Modifier.fillMaxWidth().background(BarBg).navigationBarsPadding().padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.sm)) {
+            Column(Modifier.fillMaxWidth().background(BarBg).windowInsetsPadding(readerSafeInsets().only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.sm)) {
                 Text("${currentIndex + 1} / ${pages.pages.size}", color = ComicInk, style = LyricTokens.Type.auxiliary,
                     fontFamily = LyricTokens.Fonts.hei, modifier = Modifier.align(Alignment.CenterHorizontally))
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -565,9 +545,9 @@ private fun ComicError(title: String, reason: String, retry: (() -> Unit)?, skip
             Text(title, color = ComicInk, style = LyricTokens.Type.body, fontFamily = Serif)
             Text(reason, color = ComicMeta, style = LyricTokens.Type.auxiliary, modifier = Modifier.padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.xs))
             Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md)) {
-                retry?.let { OutlinedButton(it, Modifier.height(LyricTokens.Space.xxl), border = BorderStroke(LyricTokens.strokeWidth, ComicAccent),
+                retry?.let { OutlinedButton(it, Modifier.heightIn(min = LyricTokens.Space.xxl), border = BorderStroke(LyricTokens.strokeWidth, ComicAccent),
                     contentPadding = PaddingValues(horizontal = LyricTokens.Space.lg), shape = LyricTokens.Radius.buttonShape) { Text("重试", color = ComicAccent, style = LyricTokens.Type.auxiliary) } }
-                skip?.let { OutlinedButton(it, Modifier.height(LyricTokens.Space.xxl), border = BorderStroke(LyricTokens.strokeWidth, LyricTokens.Comic.outline),
+                skip?.let { OutlinedButton(it, Modifier.heightIn(min = LyricTokens.Space.xxl), border = BorderStroke(LyricTokens.strokeWidth, LyricTokens.Comic.outline),
                     contentPadding = PaddingValues(horizontal = LyricTokens.Space.lg), shape = LyricTokens.Radius.buttonShape) { Text("跳过此页", color = ComicInk, style = LyricTokens.Type.auxiliary) } }
             }
         }
@@ -578,4 +558,50 @@ private fun Modifier.drawBehindDashed() = this.then(Modifier.drawWithCacheDashed
 private fun Modifier.drawWithCacheDashed() = this.drawBehind {
     drawRoundRect(LyricTokens.Comic.outline, cornerRadius = androidx.compose.ui.geometry.CornerRadius(LyricTokens.Component.dashLength.toPx()),
         style = Stroke(LyricTokens.strokeWidth.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(LyricTokens.Component.dashLength.toPx(), LyricTokens.Space.xs.toPx()))))
+}
+
+@Composable
+internal fun ComicTopBar(
+    title: String, chapter: String?, direction: String, back: () -> Unit, changeDirection: () -> Unit,
+    insets: WindowInsets = readerSafeInsets(),
+) {
+    Row(
+        Modifier.fillMaxWidth().background(BarBg)
+            .windowInsetsPadding(insets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            .heightIn(min = LyricTokens.Component.toolbarHeight).padding(horizontal = LyricTokens.Space.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = ComicInk) }
+        Column(Modifier.weight(1f)) {
+            Text(title, color = ComicInk, style = LyricTokens.Type.body, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            chapter?.let { Text(it, color = ComicMeta, style = LyricTokens.Type.auxiliary, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+        }
+        IconButton(changeDirection,
+            Modifier.semantics { contentDescription = "当前${ComicDirections.label(direction)}，切换为${ComicDirections.label(ComicDirections.next(direction))}" }) {
+            DirectionIcon(direction, ComicAccent)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun ComicDirectionHint(direction: String, choose: (String) -> Unit) {
+    FlowRow(
+        Modifier.heightIn(min = LyricTokens.Space.xxl).background(BarBg, LyricTokens.Radius.pill)
+            .padding(start = LyricTokens.Space.md, end = LyricTokens.Space.xs).testTag("direction-hint"),
+        horizontalArrangement = Arrangement.spacedBy(LyricTokens.Component.dashLength),
+    ) {
+        Text(ComicDirections.hint(direction), color = ComicInk, style = LyricTokens.Type.auxiliary, modifier = Modifier.align(Alignment.CenterVertically))
+        Row {
+            ComicDirections.all.forEach { d ->
+                Box(Modifier.size(LyricTokens.Space.xxl).clickable { choose(d) }
+                    .semantics { contentDescription = ComicDirections.label(d) + if (d == direction) "（当前）" else "" },
+                    contentAlignment = Alignment.Center) {
+                    DirectionIcon(d, if (d == direction) ComicAccent else ComicInk, Modifier.size(LyricTokens.Component.mediumIcon))
+                }
+            }
+        }
+    }
 }

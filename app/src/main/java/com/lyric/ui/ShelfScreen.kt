@@ -1,6 +1,7 @@
 @file:OptIn(
     androidx.compose.material3.ExperimentalMaterial3Api::class,
     androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
 )
 
 package com.lyric.ui
@@ -131,10 +132,12 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
     Box(Modifier.fillMaxSize()) {
         Scaffold(
             modifier = if (transition.running) Modifier.clearAndSetSemantics { } else Modifier,
+            contentWindowInsets = WindowInsets.safeDrawing,
             containerColor = MaterialTheme.colorScheme.background,
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
                 NavigationBar(
+                    windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
                     containerColor = MaterialTheme.colorScheme.background,
                     tonalElevation = 0.dp,
                     modifier =
@@ -280,7 +283,7 @@ private fun ShelfContent(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val emptyAnchor = maxHeight * LyricTokens.emptyShelfHeightFraction
         LazyVerticalGrid(
-            columns = GridCells.Fixed(if (grid) 3 else 1),
+            columns = shelfGridCells(grid),
             contentPadding = PaddingValues(start = LyricTokens.Page.margin, end = LyricTokens.Page.margin, bottom = LyricTokens.Space.xl),
             horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md),
             verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.lg),
@@ -359,12 +362,12 @@ private fun ShelfContent(
                         }
                     }
                     ShelfSearchBox(query, section) { query = it }
-                    Row(
+                    FlowRow(
                         Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm),
+                        verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs),
                     ) {
                         ShelfSortChips(sortMode) { vm.sort(it, section) }
-                        Spacer(Modifier.weight(1f))
                         Text(
                             if (section == ShelfSection.COMIC) "${visible.size} 部漫画" else "${visible.size} 本书",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -698,7 +701,7 @@ fun sortShelf(books: List<ShelfBook>, mode: Int): List<ShelfBook> = when (mode) 
 @Composable
 private fun ShelfSearchBox(query: String, section: ShelfSection, change: (String) -> Unit) {
     Row(
-        Modifier.padding(vertical = LyricTokens.Space.sm).fillMaxWidth().height(LyricTokens.Component.searchHeight)
+        Modifier.padding(vertical = LyricTokens.Space.sm).fillMaxWidth().heightIn(min = LyricTokens.Component.searchHeight)
             .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(LyricTokens.Radius.card))
             .border(LyricTokens.strokeWidth, Linen, RoundedCornerShape(LyricTokens.Radius.card))
             .padding(horizontal = LyricTokens.Space.md),
@@ -720,11 +723,11 @@ private fun ShelfSearchBox(query: String, section: ShelfSection, change: (String
 
 @Composable
 private fun ShelfSortChips(mode: Int, pick: (Int) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs)) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs), verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs)) {
         listOf("最近阅读", "导入时间", "书名").forEachIndexed { i, label ->
             val on = i == mode
             Box(
-                Modifier.height(LyricTokens.Component.smallCoverWidth).background(if (on) Moss else MaterialTheme.colorScheme.surfaceVariant, LyricTokens.Radius.pill)
+                Modifier.heightIn(min = LyricTokens.Component.smallCoverWidth).background(if (on) Moss else MaterialTheme.colorScheme.surfaceVariant, LyricTokens.Radius.pill)
                     .clickable { pick(i) }.padding(horizontal = LyricTokens.Space.md),
                 contentAlignment = Alignment.Center,
             ) {
@@ -749,7 +752,7 @@ private fun FolderImportSheet(status: ImportStatus, dismiss: () -> Unit) {
             if (status.failures > 0) Text("失败 ${status.failures} 本", style = LyricTokens.Type.body, color = Stone, modifier = Modifier.padding(top = LyricTokens.Space.xs))
             if (status.source.isNotEmpty()) Text("来自 ${status.source}", style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.padding(top = LyricTokens.Space.xs))
             Button(onClick = dismiss, colors = ButtonDefaults.buttonColors(),
-                modifier = Modifier.fillMaxWidth().padding(top = LyricTokens.Space.lg).height(LyricTokens.Component.buttonHeight), shape = RoundedCornerShape(LyricTokens.Radius.button)) { Text("好的") }
+                modifier = Modifier.fillMaxWidth().padding(top = LyricTokens.Space.lg).heightIn(min = LyricTokens.Component.buttonHeight), shape = RoundedCornerShape(LyricTokens.Radius.button)) { Text("好的") }
         }
     }
 }
@@ -757,13 +760,13 @@ private fun FolderImportSheet(status: ImportStatus, dismiss: () -> Unit) {
 @Composable
 private fun ShelfSectionSwitch(section: ShelfSection, switch: (ShelfSection) -> Unit) {
     Row(
-        Modifier.height(LyricTokens.Space.xxl).background(MaterialTheme.colorScheme.surfaceVariant, LyricTokens.Radius.pill),
+        Modifier.heightIn(min = LyricTokens.Space.xxl).background(MaterialTheme.colorScheme.surfaceVariant, LyricTokens.Radius.pill),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ShelfSection.entries.forEachIndexed { index, item ->
             if (index == 1) Text("⇄", color = Stone, style = LyricTokens.Type.auxiliary)
             Box(
-                Modifier.width(LyricTokens.Component.switchWidth).fillMaxHeight()
+                Modifier.width(LyricTokens.Component.switchWidth).heightIn(min = LyricTokens.Space.xxl)
                     .background(if (section == item) Moss else Color.Transparent, LyricTokens.Radius.pill)
                     .clickable { switch(item) }
                     .semantics { contentDescription = "切换到${item.label}" },
@@ -788,3 +791,7 @@ internal fun comicPageLabel(book: Book, progress: ProgressRow?): String {
     val page = book.chapters.take(at.chapterIndex).sumOf { it.units.size } + at.page + 1
     return "第 ${page.coerceIn(1, total)} 页 / $total"
 }
+
+/** List mode keeps a single track; grid tracks never shrink below the shelf token. */
+internal fun shelfGridCells(grid: Boolean): GridCells =
+    if (grid) GridCells.Adaptive(LyricTokens.Shelf.minColumnWidth) else GridCells.Fixed(1)
