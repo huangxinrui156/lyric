@@ -371,9 +371,6 @@ class LibraryRepository(
             // opaque SAF filenames/MIME types without probing every EPUB or text as a bitmap.
             val prefix = temp.inputStream().use { it.readBounded(68) }
             val imageExtension = BookFormats.imageExtension(prefix)
-            if (imageExtension != null && openWith) {
-                throw FriendlyImportException(BookFormats.UNSUPPORTED_OPEN_WITH)
-            }
             if (imageExtension != null) {
                 val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 android.graphics.BitmapFactory.decodeFile(temp.path, bounds)
@@ -384,8 +381,11 @@ class LibraryRepository(
                 } finally { packed.delete() }
             }
             val extension = ImportTrace.stage("识别格式") {
-                if (openWith) BookFormats.sniffOpenWith(temp, prefix)
-                    ?: throw FriendlyImportException(BookFormats.UNSUPPORTED_OPEN_WITH)
+                if (openWith) BookFormats.sniffOpenWith(
+                    temp, prefix, name,
+                    runCatching { context.contentResolver.getType(uri) }.getOrNull(),
+                    uri.lastPathSegment.orEmpty(),
+                ) ?: throw FriendlyImportException(BookFormats.UNSUPPORTED_OPEN_WITH)
                 else BookFormats.detect(
                     prefix, name,
                     runCatching { context.contentResolver.getType(uri) }.getOrNull(),
