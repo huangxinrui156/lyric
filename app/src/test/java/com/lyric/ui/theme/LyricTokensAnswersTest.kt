@@ -71,4 +71,23 @@ class LyricTokensAnswersTest {
         // Same title always maps to the same color.
         assertEquals(LyricTokens.Accents.coverIndex("红楼梦"), LyricTokens.Accents.coverIndex("红楼梦"))
     }
+
+    @Test fun comicOverlaysFollowThemeTokens() {
+        assertEquals(.9f, LyricTokens.Comic.zoomBadgeAlpha, .0f)
+        assertEquals(LyricTokens.Day.card.copy(alpha = LyricTokens.Comic.zoomBadgeAlpha), LyricTokens.Comic.zoomBadgeBackground(false))
+        assertEquals(LyricTokens.Night.card.copy(alpha = LyricTokens.Comic.zoomBadgeAlpha), LyricTokens.Comic.zoomBadgeBackground(true))
+        assertEquals(LyricTokens.Day.card, LyricTokens.Comic.overlayCard(false))
+        assertEquals(LyricTokens.Night.card, LyricTokens.Comic.overlayCard(true))
+        assertEquals(LyricTokens.Day.stroke, LyricTokens.Comic.overlayStroke(false))
+        assertEquals(LyricTokens.Night.stroke, LyricTokens.Comic.overlayStroke(true))
+        assertEquals(LyricTokens.Day.ink, LyricTokens.Comic.overlayInk(false))
+        assertEquals(LyricTokens.Night.ink, LyricTokens.Comic.overlayInk(true))
+        assertEquals(LyricTokens.Day.secondary, LyricTokens.Comic.overlaySecondary(false))
+        assertEquals(LyricTokens.Night.secondary, LyricTokens.Comic.overlaySecondary(true))
+        assertEquals(LyricTokens.Day.primaryFill, LyricTokens.Comic.overlayPrimaryFill(false))
+        assertEquals(LyricTokens.Night.primaryFill, LyricTokens.Comic.overlayPrimaryFill(true))
+        // Day overlays must not reuse the old night-only panel/outline.
+        assertNotEquals(0xFF1A1A1D.toInt(), LyricTokens.Comic.overlayCard(false).toArgb())
+        assertNotEquals(0xFF45444A.toInt(), LyricTokens.Comic.overlayStroke(false).toArgb())
+    }
 }

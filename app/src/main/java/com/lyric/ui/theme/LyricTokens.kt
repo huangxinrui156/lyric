@@ -204,8 +204,16 @@ object LyricTokens {
         fun barTrack(night: Boolean) = if (night) track else Day.stroke
         fun barDivider(night: Boolean) = if (night) Night.stroke else Day.stroke
         fun barAccent(night: Boolean) = if (night) Night.vermilion else Day.vermilion
-        val errorPanel = Color(0xFF1A1A1D)
-        val outline = Color(0xFF45444A)
+        /** Overlay surfaces (zoom badge, chapter dialog, page-error card) follow the UI palette. */
+        const val zoomBadgeAlpha = .9f
+        fun overlayCard(night: Boolean) = colors(night).card
+        fun overlayStroke(night: Boolean) = colors(night).stroke
+        fun overlayInk(night: Boolean) = colors(night).ink
+        fun overlaySecondary(night: Boolean) = colors(night).secondary
+        fun overlayAccent(night: Boolean) = colors(night).vermilion
+        fun overlayPrimaryFill(night: Boolean) = colors(night).primaryFill
+        fun overlayPrimaryText(night: Boolean) = colors(night).primaryText
+        fun zoomBadgeBackground(night: Boolean) = overlayCard(night).copy(alpha = zoomBadgeAlpha)
     }
 
     /** 8% black fading to transparent; explicitly not a palette color. */

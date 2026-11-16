@@ -34,7 +34,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -47,7 +46,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
@@ -259,7 +257,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
         if (archive == null) {
             Box(Modifier.fillMaxSize().background(Skeleton))
         } else if (pages.pages.isEmpty() || archive.isFailure) {
-            ComicError(if (isPdf) "这份 PDF 没能打开" else "这本漫画没能打开", archive.exceptionOrNull()?.localizedMessage ?: "没有图片", null, null)
+            ComicError(if (isPdf) "这份 PDF 没能打开" else "这本漫画没能打开", archive.exceptionOrNull()?.localizedMessage ?: "没有图片", null, null, comicNight)
         } else if (vertical) {
             // 条漫: images fill the screen width, stacked without gaps.
             LazyColumn(Modifier.fillMaxSize().windowInsetsPadding(readerSafeInsets()).testTag("comic-strip"), state = listState) {
@@ -267,6 +265,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
                     ComicStripPage(archive.getOrThrow(), pages.pages[index],
                         decodeEnabled = firstPageReady || index == currentIndex,
                         initial = !firstPageReady && index == currentIndex,
+                        night = comicNight,
                         onReady = { if (index == currentIndex) reportReady(it) }) { hint = false; chrome = !chrome }
                 }
             }
@@ -279,7 +278,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
                         ComicPage(archive.getOrThrow(), pages.pages[pair.first()],
                             second = pair.getOrNull(1)?.let { pages.pages[it] }, trim = prefs.comicTrim, fillWidth = landscape,
                             decodeEnabled = firstPageReady || index == pager.currentPage,
-                            initial = !firstPageReady && index == pager.currentPage,
+                            initial = !firstPageReady && index == pager.currentPage, night = comicNight,
                             onReady = { if (index == pager.currentPage) reportReady(it) },
                             onZoom = { if (index == pager.currentPage) zoomed = it },
                             onTap = { x, w ->
@@ -360,23 +359,27 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
             vm.updateSettings(SettingsScope.BOOK, next)
         }
         if (chapters) Dialog({ chapters = false }) {
-            Surface(color = LyricTokens.Comic.errorPanel, shape = RoundedCornerShape(LyricTokens.Radius.button)) {
+            Surface(
+                color = LyricTokens.Comic.overlayCard(comicNight),
+                shape = LyricTokens.Radius.cardShape,
+                border = BorderStroke(LyricTokens.strokeWidth, LyricTokens.Comic.overlayStroke(comicNight)),
+            ) {
                 LazyColumn(Modifier.heightIn(max = LyricTokens.Component.outlineMaxHeight).padding(vertical = LyricTokens.Space.sm)) {
                     if (isPdf) {
                         if (outline.isNotEmpty()) itemsIndexed(outline) { _, entry ->
-                            Text("${entry.title} · ${entry.page + 1}", color = if (entry.page == currentIndex) ComicAccent else ComicInk,
+                            Text("${entry.title} · ${entry.page + 1}", color = if (entry.page == currentIndex) LyricTokens.Comic.overlayAccent(comicNight) else LyricTokens.Comic.overlayInk(comicNight),
                                 style = LyricTokens.Type.body, modifier = Modifier.fillMaxWidth().clickable {
                                     chapters = false
                                     scope.launch { jumpToPage(entry.page) }
                                 }.padding(start = LyricTokens.Page.margin + LyricTokens.Space.lg * entry.level.coerceAtMost(10), end = LyricTokens.Component.mediumIcon, top = LyricTokens.Space.md, bottom = LyricTokens.Space.md))
                         } else items(pages.pages.size) { page ->
-                            Text("第 ${page + 1} 页", color = ComicInk, modifier = Modifier.fillMaxWidth().clickable {
+                            Text("第 ${page + 1} 页", color = LyricTokens.Comic.overlayInk(comicNight), style = LyricTokens.Type.body, modifier = Modifier.fillMaxWidth().clickable {
                                 chapters = false
                                 scope.launch { jumpToPage(page) }
                             }.padding(LyricTokens.Space.lg))
                         }
                     } else itemsIndexed(book.chapters) { i, c ->
-                        Text("${c.title} · ${c.units.size} 页", color = if (current?.chapter == i) ComicAccent else ComicInk,
+                        Text("${c.title} · ${c.units.size} 页", color = if (current?.chapter == i) LyricTokens.Comic.overlayAccent(comicNight) else LyricTokens.Comic.overlayInk(comicNight),
                             style = LyricTokens.Type.body, modifier = Modifier.fillMaxWidth().clickable {
                                 chapters = false
                                 scope.launch { pages.indexOf(Locator(i, 0, 0)).let { jumpToPage(it) } }
@@ -429,7 +432,7 @@ fun DirectionIcon(dir: String, tint: Color, modifier: Modifier = Modifier.size(L
 
 /** 条漫 page: full width, height from the header aspect ratio (no layout jump), decoded at screen width. */
 @Composable
-private fun ComicStripPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, decodeEnabled: Boolean, initial: Boolean, onReady: (Float?) -> Unit, onTap: () -> Unit) {
+private fun ComicStripPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, decodeEnabled: Boolean, initial: Boolean, night: Boolean, onReady: (Float?) -> Unit, onTap: () -> Unit) {
     val latestTap by rememberUpdatedState(onTap)
     var width by remember { mutableIntStateOf(0) }
     var attempt by remember { mutableIntStateOf(0) }
@@ -450,7 +453,7 @@ private fun ComicStripPage(archive: com.lyric.reader.PageSource, ref: ComicPageR
             r == null || (!readerManaged && !stage.content) -> if (!readerManaged && stage.skeleton) ComicPlaceholder(ratio, true)
             r.isFailure -> ComicError("这一页没能打开",
                 "${ref.unit.resource.substringAfterLast('/')} · ${r.exceptionOrNull()?.localizedMessage?.substringAfter(" · ") ?: "未知错误"}",
-                { attempt++ }, null)
+                { attempt++ }, null, night)
             else -> Image(r.getOrThrow().asImageBitmap(), null, contentScale = ContentScale.FillWidth,
                 modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = if (readerManaged) 1f else alpha.value })
         }
@@ -477,7 +480,7 @@ internal fun artworkRatio(art: List<PageArtwork>, trimmed: Boolean): Float = art
 
 @Composable
 private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, second: ComicPageRef? = null, trim: Boolean = false, fillWidth: Boolean = false, onZoom: (Boolean) -> Unit,
-                      decodeEnabled: Boolean, initial: Boolean, onReady: (Float?) -> Unit, onTap: (Float, Float) -> Unit, onSkip: () -> Unit) {
+                      decodeEnabled: Boolean, initial: Boolean, night: Boolean, onReady: (Float?) -> Unit, onTap: (Float, Float) -> Unit, onSkip: () -> Unit) {
     val latestTap by rememberUpdatedState(onTap)
     val latestZoom by rememberUpdatedState(onZoom)
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -545,7 +548,7 @@ private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, s
             r == null || (!readerManaged && !stage.content) -> if (!readerManaged && stage.skeleton) ComicPlaceholder(ratio, true)
             r.isFailure -> ComicError("这一页没能打开",
                 "${ref.unit.resource.substringAfterLast('/')} · ${r.exceptionOrNull()?.localizedMessage?.substringAfter(" · ") ?: "未知错误"}",
-                { attempt++ }, onSkip)
+                { attempt++ }, onSkip, night)
             else -> trimmedArtwork(r.getOrThrow(), trim).let { art ->
                 val trimmed = trim && art.any { it.crop != PageCrop() }
                 Box(Modifier.fillMaxSize().graphicsLayer { this.alpha = if (readerManaged) 1f else alpha.value }) {
@@ -553,36 +556,51 @@ private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, s
                 }
             }
         }
-        if (scale > 1.01f) Text("${"%.1f".format(scale)}×", color = ComicInk, style = LyricTokens.Type.auxiliary,
+        if (scale > 1.01f) Text("${"%.1f".format(scale)}×", color = LyricTokens.Comic.overlayInk(night), style = LyricTokens.Type.auxiliary,
             modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(LyricTokens.Space.md)
-                .background(BarBg, RoundedCornerShape(LyricTokens.Radius.button)).padding(horizontal = LyricTokens.Space.sm, vertical = LyricTokens.Space.xs))
+                .background(LyricTokens.Comic.zoomBadgeBackground(night), LyricTokens.Radius.pill)
+                .border(LyricTokens.strokeWidth, LyricTokens.Comic.overlayStroke(night), LyricTokens.Radius.pill)
+                .padding(horizontal = LyricTokens.Space.sm, vertical = LyricTokens.Space.xs))
     }
 }
 
 @Composable
-private fun ComicError(title: String, reason: String, retry: (() -> Unit)?, skip: (() -> Unit)?) {
+private fun ComicError(title: String, reason: String, retry: (() -> Unit)?, skip: (() -> Unit)?, night: Boolean) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(Modifier.padding(LyricTokens.Space.lg).fillMaxWidth().aspectRatio(1 / 1.4f, matchHeightConstraintsFirst = false)
-            .background(Skeleton, RoundedCornerShape(LyricTokens.Radius.skeleton))
-            .drawBehindDashed(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(Icons.Outlined.BrokenImage, null, tint = ComicMeta, modifier = Modifier.size(LyricTokens.Component.smallControl))
+        Column(
+            Modifier.padding(LyricTokens.Space.lg).fillMaxWidth()
+                .background(LyricTokens.Comic.overlayCard(night), LyricTokens.Radius.cardShape)
+                .border(LyricTokens.strokeWidth, LyricTokens.Comic.overlayStroke(night), LyricTokens.Radius.cardShape)
+                .padding(LyricTokens.Space.lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(Icons.Outlined.BrokenImage, null, tint = LyricTokens.Comic.overlaySecondary(night), modifier = Modifier.size(LyricTokens.Component.smallControl))
             Spacer(Modifier.height(LyricTokens.Space.md))
-            Text(title, color = ComicInk, style = LyricTokens.Type.body, fontFamily = Serif)
-            Text(reason, color = ComicMeta, style = LyricTokens.Type.auxiliary, modifier = Modifier.padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.xs))
-            Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md)) {
-                retry?.let { OutlinedButton(it, Modifier.heightIn(min = LyricTokens.Space.xxl), border = BorderStroke(LyricTokens.strokeWidth, ComicAccent),
-                    contentPadding = PaddingValues(horizontal = LyricTokens.Space.lg), shape = LyricTokens.Radius.buttonShape) { Text("重试", color = ComicAccent, style = LyricTokens.Type.auxiliary) } }
-                skip?.let { OutlinedButton(it, Modifier.heightIn(min = LyricTokens.Space.xxl), border = BorderStroke(LyricTokens.strokeWidth, LyricTokens.Comic.outline),
-                    contentPadding = PaddingValues(horizontal = LyricTokens.Space.lg), shape = LyricTokens.Radius.buttonShape) { Text("跳过此页", color = ComicInk, style = LyricTokens.Type.auxiliary) } }
+            Text(title, color = LyricTokens.Comic.overlayInk(night), style = LyricTokens.Type.body)
+            Text(reason, color = LyricTokens.Comic.overlaySecondary(night), style = LyricTokens.Type.auxiliary, modifier = Modifier.padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.xs))
+            if (retry != null || skip != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md)) {
+                    val buttonColors = ButtonDefaults.buttonColors(
+                        containerColor = LyricTokens.Comic.overlayPrimaryFill(night),
+                        contentColor = LyricTokens.Comic.overlayPrimaryText(night),
+                    )
+                    retry?.let {
+                        Button(it, Modifier.heightIn(min = LyricTokens.Component.buttonHeight), colors = buttonColors,
+                            contentPadding = PaddingValues(horizontal = LyricTokens.Space.lg), shape = LyricTokens.Radius.buttonShape) {
+                            Text("重试", style = LyricTokens.Type.auxiliary)
+                        }
+                    }
+                    skip?.let {
+                        Button(it, Modifier.heightIn(min = LyricTokens.Component.buttonHeight), colors = buttonColors,
+                            contentPadding = PaddingValues(horizontal = LyricTokens.Space.lg), shape = LyricTokens.Radius.buttonShape) {
+                            Text("跳过此页", style = LyricTokens.Type.auxiliary)
+                        }
+                    }
+                }
             }
         }
     }
-}
-
-private fun Modifier.drawBehindDashed() = this.then(Modifier.drawWithCacheDashed())
-private fun Modifier.drawWithCacheDashed() = this.drawBehind {
-    drawRoundRect(LyricTokens.Comic.outline, cornerRadius = androidx.compose.ui.geometry.CornerRadius(LyricTokens.Component.dashLength.toPx()),
-        style = Stroke(LyricTokens.strokeWidth.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(LyricTokens.Component.dashLength.toPx(), LyricTokens.Space.xs.toPx()))))
 }
 
 @Composable
