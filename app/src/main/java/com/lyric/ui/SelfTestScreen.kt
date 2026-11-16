@@ -27,6 +27,7 @@ fun SelfTestDialog(dismiss: () -> Unit) {
     val context = LocalContext.current
     val app = context.applicationContext as LyricApp
     val scope = rememberCoroutineScope()
+    var perfEnabled by remember { mutableStateOf(com.lyric.reader.PerfLog.enabled) }
     var running by remember { mutableStateOf(false) }
     var lowEnd by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf("") }
@@ -40,6 +41,21 @@ fun SelfTestDialog(dismiss: () -> Unit) {
                 Text("性能自测", fontFamily = Serif, fontSize = 26.sp)
                 Text(SelfTest.deviceLine(context), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Switch(perfEnabled, { value ->
+                        scope.launch { com.lyric.reader.PerfLog.setEnabled(context, value); perfEnabled = value }
+                    })
+                    Spacer(Modifier.width(8.dp))
+                    Text("性能记录")
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = {
+                        scope.launch {
+                            runCatching {
+                                com.lyric.export.NoteExport.share(context, com.lyric.reader.PerfLog.export(context), "text/plain", "导出性能记录")
+                            }.onFailure { progress = "导出失败：${it.localizedMessage}" }
+                        }
+                    }) { Text("导出性能记录") }
+                }
                 Text("一、性能基准", fontFamily = Serif, fontSize = 18.sp)
                 Text("在本机内运行：10MB TXT 冷打开、首屏、翻页绘制 P95、搜索首条、漫画大图解码。约 10–40 秒，期间请勿离开。",
                     fontSize = 12.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

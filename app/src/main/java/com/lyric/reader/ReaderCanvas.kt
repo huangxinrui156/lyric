@@ -22,6 +22,7 @@ class ReaderCanvas(context: Context) : View(context) {
     var onLocator: (Locator) -> Unit = {}
     var onMenu: () -> Unit = {}
     var onContentReady: () -> Unit = {}
+    var onPrepareChapter: ((Locator, () -> Unit) -> Unit)? = null
     var onWindowReady: () -> Unit = {}
     private var contentReported = false
     private var describedLocator: Locator? = null
@@ -301,6 +302,7 @@ class ReaderCanvas(context: Context) : View(context) {
 
     private fun navigate(next: Locator) {
         val b = book ?: return
+        if (b.chapters[next.chapterIndex].pending) { onLocator(next); return }
         val at = b.clamp(next)
         // Advance locally in the same event, including repeated key/touch events before Compose
         // rebinds. Compose and the durable writer receive the exact same canonical anchor.
@@ -392,8 +394,8 @@ class ReaderCanvas(context: Context) : View(context) {
                 var he = h.end
                 if (active && b != null && selection != null) {
                     val base = TextSelection.absolute(b, chapter, 0)
-                    hs = selection!!.start - base
-                    he = selection!!.end - base
+                    hs = (selection!!.start - base).coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+                    he = (selection!!.end - base).coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
                 }
                 drawMarker(canvas, set, hs - set.sourceStart, he - set.sourceStart, h, night, active)
             }
@@ -401,8 +403,8 @@ class ReaderCanvas(context: Context) : View(context) {
         if (editing == null) selection?.let { selected ->
             val b = book ?: return@let
             val base = TextSelection.absolute(b, chapter, set.sourceStart)
-            val a = (selected.start - base).coerceIn(0, set.layout.text.length)
-            val z = (selected.end - base).coerceIn(0, set.layout.text.length)
+            val a = (selected.start - base).coerceIn(0, set.layout.text.length.toLong()).toInt()
+            val z = (selected.end - base).coerceIn(0, set.layout.text.length.toLong()).toInt()
             if (a < z) {
                 selectionPaint.color = palette().fill
                 selectionPath.reset()
@@ -486,7 +488,7 @@ class ReaderCanvas(context: Context) : View(context) {
         if (nextChapter !in b.chapters.indices) return null
         return Locator(
             nextChapter,
-            if (step > 0) 0 else (b.chapters[nextChapter].text.length - 1).coerceAtLeast(0),
+            if (step > 0) 0 else if (b.chapters[nextChapter].pending) Int.MAX_VALUE else (b.chapters[nextChapter].text.length - 1).coerceAtLeast(0),
         )
     }
 
@@ -501,6 +503,10 @@ class ReaderCanvas(context: Context) : View(context) {
                     performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                     return
                 }
+        if (book?.chapters?.get(next.chapterIndex)?.pending == true && onPrepareChapter != null) {
+            onPrepareChapter?.invoke(next) { turn(step) }
+            return
+        }
         cancelAnimation()
         if (prefs.pageMode == PageMode.CURL && onCurl != null && width > 0 && height > 0) {
             startCurl(step, false, if (step > 0) width * .95f else width * .05f, height * .9f)
@@ -548,6 +554,11 @@ class ReaderCanvas(context: Context) : View(context) {
         // Never curl while a selection or long-press is in progress (selection owns the gesture).
         if (selection != null || longPressed || draggingHandle != 0) return false
         val next = target(step) ?: return false
+        if (book?.chapters?.get(next.chapterIndex)?.pending == true) {
+            if (onPrepareChapter != null) onPrepareChapter?.invoke(next) { startCurl(step, false, x, y) }
+            else navigate(next)
+            return false
+        }
         curlOrigin = locator
         curlDestination = next
         curlDragging = dragging
@@ -797,7 +808,7 @@ class ReaderCanvas(context: Context) : View(context) {
         invalidate()
     }
 
-    private fun moveBoundary(absolute: Int) {
+    private fun moveBoundary(absolute: Long) {
         val old = selection ?: return
         pressWord?.let { w ->
             selection = if (absolute < w.start) TextSelection(absolute, w.end) else TextSelection(w.start, maxOf(absolute, w.end))
@@ -905,8 +916,8 @@ class ReaderCanvas(context: Context) : View(context) {
             set.layout.getLineStart(set.layout.getLineForVertical(top.toInt())) else set.pages[page].start
         val visibleEnd = if (prefs.pageMode == PageMode.SCROLL)
             set.layout.getLineEnd(set.layout.getLineForVertical((top + height - 1).toInt())) else set.pages[page].end
-        fun handle(absolute: Int, point: PointF) {
-            val local = (absolute - base).coerceIn(visibleStart, visibleEnd.coerceAtMost(set.layout.text.length))
+        fun handle(absolute: Long, point: PointF) {
+            val local = (absolute - base).coerceIn(visibleStart.toLong(), visibleEnd.coerceAtMost(set.layout.text.length).toLong()).toInt()
             val atLineEnd = absolute == selected.end && local > 0 && set.plainText.getOrNull(local - 1) == '\n'
             val line = set.layout.getLineForOffset(if (atLineEnd) local - 1 else local)
             val x = if (atLineEnd) set.layout.getLineRight(line) else set.layout.getPrimaryHorizontal(local)
@@ -1000,7 +1011,7 @@ class ReaderCanvas(context: Context) : View(context) {
                     if (h != null && b != null && sel != null) {
                         val base = TextSelection.absolute(b, h.chapterIndex, 0)
                         val len = b.chapters[h.chapterIndex].text.length
-                        val ns = (sel.start - base).coerceIn(0, len); val ne = (sel.end - base).coerceIn(0, len)
+                        val ns = (sel.start - base).coerceIn(0, len.toLong()).toInt(); val ne = (sel.end - base).coerceIn(0, len.toLong()).toInt()
                         if (ne > ns && (ns != h.start || ne != h.end)) {
                             editing = h.copy(start = ns, end = ne, text = b.chapters[h.chapterIndex].text.substring(ns, ne))
                             onHighlightEdit(h.id, "range", ns, ne)
@@ -1077,7 +1088,7 @@ class ReaderCanvas(context: Context) : View(context) {
                                             Locator(
                                                 it,
                                                 if (step > 0) 0
-                                                else b.chapters[it].text.lastIndex.coerceAtLeast(0),
+                                                else if (b.chapters[it].pending) Int.MAX_VALUE else b.chapters[it].text.lastIndex.coerceAtLeast(0),
                                             )
                                         }
                             if (next != null) {

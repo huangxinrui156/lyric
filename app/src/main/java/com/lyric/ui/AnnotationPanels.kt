@@ -39,12 +39,10 @@ fun tocProgress(book: Book, at: Locator): List<Float> {
 
 /** Book geometry is built once; only visible TOC rows compute a fraction while reading. */
 internal class TocProgressIndex(book: Book) {
-    private val prefix = LongArray(book.chapters.size + 1).apply {
-        book.chapters.forEachIndexed { i, c -> this[i + 1] = this[i] + c.text.length }
-    }
+    private val prefix = LongArray(book.chapters.size + 1) { book.textOffset(it) }
     private val starts = LongArray(book.toc.size) { i ->
         val e = book.toc[i]
-        position(Locator(e.chapterIndex, e.charOffset))
+        position(Locator(e.chapterIndex, book.chapters[e.chapterIndex].anchors[e.fragment] ?: e.charOffset))
     }
     fun position(at: Locator): Long = prefix[at.chapterIndex.coerceIn(0, prefix.lastIndex)] + at.charOffset
     fun fraction(index: Int, position: Long): Float {
@@ -63,16 +61,17 @@ private val dateFmt get() = SimpleDateFormat("MM月dd日", Locale.CHINA)
 
 @Composable
 fun TocPanel(book: Book, locator: Locator, current: Int, state: LazyListState, go: (Locator) -> Unit) {
-    val progress = remember(book) { TocProgressIndex(book) }
+    val ready = book.deferred?.lengthsReady?.collectAsState()?.value ?: true
+    val progress = remember(book, ready) { TocProgressIndex(book) }
     val position = progress.position(locator)
     LazyColumn(state = state, contentPadding = PaddingValues(vertical = 8.dp)) {
         itemsIndexed(book.toc, key = { i, _ -> i }) { i, entry ->
             val on = i == current
-            val p = progress.fraction(i, position)
+            val p = if (ready) progress.fraction(i, position) else if (entry.chapterIndex < locator.chapterIndex) 1f else 0f
             Row(
                 Modifier.fillMaxWidth().height(IntrinsicSize.Min)
                     .background(if (on) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f) else Color.Transparent)
-                    .clickable { go(Locator(entry.chapterIndex, entry.charOffset)) },
+                    .clickable { go(Locator(entry.chapterIndex, entry.charOffset, fragment = entry.fragment)) },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.width(2.dp).fillMaxHeight().background(if (on) Vermilion else Color.Transparent))

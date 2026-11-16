@@ -38,6 +38,8 @@ data class Chapter(
     val href: String = "",
     val content: List<ContentUnit> = emptyList(),
     val styles: List<TextStyleRange> = emptyList(),
+    val anchors: Map<String, Int> = emptyMap(),
+    val pending: Boolean = false,
 ) {
     @kotlinx.serialization.Transient
     var legacyOffsets: List<OffsetMapping> = emptyList()
@@ -48,7 +50,7 @@ data class Chapter(
 
 @Serializable
 @androidx.compose.runtime.Immutable
-data class TocEntry(val title: String, val chapterIndex: Int, val charOffset: Int = 0)
+data class TocEntry(val title: String, val chapterIndex: Int, val charOffset: Int = 0, val fragment: String = "")
 
 @Serializable
 data class Book(
@@ -65,14 +67,17 @@ data class Book(
     /** Direction declared by the file (ComicInfo.xml Manga / EPUB page-progression): "rtl" | "ltr" | null. */
     val readingDirection: String? = null,
 ) {
-    // Published books keep chapter text fixed; reparsing creates a new Book. This
-    // index is derived, never serialized, and keeps per-line progress off O(chapters).
+    @kotlinx.serialization.Transient
+    var deferred: DeferredChapters? = null
     @kotlinx.serialization.Transient
     private val textOffsets = LongArray(chapters.size + 1).apply {
         chapters.forEachIndexed { i, chapter -> this[i + 1] = this[i] + chapter.text.length }
     }
-    val totalChars: Long get() = textOffsets.last()
-    internal fun textOffset(chapter: Int): Long = textOffsets[chapter]
+    val progressReady: Boolean get() = deferred?.lengthsReady?.value ?: true
+    val totalChars: Long get() = if (deferred != null) deferred?.offsets?.last() ?: 0L else textOffsets.last()
+    fun chapterLength(chapter: Int): Int = if (progressReady) (textOffset(chapter + 1) - textOffset(chapter)).toInt() else chapters[chapter].text.length
+    internal fun textOffset(chapter: Int): Long = if (deferred != null) deferred?.offsets?.get(chapter) ?: 0L else textOffsets[chapter]
+
 }
 
 @Serializable
@@ -86,7 +91,7 @@ data class BookStyle(
 /** UTF-16 offset in canonical chapter text, never a page number or a formatted-text offset. */
 @Serializable
 @androidx.compose.runtime.Immutable
-data class Locator(val chapterIndex: Int = 0, val charOffset: Int = 0, val page: Int = 0)
+data class Locator(val chapterIndex: Int = 0, val charOffset: Int = 0, val page: Int = 0, val fragment: String = "")
 
 @Serializable
 data class Progress(
@@ -188,10 +193,11 @@ fun Book.clamp(locator: Locator): Locator {
             0,
             locator.page.coerceIn(0, (chapters[c].units.size - 1).coerceAtLeast(0)),
         )
+    if (chapters[c].pending) return locator.copy(chapterIndex = c)
     val text = chapters[c].text
-    var offset = locator.charOffset.coerceIn(0, (text.length - 1).coerceAtLeast(0))
+    var offset = (chapters[c].anchors[locator.fragment] ?: locator.charOffset).coerceIn(0, (text.length - 1).coerceAtLeast(0))
     if (offset > 0 && text[offset].isLowSurrogate() && text[offset - 1].isHighSurrogate()) offset--
-    return locator.copy(chapterIndex = c, charOffset = offset, page = locator.page.coerceAtLeast(0))
+    return locator.copy(chapterIndex = c, charOffset = offset, page = locator.page.coerceAtLeast(0), fragment = "")
 }
 
 fun Book.percent(locator: Locator): Float {

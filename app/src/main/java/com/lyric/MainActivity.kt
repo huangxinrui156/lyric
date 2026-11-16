@@ -24,6 +24,10 @@ class MainActivity : ReaderActivity() {
             val desk: DeskViewModel = viewModel(factory = DeskViewModel.factory(app))
             LyricTheme(preferences) {
                 val nav = rememberNavController()
+                fun openReader(route: String, builder: androidx.navigation.NavOptionsBuilder.() -> Unit = {}) {
+                    com.lyric.reader.PerfLog.beginOpen()
+                    nav.navigate(route, builder)
+                }
                 NavHost(navController = nav, startDestination = "shelf") {
                     composable("shelf") {
                         val vm: ShelfViewModel = viewModel(factory = LyricFactory(app))
@@ -33,29 +37,29 @@ class MainActivity : ReaderActivity() {
                             desk = {
                                 DeskScreen(
                                     desk,
-                                    openBook = { id, loc -> nav.navigate("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}") },
+                                    openBook = { id, loc -> openReader("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}") },
                                     openFocus = { nav.navigate("focus") { launchSingleTop = true } },
                                     openNotes = { nav.navigate("notes") { launchSingleTop = true } },
                                     // Last saved position (chapter -1) and the timer resumes in the reader route.
-                                    continueReading = { id -> nav.navigate("reader/$id/-1/0/0") },
+                                    continueReading = { id -> openReader("reader/$id/-1/0/0") },
                                 )
                             },
-                        ) { nav.navigate("reader/$it/-1/0/0") }
+                        ) { openReader("reader/$it/-1/0/0") }
                     }
                     composable("focus") {
                         FocusRoute(desk, back = { nav.popBackStack("shelf", inclusive = false) }) { id ->
                             // Reader replaces the timer in the stack, so Back from reader lands on 案头.
-                            nav.navigate("reader/$id/-1/0/0") { popUpTo("focus") { inclusive = true } }
+                            openReader("reader/$id/-1/0/0") { popUpTo("focus") { inclusive = true } }
                         }
                     }
                     composable("notes") {
                         DeskNotesScreen(desk, { id, loc ->
-                            nav.navigate("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}")
+                            openReader("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}")
                         }) { nav.popBackStack() }
                     }
                     composable("bookmarks") {
                         BookmarksScreen(me, { nav.popBackStack() }) { id, loc, bookmarkId ->
-                            nav.navigate("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}?bookmark=$bookmarkId")
+                            openReader("reader/$id/${loc.chapterIndex}/${loc.charOffset}/${loc.page}?bookmark=$bookmarkId")
                         }
                     }
                     composable("stats") { StatsScreen(me) { nav.popBackStack() } }
@@ -65,14 +69,12 @@ class MainActivity : ReaderActivity() {
                     composable("reader/{id}/{chapter}/{offset}/{page}?bookmark={bookmark}",
                         arguments = listOf(navArgument("bookmark") { type = NavType.LongType; defaultValue = 0L })) { entry ->
                         val id = requireNotNull(entry.arguments?.getString("id"))
-                        val vm: ReaderViewModel = viewModel(key = id, factory = LyricFactory(app, id))
-                        LaunchedEffect(entry) {
-                            val chapter = entry.arguments?.getString("chapter")?.toIntOrNull() ?: -1
-                            if (chapter >= 0) vm.jump(com.lyric.core.Locator(chapter,
-                                entry.arguments?.getString("offset")?.toIntOrNull() ?: 0,
-                                entry.arguments?.getString("page")?.toIntOrNull() ?: 0),
-                                entry.arguments?.getLong("bookmark") ?: 0L)
-                        }
+                        val chapter = entry.arguments?.getString("chapter")?.toIntOrNull() ?: -1
+                        val initial = if (chapter >= 0) com.lyric.core.Locator(chapter,
+                            entry.arguments?.getString("offset")?.toIntOrNull() ?: 0,
+                            entry.arguments?.getString("page")?.toIntOrNull() ?: 0) else null
+                        val vm: ReaderViewModel = viewModel(key = id, factory = LyricFactory(app, id,
+                            initial, entry.arguments?.getLong("bookmark") ?: 0L))
                         // 0.8.3: a focus session only counts while its book is visibly open in the reader.
                         val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
                         DisposableEffect(owner, id) {

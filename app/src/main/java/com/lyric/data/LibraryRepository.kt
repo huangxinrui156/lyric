@@ -97,6 +97,27 @@ class LibraryRepository(
     fun comicFile(id: String): File = File(sources, id)
     private val importLock = Mutex()
     private val parseLock = Mutex()
+    private val fillScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val incremental = mutableMapOf<String, java.lang.ref.WeakReference<Book>>()
+    private val fills = mutableMapOf<String, Job>()
+    private fun parts(row: ShelfBook) = File(cacheFile(row).path + ".parts")
+    suspend fun startBackground(book: Book) = withContext(Dispatchers.IO) {
+        parseLock.withLock {
+            val key = incremental.entries.firstOrNull { it.value.get() === book }?.key ?: return@withLock
+            startFill(key, book)
+        }
+    }
+    private fun startFill(key: String, book: Book) {
+        if (fills[key]?.isActive == true || (book.progressReady && book.chapters.none { it.pending })) return
+        fills[key] = fillScope.launch {
+            try {
+                book.deferred?.complete()
+                EpubChapterCache.publishManifest(File(cache, "$key.parts"), book)
+            }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { Log.w(ImportTrace.TAG, "EPUB background fill failed; demand reads remain retryable", e) }
+        }
+    }
     private val memory = BookMemoryCache((Runtime.getRuntime().maxMemory() / 16).coerceAtMost(32L * 1024 * 1024))
 
     /** Called under importLock, after rows are durable, including cancelled/failed batches. */
@@ -498,6 +519,12 @@ class LibraryRepository(
 
     private fun writeCache(row: ShelfBook, book: Book) {
         check(cache.isDirectory || cache.mkdirs()) { "无法创建解析缓存目录" }
+        if (row.extension == "epub" && row.contentRevision >= 4 && book.contentType == ContentType.TEXT) {
+            EpubChapterCache.seed(parts(row), book)
+            cacheFile(row).delete()
+            memory.remove(cacheFile(row).name)
+            return
+        }
         val file = cacheFile(row)
         val tmp = File(file.path + ".tmp")
         // Stream instead of building a ~50 MB String (x2 bytes) for large web novels.
@@ -520,10 +547,17 @@ class LibraryRepository(
         }
     }
 
-    suspend fun load(id: String, force: Boolean = false): Pair<ShelfBook, Book> =
+    suspend fun load(id: String, force: Boolean = false, requested: Locator? = null): Pair<ShelfBook, Book> =
         withContext(Dispatchers.IO) {
             parseLock.withLock {
                 var row = dao.book(id) ?: error("书籍已移出书架")
+                if (com.lyric.reader.PerfLog.enabled) {
+                    val size = (source(row) as? FileContentSource)?.file?.length() ?: runCatching {
+                        context.contentResolver.openAssetFileDescriptor(Uri.parse(row.uri), "r")?.use { it.length }
+                    }.getOrNull() ?: -1L
+                    com.lyric.reader.PerfLog.source(row.extension, size)
+                    com.lyric.reader.PerfLog.stage("parse_toc_start")
+                }
                 val oldProgress = dao.progress(id)
                 val oldMarks = if (row.extension == "epub") dao.bookmarks(id).first() else emptyList()
                 val upgrade = row.extension == "epub" && (row.contentRevision < 3 ||
@@ -538,10 +572,18 @@ class LibraryRepository(
                     if (row.extension == "epub" && row.contentType == ContentType.TEXT.name && row.contentRevision < 4)
                         redetectComic(row)?.let { return@withLock it }
                     val key = cacheFile(row).name
+                    if (force) {
+                        fills.remove(key)?.cancelAndJoin()
+                        incremental.remove(key)
+                        parts(row).deleteRecursively()
+                    }
+                    val useIncremental = row.extension == "epub" && row.contentType == ContentType.TEXT.name && !upgrade && !force
+                    val partial = if (useIncremental && !force) incremental[key]?.get() else null
                     val parsed =
                         if (!force && !upgrade)
-                            memory[key]
+                            partial ?: memory[key]
                                 ?: runCatching {
+                                        if (useIncremental && (File(parts(row), "files.json").isFile || File(parts(row), "book.json").isFile)) error("Use chapter cache")
                                         cacheFile(row).inputStream().buffered(1 shl 16).use {
                                             json.decodeFromStream(Book.serializer(), it)
                                         }
@@ -550,7 +592,12 @@ class LibraryRepository(
                         else null
                     val book =
                         parsed
-                            ?: registry
+                            ?: if (useIncremental) {
+                                val directory = parts(row)
+                                try { EpubParser(context.cacheDir).openIncremental(source(row), directory,
+                                    (requested ?: oldProgress?.let { Locator(it.chapterIndex, it.charOffset) } ?: Locator()).chapterIndex) }
+                                catch (e: Exception) { directory.deleteRecursively(); throw e }
+                            } else registry
                                 .parser(row.extension)
                                 .parse(
                                     source(row),
@@ -558,6 +605,7 @@ class LibraryRepository(
                                     row.chapterRegex,
                                 )
                                 .also { writeCache(row, it) }
+                    com.lyric.reader.PerfLog.stage("parse_toc_ready")
                     if (upgrade) {
                         val upgraded = row.copy(contentRevision = 3, totalChars = book.totalChars,
                             chapterCount = book.chapters.size)
@@ -579,7 +627,10 @@ class LibraryRepository(
                         }
                         row = upgraded
                     }
-                    memory[key] = book
+                    if (book.deferred != null) {
+                        incremental[key] = java.lang.ref.WeakReference(book)
+                        book.ensureChapter((requested ?: oldProgress?.let { Locator(it.chapterIndex, it.charOffset) } ?: Locator()).chapterIndex)
+                    } else memory[key] = book
                     dao.invalid(id, false)
                     row to book
                 } catch (e: Exception) {
@@ -683,8 +734,8 @@ class LibraryRepository(
             db.withTransaction {
                 if (dao.book(id) != null) {
                     dao.saveProgress(ProgressRow(id, loc.chapterIndex, loc.charOffset, loc.page, contentRevision = 3))
-                    if (book.percent(loc) >= .99f) dao.finish(FinishedBook(id, book.title, System.currentTimeMillis()))
-                    dao.reading(
+                    if (book.progressReady && book.percent(loc) >= .99f) dao.finish(FinishedBook(id, book.title, System.currentTimeMillis()))
+                    if (book.progressReady) dao.reading(
                         id,
                         System.currentTimeMillis(),
                         book.percent(loc),
@@ -699,13 +750,16 @@ class LibraryRepository(
         withContext(Dispatchers.IO) {
             importLock.withLock {
                 parseLock.withLock {
+                    fills.keys.filter { it.startsWith("$id-") }.forEach { key ->
+                        fills.remove(key)?.cancelAndJoin(); incremental.remove(key)
+                    }
                     dao.remove(id)
                     File(sources, id).delete()
                     cache
                         .listFiles()
                         ?.filter { it.name.startsWith("$id-") }
                         ?.forEach {
-                            it.delete()
+                            it.deleteRecursively()
                             memory.remove(it.name)
                         }
                 }
@@ -717,6 +771,12 @@ class LibraryRepository(
     suspend fun clearCaches() = withContext(Dispatchers.IO) {
         importLock.withLock {
             parseLock.withLock {
+                val live = incremental.values.mapNotNull { it.get() }
+                fills.values.forEach { it.cancelAndJoin() }
+                // Keep the currently open Book usable after its backing cache is removed.
+                live.forEach { it.deferred?.complete(paced = false) }
+                fills.clear()
+                incremental.clear()
                 val protected = CacheFiles.protectedPaths(dao.all())
                 cache.listFiles()?.forEach { CacheFiles.clear(it, protected) }
                 CacheFiles.temporary(context).forEach { CacheFiles.clear(it, protected) }
@@ -735,7 +795,9 @@ class LibraryRepository(
     fun search(book: Book, query: String): Flow<SearchHit> =
         flow {
                 if (query.isBlank()) return@flow
-                for (chapter in book.chapters) {
+                for (i in book.chapters.indices) {
+                    val chapter = book.ensureChapter(i)
+                    yield()
                     var from = 0
                     while (from < chapter.text.length) {
                         currentCoroutineContext().ensureActive()

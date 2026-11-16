@@ -128,13 +128,13 @@ object NoteExport {
         dir.listFiles()?.filter { it.lastModified() < System.currentTimeMillis() - 7 * 86_400_000L }?.forEach { it.delete() }
         return File.createTempFile("lyric-", suffix, dir)
     }
-    suspend fun share(context: Context, file: File, mime: String) {
+    suspend fun share(context: Context, file: File, mime: String, title: String = "导出笔记") {
         val uri = withContext(Dispatchers.IO) { FileProvider.getUriForFile(context, "${context.packageName}.exports", file) }
         val send = Intent(Intent.ACTION_SEND).apply {
             type = mime; putExtra(Intent.EXTRA_STREAM, uri)
             clipData = ClipData.newRawUri("Lyric", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(send, "导出笔记"))
+        context.startActivity(Intent.createChooser(send, title))
     }
 }

@@ -71,14 +71,19 @@ import kotlinx.coroutines.launch
 fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, back: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val prefs by vm.settings.collectAsStateWithLifecycle()
-    var ready by remember(vm) { mutableStateOf(false) }
+    val chapterGeneration by vm.contentGeneration.collectAsStateWithLifecycle()
+    var ready by remember(vm, chapterGeneration) { mutableStateOf(false) }
+    val navigationFailure by vm.navigationFailure.collectAsStateWithLifecycle()
+    LaunchedEffect(navigationFailure) { if (navigationFailure > 0) ready = true }
     var decodedRatio by remember(vm) { mutableStateOf<Float?>(null) }
     var generation by remember(vm) { mutableIntStateOf(0) }
     LaunchedEffect(state.loading) { if (state.loading) { ready = false; decodedRatio = null; generation++ } }
-    val stage = loadPresentation(vm to generation, ready || state.error != null)
+    DisposableEffect(vm) { onDispose { com.lyric.reader.PerfLog.finish() } }
+    val stage = loadPresentation(Triple(vm, generation, chapterGeneration), ready || state.error != null)
     val alpha = loadContentAlpha(stage)
     val activity = LocalContext.current as? Activity
     LaunchedEffect(stage) {
+        if (stage.skeleton) com.lyric.reader.PerfLog.stage("tap_to_skeleton")
         if (stage == com.lyric.reader.LoadPresentation.CONTENT && state.error == null) {
             // Include the hold/fade in device traces; a decoded but hidden page is not readable.
             withFrameNanos { }
@@ -90,7 +95,11 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
     val paper = Color(if (theme == ReaderTheme.CUSTOM) prefs.customBg else theme.bg)
     val comic = state.book?.contentType == ContentType.COMIC || state.row?.contentType == ContentType.COMIC.name
     val pdf = state.row?.extension == "pdf"
-    Box(Modifier.fillMaxSize().background(if (comic && !pdf) Color(0xFF111111) else paper)) {
+    Box(Modifier.fillMaxSize().background(if (comic && !pdf) Color(0xFF111111) else paper).drawWithContent {
+        drawContent()
+        if (com.lyric.reader.PerfLog.enabled && stage == com.lyric.reader.LoadPresentation.CONTENT && state.error == null)
+            com.lyric.reader.PerfLog.stage("first_frame_drawn")
+    }) {
         if (stage.skeleton) {
             if (comic) {
                 val at = vm.locator.value
@@ -101,7 +110,11 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
             } else PaperSkeleton(paper, Color(theme.ink), prefs.margin)
         }
         Box(Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha.value }) {
-            ReaderContent(vm, drawerExtra, { ratio -> decodedRatio = ratio; ready = true }, back)
+            ReaderContent(vm, drawerExtra, { ratio ->
+                com.lyric.reader.PerfLog.stage(if (comic) "first_bitmap" else "first_window")
+                decodedRatio = ratio; ready = true
+                vm.firstWindowReady()
+            }, back)
         }
     }
 }
@@ -292,6 +305,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
             }
             return@MaterialTheme
         }
+        val lengthsReady = book.deferred?.lengthsReady?.collectAsStateWithLifecycle()?.value ?: true
         ModalNavigationDrawer(
             modifier = Modifier.fillMaxSize().background(bg),
             drawerState = drawer,
@@ -300,7 +314,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                 val locator = locatorState.value
                 val currentToc = remember(book, locator) {
                     book.toc.indexOfLast { it.chapterIndex < locator.chapterIndex ||
-                        it.chapterIndex == locator.chapterIndex && it.charOffset <= locator.charOffset }.coerceAtLeast(0)
+                        it.chapterIndex == locator.chapterIndex && (book.chapters[it.chapterIndex].anchors[it.fragment] ?: it.charOffset) <= locator.charOffset }.coerceAtLeast(0)
                 }
                 val tocScroll = rememberLazyListState()
                 LaunchedEffect(drawer.isOpen) {
@@ -322,7 +336,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            "${(book.percent(locator) * 100).toInt()}% · ${book.chapters.size} 章",
+                            if (lengthsReady) "${(book.percent(locator) * 100).toInt()}% · ${book.chapters.size} 章" else "${book.chapters.size} 章",
                             color = Stone,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(top = 8.dp),
@@ -376,6 +390,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                                 factory = { context -> ReaderCanvas(context).also { view ->
                                     canvas = view
                                     view.onWindowReady = { onFirstReady(null) }
+                                    view.onPrepareChapter = { at, ready -> vm.prepareChapter(at, ready) }
                                     view.onExcerpt = { at, text -> vm.bookmark(at, text) }
                                     view.onHighlightEdit = { hid, action, x, y ->
                                         val row = view.highlights.firstOrNull { it.id == hid }
@@ -586,8 +601,9 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                                 }
                             }
                             var slider by
-                                remember(locator) { mutableFloatStateOf(book.percent(locator)) }
+                                remember(locator, lengthsReady) { mutableFloatStateOf(book.percent(locator)) }
                             Slider(
+                                enabled = lengthsReady,
                                 value = slider,
                                 onValueChange = { slider = it },
                                 onValueChangeFinished = {
@@ -595,9 +611,9 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                                     var c = 0
                                     while (
                                         c < book.chapters.lastIndex &&
-                                            chars >= book.chapters[c].text.length
+                                            chars >= book.chapterLength(c)
                                     ) {
-                                        chars -= book.chapters[c].text.length
+                                        chars -= book.chapterLength(c)
                                         c++
                                     }
                                     vm.goTo(Locator(c, chars.toInt()))
@@ -677,11 +693,12 @@ private fun ReaderChapterHeading(book: Book, prefs: ReaderSettings, meta: Color,
 @Composable
 private fun ReaderFooter(book: Book, prefs: ReaderSettings, meta: Color,
                          pageInfo: State<String>, visible: State<Locator>) {
+    val lengthsReady = book.deferred?.lengthsReady?.collectAsStateWithLifecycle()?.value ?: true
     Row(Modifier.fillMaxWidth().padding(horizontal = prefs.margin.dp).padding(top = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween) {
         val infoSize = (prefs.fontSize * .7f).sp
         if (prefs.showPage) Text(pageInfo.value, color = meta, fontSize = infoSize)
-        if (prefs.showPercent) Text(readingPercentLabel(book.percent(visible.value)), color = meta, fontSize = infoSize)
+        if (prefs.showPercent && lengthsReady) Text(readingPercentLabel(book.percent(visible.value)), color = meta, fontSize = infoSize)
         if (prefs.showTime || prefs.showBattery) {
             val (clock, battery) = readerClockAndBattery()
             if (prefs.showTime) Text(clock, color = meta, fontSize = infoSize)

@@ -1,6 +1,7 @@
 package com.lyric.core
 
 import java.io.File
+import kotlinx.serialization.builtins.serializer
 import java.nio.charset.Charset
 import java.util.zip.ZipFile
 import org.jsoup.nodes.Element
@@ -56,6 +57,60 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
         } finally { if (owned) archive.delete() }
     }
 
+    /** Worker-only reader open. Extracted files + atomic chapter JSON survive process death. */
+    fun openIncremental(source: ContentSource, directory: File, current: Int): Book {
+        directory.mkdirs()
+        EpubChapterCache.read(directory, current) { index ->
+            // A missing/corrupt chapter cache can be repaired from the retained source.
+            File(directory, "book.json").delete()
+            openIncremental(source, directory, index).chapters[index]
+        }?.let { return it }
+        val index = File(directory, "files.json")
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val mapSerializer = kotlinx.serialization.builtins.MapSerializer(
+            String.serializer(), String.serializer())
+        val files = if (index.isFile) {
+            json.decodeFromString(mapSerializer, index.readText()).mapValues { File(directory, it.value) }
+                .also { require(it.values.all(File::isFile)) }
+        } else {
+            val owned = source !is FileContentSource
+            val archive = if (source is FileContentSource) source.file else File(directory, "source.epub").also { f ->
+                source.open().use { input -> f.outputStream().use { output ->
+                    val buffer = ByteArray(65536)
+                    var bytes = 0L
+                    while (true) {
+                        ImportProgress.check()
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        bytes += n
+                        require(bytes <= 200L * 1024 * 1024) { "文件超过 200MB" }
+                        output.write(buffer, 0, n)
+                    }
+                } }
+            }
+            try {
+                checkArchive(archive)
+                var result: Map<String, File>? = null
+                var failure: Exception? = null
+                for (charset in listOf("UTF-8", "GBK", "Cp437")) {
+                    try {
+                        val extracted = readArchive(archive, charset, directory)
+                        // Validate references using the metadata path before publishing the index.
+                        parseFiles(source.displayName, extracted, current, directory)
+                        result = extracted
+                        break
+                    } catch (e: Exception) { e.rethrowImportAbort(); failure = e }
+                }
+                val ready = result ?: throw requireNotNull(failure)
+                val tmp = File(directory, "files.json.tmp")
+                tmp.writeText(json.encodeToString(mapSerializer, ready.mapValues { it.value.name }))
+                check(tmp.renameTo(index))
+                ready
+            } finally { if (owned) archive.delete() }
+        }
+        return parseFiles(source.displayName, files, current, directory)
+    }
+
     private fun readArchive(file: File, charset: String, directory: File): Map<String, File> {
         val files = mutableMapOf<String, File>()
         var total = 0L
@@ -97,7 +152,7 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
         it.tagName().substringAfter(':').equals(name, true)
     }
 
-    private fun parseFiles(displayName: String, files: Map<String, File>): Book {
+    private fun parseFiles(displayName: String, files: Map<String, File>, current: Int? = null, cacheDirectory: File? = null): Book {
         fun document(path: String, xml: Boolean = false) = ImportTrace.stage("EPUB/文档 $path") {
             // Jsoup detects BOM/XML/meta charsets and tolerates broken XHTML and HTML entities.
             // It never fetches external DTDs, entities, stylesheets or other network resources.
@@ -127,8 +182,8 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
         val ruleCache = HashMap<String, List<EpubLayout.Rule>>()
         val sheetCache = HashMap<String, String>()
         val inlineSheets = mutableListOf<Pair<String, String>>()
-        val chapters =
-            spine.mapIndexed { index, item ->
+        fun parseChapter(index: Int): Chapter {
+                val item = spine[index]
                 ImportProgress.tick("解析章节", index + 1, spine.size)
                 val path = resolve(item.attr("href"))
                 val html = document(path)
@@ -142,19 +197,31 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
                 val inline = html.select("style").joinToString("\n") { it.data().ifBlank { it.html() } }
                 if (inline.isNotBlank()) inlineSheets += path to inline
                 val chapterRules = ruleCache.getOrPut(chapterCss + "\n" + inline) { EpubLayout.rules(chapterCss + "\n" + inline) }
+                val chapterAnchors = mutableMapOf<String, Int>()
                 val extracted = EpubLayout.extract(html.body(), chapterRules, ::relative) { id, offset ->
                     anchors["$path#$id"] = Locator(index, offset)
+                    chapterAnchors[id] = offset
                 }
                 val text = extracted.text
-                Chapter(
+                return Chapter(
                     index,
                     html.selectFirst("h1,h2,h3,title")?.text()?.ifBlank { null }
                         ?: "第 ${index + 1} 章",
                     text,
                     path,
                     styles = extracted.styles,
+                    anchors = chapterAnchors,
                 ).also { it.legacyOffsets = extracted.legacyOffsets }
             }
+        val paths = spine.map { resolve(it.attr("href")) }
+        val lazyChapters = if (current != null) DeferredChapters(paths.mapIndexed { i, path ->
+            Chapter(i, "第 ${i + 1} 章", href = path, pending = true)
+        }, requireNotNull(cacheDirectory), ::parseChapter) else null
+        val chapters: List<Chapter> = lazyChapters ?: spine.indices.map(::parseChapter)
+        if (current != null) {
+            val c = current.coerceIn(0, chapters.lastIndex)
+            for (i in (c - 1).coerceAtLeast(0)..(c + 1).coerceAtMost(chapters.lastIndex)) lazyChapters!!.load(i)
+        }
         require(chapters.isNotEmpty()) { "EPUB 没有可阅读的章节" }
         val chapterByHref = HashMap<String, Int>().also { m -> chapters.forEach { m.putIfAbsent(it.href, it.index) } }
         fun locate(path: String, href: String): Locator? {
@@ -173,7 +240,7 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
                     ?: doc?.local("nav")?.firstOrNull()
             navElement?.select("a[href]")?.forEach { a ->
                 locate(path, a.attr("href"))?.let {
-                    toc += TocEntry(a.text(), it.chapterIndex, it.charOffset)
+                    toc += TocEntry(a.text(), it.chapterIndex, it.charOffset, if (current != null) EpubPaths.decode(a.attr("href").substringAfter('#', "")) else "")
                 }
             }
         }
@@ -189,11 +256,13 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
                                 point.local("navLabel").firstOrNull()?.text().orEmpty(),
                                 it.chapterIndex,
                                 it.charOffset,
+                                if (current != null) EpubPaths.decode(href.substringAfter('#', "")) else "",
                             )
                     }
                 }
             }
         }
+        lazyChapters?.titles(toc)
         val css =
             files
                 .filterKeys { it.endsWith(".css") }
@@ -245,7 +314,7 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
                     lineHeight,
                     if (css.contains("text-indent")) !css.contains("text-indent: 0") else null,
                 ),
-        )
+        ).also { book -> lazyChapters?.let { book.deferred = it } }
     }
 
 }

@@ -2,6 +2,7 @@ package com.lyric.reader
 
 import com.lyric.core.Book
 import com.lyric.core.Locator
+import com.lyric.core.ensureChapter
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -22,6 +23,7 @@ class PrePaginator(
     private var background: Job? = null
 
     suspend fun get(chapter: Int, offset: Int): TypesetChapter = withContext(Dispatchers.Default) {
+        book.ensureChapter(chapter)
         lock.withLock {
             val key = Window(chapter, offset.coerceAtLeast(0) / Typesetter.WINDOW * Typesetter.WINDOW)
             layouts[key] ?: layout(chapter, key.offset).also { result ->

@@ -4,6 +4,7 @@ import com.lyric.core.Book
 import com.lyric.core.ContentType
 import com.lyric.core.Locator
 import com.lyric.core.excerpt
+import com.lyric.core.ensureChapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -26,7 +27,7 @@ object Annotations {
 
     /** Moves this book's old excerpts into highlights; returns how many moved. */
     suspend fun migrateExcerpts(dao: LibraryDao, bookId: String, book: Book): Int = withContext(Dispatchers.IO) {
-        val olds = dao.bookmarks(bookId).first().filter { isExcerpt(book, it) }
+        val olds = dao.bookmarks(bookId).first().filter { book.ensureChapter(it.chapterIndex); isExcerpt(book, it) }
         olds.forEach { dao.addHighlight(toHighlight(book, it)); dao.deleteBookmark(it.id) }
         olds.size
     }

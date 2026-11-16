@@ -152,8 +152,9 @@ object KillCheck {
     }
     private val json = Json { ignoreUnknownKeys = true }
     private fun prefs(c: Context) = c.getSharedPreferences(PREFS, 0)
-    fun enabled(c: Context) = prefs(c).getBoolean("enabled", false)
-    fun setEnabled(c: Context, on: Boolean) { prefs(c).edit().putBoolean("enabled", on).commit() }
+    @Volatile private var active = false
+    fun enabled(c: Context) = active
+    fun setEnabled(c: Context, on: Boolean) { active = on; prefs(c).edit().putBoolean("enabled", on).commit() }
 
     fun record(c: Context, bookId: String, title: String, l: Locator) {
         if (!enabled(c)) return
@@ -166,6 +167,7 @@ object KillCheck {
     /** Called once per process start, off the main thread. */
     suspend fun verifyAfterRestart(c: Context, repo: LibraryRepository) {
         val p = prefs(c)
+        active = p.getBoolean("enabled", false)
         val raw = p.getString("pending", null) ?: return
         val pending = JSONObject(raw)
         if (pending.optInt("pid") == android.os.Process.myPid()) return

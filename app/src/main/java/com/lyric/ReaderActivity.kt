@@ -5,6 +5,14 @@ import androidx.activity.ComponentActivity
 
 /** ReaderScreen installs this callback only while it is visible. All other screens defer to Android. */
 open class ReaderActivity : ComponentActivity() {
+    override fun onStart() {
+        super.onStart()
+        com.lyric.reader.PerfLog.attach(window)
+    }
+    override fun onStop() {
+        com.lyric.reader.PerfLog.detach(window)
+        super.onStop()
+    }
     var readerVolumeHandler: ((KeyEvent) -> Boolean)? = null
     private fun readerKey(event: KeyEvent) =
         (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) &&

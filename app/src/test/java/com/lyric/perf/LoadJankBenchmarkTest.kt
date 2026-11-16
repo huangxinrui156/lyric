@@ -57,9 +57,11 @@ class LoadJankBenchmarkTest {
             println("LOAD_HOST $label wall_ms=${(System.nanoTime() - start) / 1_000_000} ui_queue_max_ms=${maxLag.get() / 1_000_000}")
         }
         suspend fun firstWindow(repo: LibraryRepository, id: String, label: String) {
+            var loaded: Book? = null
             measured(label) {
                 val start = System.nanoTime()
                 val book = repo.load(id).second
+                loaded = book
                 val openMs = (System.nanoTime() - start) / 1_000_000
                 if (book.contentType == ContentType.TEXT) {
                     val pager = PrePaginator(book, scope, { c, at -> Typesetter.layout(book.chapters[c].text,
@@ -76,6 +78,9 @@ class LoadJankBenchmarkTest {
                 }
                 println("LOAD_HOST $label open_ms=$openMs chapters=${book.chapters.size} chars=${book.totalChars}")
             }
+            // Prepare the same fully completed disk-warm state as the eager 0.9.7 harness.
+            // This wait is deliberately excluded from both open and ready timings.
+            loaded?.let { repo.startBackground(it); it.deferred?.awaitLengths() }
         }
         try {
             for (file in samples) repeat(2) { round ->
