@@ -371,7 +371,9 @@ class LibraryRepository(
             // opaque SAF filenames/MIME types without probing every EPUB or text as a bitmap.
             val prefix = temp.inputStream().use { it.readBounded(68) }
             val imageExtension = BookFormats.imageExtension(prefix)
-            if (imageExtension != null) {
+            // In-app 「+」 still packs a single image as a one-page CBZ. The system open-with
+            // path must not: Lyric is no longer an image viewer, including octet-stream.
+            if (imageExtension != null && !openWith) {
                 val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 android.graphics.BitmapFactory.decodeFile(temp.path, bounds)
                 require(bounds.outWidth > 0 && bounds.outHeight > 0) { "图片已损坏或无法解码" }
