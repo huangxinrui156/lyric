@@ -17,6 +17,10 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.lyric.LyricApp
 import com.lyric.core.*
+import com.lyric.data.ShelfBook
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import com.lyric.ui.theme.LyricTokens
 import org.junit.Assert.*
 import org.junit.Before
@@ -72,7 +76,18 @@ class ScreenAdaptationUiTest {
 
     private fun mainSurfaces() {
         val app = ApplicationProvider.getApplicationContext<LyricApp>()
-        // Let initial sample import finish before inspecting the shelf's count/layout.
+        runBlocking(Dispatchers.IO) {
+            app.repository.seed()
+            if (app.repository.books.first().isEmpty()) {
+                // Datastore may already be marked seeded from an earlier run; plant books for layout checks.
+                (1..3).forEach { i ->
+                    app.repository.dao.insert(
+                        ShelfBook("adapt-$i", "file:///adapt-$i.txt", "adapt-$i.txt", "适配书$i", "", "txt",
+                            totalChars = 100, chapterCount = 1, encoding = "UTF-8")
+                    )
+                }
+            }
+        }
         compose.waitUntil(15_000) {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
             app.applicationScope.coroutineContext[Job]!!.children.none { it.isActive }
@@ -95,7 +110,7 @@ class ScreenAdaptationUiTest {
         }
         compose.waitUntil(10_000) {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-            shelf.section.value != null
+            shelf.section.value != null && shelf.books.value.isNotEmpty()
         }
         assertTextFits(" · 书架")
         compose.onNode(hasScrollToIndexAction()).performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 100_000f) }

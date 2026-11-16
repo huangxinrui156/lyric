@@ -98,6 +98,8 @@ object LyricTokens {
     }
     object Shelf {
         val minColumnWidth = 104.dp
+        const val emptyCopy = "书架还空着"
+        const val emptyImportLabel = "导入书籍"
     }
     object Reading {
         data class Preset(val fontSizeSp: Float, val lineHeight: Float, val marginDp: Float, val paragraphEm: Float) {

@@ -29,7 +29,6 @@ class LyricApp : Application() {
         backup = BackupManager(this, database, repository.settings)
         storage = StorageInspector(this, repository)
         applicationScope.launch {
-            repository.seed()
             repository.checkSources()
         }
         applicationScope.launch(Dispatchers.IO) {
