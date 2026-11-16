@@ -113,7 +113,11 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
                 ComicPlaceholder(ratio, !pdf || paper.luminance() < .2f)
             } else PaperSkeleton(paper, Color(theme.ink), prefs.margin)
         }
-        Box(Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha.value }) {
+        Box(Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha.value }.semantics {
+            // Only expose a successfully decoded, visible comic page to accessibility/benchmarks.
+            if (comic && decodedRatio != null && stage == com.lyric.reader.LoadPresentation.CONTENT)
+                contentDescription = "Lyric漫画:" + (state.book?.title ?: "")
+        }) {
             ReaderContent(vm, drawerExtra, { ratio ->
                 com.lyric.reader.PerfLog.stage(if (comic) "first_bitmap" else "first_window")
                 decodedRatio = ratio; ready = true

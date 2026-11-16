@@ -50,6 +50,42 @@ Debug 保持非压缩构建；`benchmark` 保持 debug 签名、R8 minify/shrink
 
 **Find X9 Pro 全部待真机**：≤300ms 首屏/骨架、无 >100ms 加载帧、文字 ≤1.5s、漫画 ≤1s、翻页/滚动 P95 ≤16.7ms、Java+native+graphics 峰值 ≤256MB、后台解析/导入中书架滚动。日志内存为 250ms 采样的 Java/native 分配量峰值，不含 graphics；不能据此勾选总进程峰值通过。旧全书 JSON 首次读取、大资源 EPUB 的 ZIP 解包/Base64、长 PDF、GC、同步生命周期持久化仍需设备复验。
 
+## 1.0 性能底线
+
+> 用正式包在 Find X9 Pro 和一台约 4GB 内存的机器上测：1248 章 EPUB 和 10MB TXT 首屏 1.5 秒内，500 页 CBZ 首页 1 秒内，滑动 P95 帧时间不超过 16.7ms，内存峰值低于 256MB；数据写进 README。
+
+被测包为 **0.9.7.1 / vc35** 的 `benchmark` / R8 正式风格 APK，包名 `com.lyric.reader.benchmark`：release 衍生、debug 签名、不可调试、minify/shrink、ProfileInstaller；构建 `./gradlew :app:assembleBenchmark :macrobenchmark:assembleBenchmark`。签名 Play/GitHub 发布包是后续任务。
+
+| 项目 | 目标（两机相同） | 主机测量（历史，非设备验收） | Find X9 Pro | 约 4GB，默认 Redmi A3 |
+| --- | --- | --- | --- | --- |
+| 1248章 EPUB 首屏 | 五轮 MAX <1500ms | 首窗 387 / 262ms | 待真机 / 未测 | 待真机 / 未测 |
+| 10MB TXT 首屏 | 五轮 MAX <1500ms | 首窗 107 / 74ms | 待真机 / 未测 | 待真机 / 未测 |
+| 500页 CBZ 首页 | 五轮 MAX <1000ms | 首图 42 / 39ms | 待真机 / 未测 | 待真机 / 未测 |
+| 滑动 P95 | ≤16.7ms（文字滚动、漫画滑动） | 未测，无设备帧时间替代值 | 待真机 / 未测 | 待真机 / 未测 |
+| 内存峰值 | <256MB，含 graphics | 未测，无总进程内存替代值 | 待真机 / 未测 | 待真机 / 未测 |
+
+**待测原因：本环境无 adb/真机测量条件，无模拟器及上述两台设备。** 主机列沿用 [0.9.7.1 原始两轮数据](docs/measurements/v0.9.7.1-load-host.txt)，首窗/解码不含 Compose/GPU 首帧、骨架停留或淡入，不能判定真机达标。历史 0.3 的入门机 25ms / 3000ms 门限不用于 1.0，`TIER=reference|entry` 均使用本节统一限值。
+
+方法：每项 5 轮；prepare 导入、设置重置与解析/图片缓存清理在计时外，冷开用 `StartupMode.COLD` 重启进程。首屏取真实内容可见后的 `reportFullyDrawn` / `timeToFullDisplayMs`（同时记录 `Lyric.ColdOpen`），文字等待 `Lyric正文:`，漫画仅成功解码且加载层结束才出现 `Lyric漫画:`。文字主测 `PageMode.SCROLL`，每轮 30 次滑动，漫画另测 30 次 RTL pager 手势；合并五轮原始 `frameDurationCpuMs`，以 nearest-rank `ceil(N×0.95)` 算 P95。
+
+内存：全部冷开/滑动 run 使用 `MemoryUsageMetric(Mode.Max)`，要求 HeapSize、RssAnon、RssFile、RssShmem、Gpu 都有五轮数据。每轮 RSS 三项峰值 + GPU 峰值之和，再取五轮最大值，按 KiB ×1024 / 1,000,000 转十进制 MB，严格 <256；这是**含 graphics 的进程驻留内存保守上界**，可能重复计数/不同步峰值，非精确 PSS。heap 不重复加；缺任何分项即失败。脚本另存 `dumpsys meminfo` 的 TOTAL PSS / HEAP / GRAPHICS 原文（设备有输出时），快照不冒充峰值；Java heap 或 PerfLog 250ms 采样不能单独验收。
+
+夹具：TXT 设备生成恰好 10MiB UTF-8；EPUB SHA-256 `8368c9b1a06a5ce8ba156fda5892cb20020b008680dbc8a99de2d833cc789940`；CBZ SHA-256 `db3269a3b229bc6f75e351ab10e94175a8bbbea63383eba66f229e48f841a4c7`。脚本推送 `/data/local/tmp/lyric-fixtures/`（644）并尝试 Download 备用路径。固定默认排版、竖屏、系统动画 1×、关闭省电、两机相同刷新率（建议 60Hz），记录 API/系统增量版本/物理 RAM/电量温度。
+
+```bash
+export JAVA_HOME=/home/box/jdk17 ANDROID_HOME=/home/box/Android
+./gradlew assembleDebug test assembleBenchmark :macrobenchmark:assembleBenchmark
+# 电脑需有 adb；一次连接一台并授权，ANDROID_SERIAL 填实际序列号：
+export ANDROID_SERIAL='实际序列号'
+# 源路径可用 LYRIC_EPUB_FIXTURE / LYRIC_CBZ_FIXTURE 覆盖。
+TIER=reference scripts/run-benchmarks.sh benchmark-results/find-x9-pro
+# 换接约 4GB 手机并更新 ANDROID_SERIAL 后：
+TIER=entry scripts/run-benchmarks.sh benchmark-results/redmi-a3-4gb
+python3 -m unittest scripts/test_benchmark_results.py
+```
+
+新瑞的完整步骤、Download 权限/fixturePath、无 adb 补充记录及回填格式见 [1.0 性能底线说明](docs/v1.0-perf-baseline.md)。脚本执行 `:app:assembleBenchmark :macrobenchmark:connectedBenchmarkAndroidTest`，结果写入指定空目录（默认 `benchmark-results/时间戳/`），保留 JSON、trace、设备条件、meminfo、报告和 `check.txt`；无 adb/设备或缺任一必需测量均失败。新瑞仍需完成两台真机测量并回填数据和证据。
+
 ## 操作
 
 - 书架右上角或末格「＋」导入文件；「本地导入」也支持递归扫描文件夹。系统文件选择器可多选。
@@ -80,6 +116,8 @@ Debug 保持非压缩构建；`benchmark` 保持 debug 签名、R8 minify/shrink
 - EPUB增加对齐、缩进、粗斜体、标题、居中、分隔线、图片、ruby注音和内嵌字体。书籍CSS与内嵌字体受「采用书籍样式」控制；图片、语义样式与注音始终显示。图片点击可放大并缩放/平移。完整CSS不在范围内。
 
 ### 目标与当前结果
+
+以下为 0.3 历史目标与结果；1.0 验收使用上文两台相同的新门限，脚本不再使用历史入门机宽松限值。
 
 每版在CI外手动跑两台真机，记录系统版本、内存配置、刷新率、电源/温度条件和原始Perfetto/JSON。固定默认18sp、平移翻页；测试期间关闭省电模式、保持相同刷新率，避免充电发热或后台负载改变比较条件。
 
