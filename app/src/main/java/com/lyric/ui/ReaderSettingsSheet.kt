@@ -120,9 +120,7 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
             SettingStepper("亮度", prefs.brightness, brightnessLevels, "${kotlin.math.round(prefs.brightness * 100).toInt()}%") {
                 update(prefs.copy(brightness = it))
             }
-            SettingStepper("字号", prefs.fontSize, fontSizeLevels, "${prefs.fontSize.toInt()} sp") {
-                update(prefs.copy(fontSize = it))
-            }
+            TypesetPresetRow(prefs, ::update)
             Row(
                 Modifier.fillMaxWidth().padding(vertical = LyricTokens.Space.md),
                 verticalAlignment = Alignment.CenterVertically,
@@ -209,6 +207,9 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
             }
             if (advanced) {
                 HorizontalDivider(Modifier.padding(vertical = LyricTokens.Space.lg))
+                SettingStepper("字号", prefs.fontSize, fontSizeLevels, "${prefs.fontSize.toInt()} sp") {
+                    update(prefs.copy(fontSize = it))
+                }
                 SettingSlider("行距", prefs.lineHeight, 1.1f..2.5f, "%.1f".format(prefs.lineHeight)) {
                     update(prefs.copy(lineHeight = it))
                 }
@@ -345,6 +346,13 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                 Spacer(Modifier.height(LyricTokens.Space.md))
             }
         }
+    }
+}
+
+@Composable
+internal fun TypesetPresetRow(prefs: ReaderSettings, update: (ReaderSettings) -> Unit) {
+    ChoiceRow("排版", LyricTokens.Reading.presetLabels, prefs.matchedTypesetPresetIndex()) { index ->
+        update(prefs.applyTypesetPreset(LyricTokens.Reading.presets[index]))
     }
 }
 

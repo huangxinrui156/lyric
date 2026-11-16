@@ -136,7 +136,9 @@ class ScreenAdaptationUiTest {
             compose.onNodeWithText(label).assertIsSelected()
         }
         compose.runOnIdle { section.value = "reading" }
-        listOf("字号", "行距", "页边距", "首行缩进").forEach(::assertTextFits)
+        listOf("紧凑", "舒适", "宽松", "更多排版", "首行缩进").forEach(::assertTextFits)
+        compose.onNodeWithText("更多排版").performClick()
+        listOf("字号", "行距", "页边距", "收起细调", "首行缩进").forEach(::assertTextFits)
         compose.onNode(hasScrollAction()).performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, 100_000f) }
         listOf("阅读时保持屏幕常亮", "跟随系统", "竖屏", "横屏").forEach(::assertTextFits)
     }
