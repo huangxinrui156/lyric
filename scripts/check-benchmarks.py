@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Enforce unified 1.0 device gates from actual AndroidX 1.3.3 JSON; never fill gaps."""
+"""Enforce 1.0 device gates from actual AndroidX 1.3.3 JSON; never fill gaps.
+
+TIER=reference is the required 1.0 path (Find X9 Pro). TIER=entry is an optional
+P1 path for a ~4GB device; both use the same numeric limits.
+"""
 import json
 import math
 import pathlib
@@ -42,7 +46,7 @@ def samples(bench, metric, sampled=False):
 
 def check(root, tier):
     if tier not in ("reference", "entry"):
-        raise ValueError("TIER must be reference or entry (both use unified 1.0 limits)")
+        raise ValueError("TIER must be reference (1.0, Find X9 Pro) or entry (optional P1, ~4GB); both use the same numeric limits")
     found = set()
     failed = False
     for path in sorted(root.rglob("*benchmarkData.json")):
