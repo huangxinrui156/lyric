@@ -88,7 +88,7 @@ fun DeskScreen(
         )
         Row(Modifier.padding(horizontal = LyricTokens.Page.margin), verticalAlignment = Alignment.Bottom) {
             Text(
-                "Lyric",
+                "lyric",
                 fontFamily = Serif,
                 fontStyle = FontStyle.Italic,
                 style = LyricTokens.Type.title,

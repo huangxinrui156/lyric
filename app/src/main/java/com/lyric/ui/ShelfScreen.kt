@@ -38,6 +38,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontStyle
@@ -142,12 +144,15 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
             containerColor = MaterialTheme.colorScheme.background,
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
+                val navStroke = if (deskDark()) LyricTokens.Night.stroke else MaterialTheme.colorScheme.outlineVariant
                 NavigationBar(
                     windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
                     containerColor = MaterialTheme.colorScheme.background,
                     tonalElevation = 0.dp,
-                    modifier =
-                        Modifier.border(BorderStroke(LyricTokens.strokeWidth, if (deskDark()) LyricTokens.Night.stroke else MaterialTheme.colorScheme.outlineVariant)),
+                    modifier = Modifier.drawBehind {
+                        val stroke = LyricTokens.strokeWidth.toPx()
+                        drawLine(navStroke, Offset(0f, stroke / 2f), Offset(size.width, stroke / 2f), strokeWidth = stroke)
+                    },
                 ) {
                     val dark = deskDark()
                     val navColors = if (dark) NavigationBarItemDefaults.colors(
@@ -301,7 +306,7 @@ private fun ShelfContent(
                     Spacer(Modifier.height(LyricTokens.Space.sm))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "Lyric",
+                            "lyric",
                             fontFamily = Serif,
                             fontStyle = FontStyle.Italic,
                             style = LyricTokens.Type.title,
@@ -584,13 +589,9 @@ private fun ContinueCard(book: ShelfBook, repository: LibraryRepository, open: (
                     )
                 }
             }
-            LinearProgressIndicator(
-                progress = { book.percent },
-                color = MaterialTheme.colorScheme.secondary,
-                trackColor = MaterialTheme.colorScheme.outlineVariant,
-                modifier = Modifier.fillMaxWidth()
-                    .padding(top = LyricTokens.Space.sm)
-                    .height(LyricTokens.Component.continueProgressStroke),
+            ContinueProgressBar(
+                progress = book.percent,
+                modifier = Modifier.fillMaxWidth().padding(top = LyricTokens.Space.sm),
             )
         }
     }
@@ -824,6 +825,23 @@ private fun ImportFilterChips(filter: ImportFilter, change: (ImportFilter) -> Un
 
 internal fun continueReadingBook(books: List<ShelfBook>): ShelfBook? =
     books.filter { it.lastRead > 0 && !it.invalid }.maxByOrNull { it.lastRead }
+
+
+@Composable
+internal fun ContinueProgressBar(progress: Float, modifier: Modifier = Modifier) {
+    val read = MaterialTheme.colorScheme.secondary
+    val unread = MaterialTheme.colorScheme.outlineVariant
+    val stroke = LyricTokens.Component.continueProgressStroke
+    Canvas(modifier.fillMaxWidth().height(stroke)) {
+        val width = size.width
+        val height = size.height
+        val amount = progress.coerceIn(0f, 1f)
+        drawRect(unread, size = androidx.compose.ui.geometry.Size(width, height))
+        if (amount > 0f) {
+            drawRect(read, size = androidx.compose.ui.geometry.Size(width * amount, height))
+        }
+    }
+}
 
 /** Chapter label for the continue-reading card; blank or the “未读” placeholder become “第 n 章”. */
 internal fun continueReadingChapterLabel(chapterTitle: String, chapterIndex: Int?): String {

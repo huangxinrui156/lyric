@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Render README candidate screenshots on the JVM (Robolectric + Compose, no emulator).
-# Output: $LYRIC_SCREENS_DIR or <repo>/screens/  — 1080×2400 (~xxhdpi) PNGs with sample data only.
+# Output: $LYRIC_SCREENS_DIR or <repo>/screens/  — 1080×2400 (density 2.75, w393dp-h873dp-440dpi) PNGs with public-domain titles.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"

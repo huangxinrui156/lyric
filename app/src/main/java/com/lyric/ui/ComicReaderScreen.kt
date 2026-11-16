@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.lyric.ui
 
 import com.lyric.ui.theme.LyricTokens
@@ -17,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -303,15 +306,19 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
         AnimatedVisibility(chrome, enter = fadeIn(LyricTokens.Motion.short()),
             exit = fadeOut(LyricTokens.Motion.short()), modifier = Modifier.align(Alignment.TopCenter)) {
             ComicTopBar(book.title, current?.let { book.chapters[it.chapter].title }, dir,
-                back = back, changeDirection = { choose(ComicDirections.next(dir)) })
+                back = back, changeDirection = { choose(ComicDirections.next(dir)) }, night = comicNight)
         }
         AnimatedVisibility(chrome, enter = fadeIn(LyricTokens.Motion.short()),
             exit = fadeOut(LyricTokens.Motion.short()), modifier = Modifier.align(Alignment.BottomCenter)) {
-            Column(Modifier.fillMaxWidth().background(BarBg).windowInsetsPadding(readerSafeInsets().only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.sm)) {
-                Text("${currentIndex + 1} / ${pages.pages.size}", color = ComicInk, style = LyricTokens.Type.auxiliary,
+            val ink = LyricTokens.Comic.barInk(comicNight)
+            val meta = LyricTokens.Comic.barMeta(comicNight)
+            val accent = LyricTokens.Comic.barAccent(comicNight)
+            val track = LyricTokens.Comic.barTrack(comicNight)
+            Column(Modifier.fillMaxWidth().comicChromeBar(comicNight, dividerTop = true).windowInsetsPadding(readerSafeInsets().only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.sm)) {
+                Text("${currentIndex + 1} / ${pages.pages.size}", color = ink, style = LyricTokens.Type.auxiliary,
                     fontFamily = LyricTokens.Fonts.hei, modifier = Modifier.align(Alignment.CenterHorizontally))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (rtl) "${pages.pages.size}" else "1", color = ComicMeta, style = LyricTokens.Type.auxiliary)
+                    Text(if (rtl) "${pages.pages.size}" else "1", color = meta, style = LyricTokens.Type.auxiliary)
                     // Mirrored for right-to-left: the start of the book is on the right.
                     CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                         var drag by remember { mutableStateOf<Float?>(null) }
@@ -319,15 +326,18 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
                             valueRange = 0f..(pages.pages.lastIndex.coerceAtLeast(1)).toFloat(),
                             onValueChangeFinished = { drag?.let { v -> scope.launch { jumpToPage(v.toInt()) } }; drag = null },
                             modifier = Modifier.weight(1f).padding(horizontal = LyricTokens.Space.sm),
-                            colors = SliderDefaults.colors(thumbColor = ComicAccent, activeTrackColor = ComicAccent, inactiveTrackColor = Track))
+                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = track),
+                            thumb = {
+                                Box(Modifier.size(LyricTokens.Component.comicSliderThumb).background(accent, CircleShape))
+                            })
                     }
-                    Text(if (rtl) "1" else "${pages.pages.size}", color = ComicMeta, style = LyricTokens.Type.auxiliary)
+                    Text(if (rtl) "1" else "${pages.pages.size}", color = meta, style = LyricTokens.Type.auxiliary)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                    IconButton({ chapters = true }) { Icon(Icons.AutoMirrored.Outlined.List, "章节", tint = ComicInk) }
-                    IconButton({ choose(ComicDirections.next(dir)) }) { DirectionIcon(dir, ComicInk) }
-                    IconButton({ layoutMenu = true }) { Icon(Icons.Outlined.Tune, "版面", tint = ComicInk) }
-                    IconButton({ vm.bookmark(pages.locator(currentIndex)) }) { Icon(Icons.Outlined.BookmarkBorder, "书签", tint = ComicInk) }
+                    IconButton({ chapters = true }) { Icon(Icons.AutoMirrored.Outlined.List, "章节", tint = ink) }
+                    IconButton({ choose(ComicDirections.next(dir)) }) { DirectionIcon(dir, ink) }
+                    IconButton({ layoutMenu = true }) { Icon(Icons.Outlined.Tune, "版面", tint = ink) }
+                    IconButton({ vm.bookmark(pages.locator(currentIndex)) }) { Icon(Icons.Outlined.BookmarkBorder, "书签", tint = ink) }
                 }
             }
         }
@@ -561,26 +571,39 @@ private fun Modifier.drawWithCacheDashed() = this.drawBehind {
 }
 
 @Composable
+private fun Modifier.comicChromeBar(night: Boolean, dividerTop: Boolean): Modifier = background(LyricTokens.Comic.barBackground(night)).drawBehind {
+    if (!night) {
+        val stroke = LyricTokens.strokeWidth.toPx()
+        val y = if (dividerTop) stroke / 2f else size.height - stroke / 2f
+        drawLine(LyricTokens.Comic.barDivider(false), Offset(0f, y), Offset(size.width, y), strokeWidth = stroke)
+    }
+}
+
+@Composable
 internal fun ComicTopBar(
     title: String, chapter: String?, direction: String, back: () -> Unit, changeDirection: () -> Unit,
     insets: WindowInsets = readerSafeInsets(),
+    night: Boolean = true,
 ) {
+    val ink = LyricTokens.Comic.barInk(night)
+    val meta = LyricTokens.Comic.barMeta(night)
+    val accent = LyricTokens.Comic.barAccent(night)
     Row(
-        Modifier.fillMaxWidth().background(BarBg)
+        Modifier.fillMaxWidth().comicChromeBar(night, dividerTop = false)
             .windowInsetsPadding(insets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
             .heightIn(min = LyricTokens.Component.toolbarHeight).padding(horizontal = LyricTokens.Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = ComicInk) }
+        IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = ink) }
         Column(Modifier.weight(1f)) {
-            Text(title, color = ComicInk, style = LyricTokens.Type.body, maxLines = 1,
+            Text(title, color = ink, style = LyricTokens.Type.body, maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-            chapter?.let { Text(it, color = ComicMeta, style = LyricTokens.Type.auxiliary, maxLines = 1,
+            chapter?.let { Text(it, color = meta, style = LyricTokens.Type.auxiliary, maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
         }
         IconButton(changeDirection,
             Modifier.semantics { contentDescription = "当前${ComicDirections.label(direction)}，切换为${ComicDirections.label(ComicDirections.next(direction))}" }) {
-            DirectionIcon(direction, ComicAccent)
+            DirectionIcon(direction, accent)
         }
     }
 }

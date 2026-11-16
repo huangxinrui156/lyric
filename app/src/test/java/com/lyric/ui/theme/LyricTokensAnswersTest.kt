@@ -22,8 +22,7 @@ class LyricTokensAnswersTest {
             assertEquals(pair.second, LyricTokens.Accents.color(i, true).toArgb())
         }
         val title = "剑来"
-        val expectedCover = LyricTokens.Accents.color((title.hashCode() and Int.MAX_VALUE) % 6, false)
-        assertEquals(expectedCover, LyricTokens.Accents.cover(title))
+        assertEquals(LyricTokens.Accents.color(LyricTokens.Accents.coverIndex(title), false), LyricTokens.Accents.cover(title))
     }
 
     @Test fun savedMonospaceRendersAsHeiAndCustomPathsAreKept() {
@@ -56,5 +55,20 @@ class LyricTokensAnswersTest {
         assertEquals(.30f, LyricTokens.Accents.highlightNightAlpha)
         assertEquals(0xFFF4EFE6.toInt(), LyricTokens.Comic.background(false).toArgb())
         assertEquals(0xFF0E0F11.toInt(), LyricTokens.Comic.background(true).toArgb())
+    }
+
+    @Test fun coverHashSpreadsAcrossAllSixAccents() {
+        val titles = listOf(
+            "红楼梦", "浮生六记", "西游记", "水浒传", "三国演义", "聊斋志异", "古文观止", "陶庵梦忆",
+            "牡丹亭", "西厢记", "窦娥冤", "诗经", "楚辞", "史记", "论语", "孟子", "庄子", "老子",
+            "韩非子", "孙子兵法", "世说新语", "文心雕龙", "徐霞客游记", "桃花扇", "长生殿", "镜花缘",
+            "儒林外史", "官场现形记", "老残游记", "孽海花", "山海经", "点石斋画报", "搜神记", "洛神赋",
+            "归去来兮辞", "出师表", "岳阳楼记", "醉翁亭记", "滕王阁序", "阿房宫赋", "桃花源记", "项脊轩志",
+            "将进酒", "蜀道难", "春江花月夜", "琵琶行", "长恨歌", "赤壁赋", "兰亭集序", "陋室铭",
+        )
+        val indexes = titles.map { LyricTokens.Accents.coverIndex(it) }.toSet()
+        assertEquals(setOf(0, 1, 2, 3, 4, 5), indexes)
+        // Same title always maps to the same color.
+        assertEquals(LyricTokens.Accents.coverIndex("红楼梦"), LyricTokens.Accents.coverIndex("红楼梦"))
     }
 }

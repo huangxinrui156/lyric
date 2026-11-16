@@ -12,6 +12,7 @@ import android.text.style.LineHeightSpan
 import android.text.style.*
 import com.lyric.core.Chapter
 import com.lyric.core.ReaderSettings
+import com.lyric.ui.theme.LyricTokens
 import kotlin.math.roundToInt
 
 data class TextPage(val start: Int, val end: Int, val top: Int, val bottom: Int)
@@ -55,15 +56,27 @@ object Typesetter {
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
         )
         var start = 0
+        var titled = false
+        val titleGap = (LyricTokens.Reading.chapterTitleGap.value * density).roundToInt()
+        val titlePx = (LyricTokens.Reading.chapterTitleSp * scaledDensity).roundToInt()
         while (start < span.length) {
             val end = span.indexOf('\n', start).let { if (it < 0) span.length else it + 1 }
-            val authoredIndent = if (settings.useBookStyle) styles.asSequence()
+            val contentEnd = if (end > start && span[end - 1] == '\n') end - 1 else end
+            val content = if (contentEnd > start) span.subSequence(start, contentEnd).toString() else ""
+            val blank = content.isBlank()
+            val isTitle = !titled && !blank && from == 0 && chapter != null &&
+                chapter.title.isNotBlank() && content.trim() == chapter.title.trim()
+            if (isTitle) titled = true
+            val authoredIndent = if (!blank && !isTitle && settings.useBookStyle) styles.asSequence()
                 .filter { it.bookStyle && it.indentEm != null && it.start <= from + start && it.end > from + start }
                 .minByOrNull { it.end - it.start }?.indentEm else null
-            val structural = span[start] == '\uFFFC' || styles.any {
+            val structural = !blank && (span[start] == '\uFFFC' || styles.any {
                 !it.bookStyle && (it.sizeEm != null || it.align == "center") && it.start <= from + start && it.end > from + start
-            } == true
-            val indentEm = if (span[start] == '\uFFFC') 0f else authoredIndent ?: if (settings.indent && !structural) 2f else 0f
+            } == true)
+            val indentEm = when {
+                blank || isTitle || span[start] == '\uFFFC' -> 0f
+                else -> authoredIndent ?: if (settings.indent && !structural) 2f else 0f
+            }
             if (indentEm != 0f && (start > 0 || from == 0 || text.getOrNull(from - 1) == '\n'))
                 span.setSpan(
                     LeadingMarginSpan.Standard((size * indentEm).toInt(), 0),
@@ -71,7 +84,10 @@ object Typesetter {
                     end,
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
                 )
-            if (settings.paragraphSpace > 0)
+            if (isTitle) {
+                span.setSpan(ChapterTitleSpan(titlePx, font), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                if (titleGap > 0) span.setSpan(ParagraphSpace(titleGap), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            } else if (!blank && settings.paragraphSpace > 0)
                 span.setSpan(
                     ParagraphSpace((size * settings.paragraphSpace).toInt()),
                     start,
@@ -90,7 +106,8 @@ object Typesetter {
                 val overriddenSize = !style.bookStyle && settings.useBookStyle && styles.any {
                     it.bookStyle && it.start == style.start && it.end == style.end && it.sizeEm != null
                 }
-                if (!overriddenSize) style.sizeEm?.let { apply(RelativeSizeSpan(it)) }
+                val titled = span.getSpans(a, b, ChapterTitleSpan::class.java).isNotEmpty()
+                if (!overriddenSize && !titled) style.sizeEm?.let { apply(RelativeSizeSpan(it)) }
                 style.align?.let { alignment -> apply(AlignmentSpan.Standard(when (alignment) {
                     "center" -> Layout.Alignment.ALIGN_CENTER
                     "right", "end" -> Layout.Alignment.ALIGN_OPPOSITE
@@ -163,12 +180,33 @@ object Typesetter {
             v: Int,
             fm: android.graphics.Paint.FontMetricsInt,
         ) {
+            val line = if (end > start) text.subSequence(start, end) else ""
+            if (line.isBlank()) {
+                fm.ascent = 0
+                fm.descent = 0
+                fm.top = 0
+                fm.bottom = 0
+                return
+            }
             val original = (fm.descent - fm.ascent).coerceAtLeast(1)
             val actual = maxOf(height, original)
             fm.descent = (fm.descent.toFloat() / original * actual).roundToInt()
             fm.ascent = fm.descent - actual
             fm.top = fm.ascent
             fm.bottom = fm.descent
+        }
+    }
+
+    private class ChapterTitleSpan(private val sizePx: Int, private val base: Typeface) : MetricAffectingSpan() {
+        override fun updateDrawState(tp: TextPaint) = apply(tp)
+        override fun updateMeasureState(tp: TextPaint) = apply(tp)
+        private fun apply(tp: TextPaint) {
+            tp.textSize = sizePx.toFloat()
+            tp.typeface = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                Typeface.create(base, 500, false)
+            } else {
+                Typeface.create(base, Typeface.NORMAL)
+            }
         }
     }
 

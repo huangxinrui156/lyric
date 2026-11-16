@@ -121,6 +121,9 @@ object LyricTokens {
         val fineTuneLabels = listOf("字号", "行距", "段距", "页边距")
         const val bodyMaxWidthDp = 640f
         val bodyMaxWidth = bodyMaxWidthDp.dp
+        const val chapterTitleSp = 20f
+        val chapterTitleGap = Space.xl
+        val chapterTitleSize = chapterTitleSp.sp
     }
     object Motion {
         const val shortMs = 150
@@ -171,8 +174,17 @@ object LyricTokens {
         fun highlight(index: Int, night: Boolean): Color =
             highlightAccents[index.coerceIn(0, highlightAccents.lastIndex)].color(night)
                 .copy(alpha = if (night) highlightNightAlpha else highlightDayAlpha)
-        fun cover(title: String, night: Boolean = false) =
-            color((title.hashCode() and Int.MAX_VALUE) % all.size, night)
+        fun coverIndex(title: String): Int {
+            var hash = FNV_OFFSET
+            for (ch in title) {
+                hash = hash xor ch.code
+                hash *= FNV_PRIME
+            }
+            return hash.toUInt().mod(all.size.toUInt()).toInt()
+        }
+        fun cover(title: String, night: Boolean = false) = color(coverIndex(title), night)
+        private const val FNV_OFFSET = -0x7ee3623b
+        private const val FNV_PRIME = 0x01000193
     }
 
     object Comic {
@@ -183,6 +195,12 @@ object LyricTokens {
         val ink = Color(0xFFD0CABE)
         val meta = Color(0xFF8E897F)
         val track = Color(0xFF3A3A3E)
+        fun barBackground(night: Boolean) = if (night) bar else Day.card
+        fun barInk(night: Boolean) = if (night) ink else Day.ink
+        fun barMeta(night: Boolean) = if (night) meta else Day.secondary
+        fun barTrack(night: Boolean) = if (night) track else Day.stroke
+        fun barDivider(night: Boolean) = if (night) Night.stroke else Day.stroke
+        fun barAccent(night: Boolean) = if (night) Night.vermilion else Day.vermilion
         val errorPanel = Color(0xFF1A1A1D)
         val outline = Color(0xFF45444A)
     }
@@ -228,6 +246,7 @@ object LyricTokens {
         val dashLength = 6.dp
         val heatmapCell = 9.dp
         val sliderThumb = 14.dp
+        val comicSliderThumb = 16.dp
         val smallIcon = 18.dp
         val mediumIcon = 20.dp
         val toolbarIcon = 22.dp
