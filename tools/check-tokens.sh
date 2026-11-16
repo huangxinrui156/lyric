@@ -63,18 +63,15 @@ for path in sorted(root.rglob('*.kt')):
 
 # Print the source of each pending family, rather than silently allowlisting UI literals.
 anchors = {
-    'val accentNames': 'six existing accent choices; four colors/night transforms await 美术设计',
-    'const val shelfSwitchMs': 'existing 2000ms signature choreography retained; pending 美术设计',
-    'const val comicHintMs': 'existing hint dwell/flash timing, not transition speed',
-    'val comicBackground': 'comic artwork/chrome contrast palette retained pending 美术设计',
-    'val overlayBlack': 'black/white scrim, dimming and image-viewer primitives',
-    'val curlBackColors': 'existing page-fold light/shadow artwork',
-    'val coverColors': 'generated cover artwork palette retained',
-    'val exportDayDivider': 'NoteExport artwork divider, separate from Compose chrome',
-    'val highlightSwatches': 'persisted highlight color indices retained',
-    'object ReaderContent': 'persisted reader content themes retained separately from app chrome',
-    'val indicatorStroke': 'component geometry/touch targets, not the six-step spacing scale',
-    'val focusTime': 'existing large countdown display retained pending 美术设计',
+    'object Accents': 'six accent day/night pairs from tokens.md; covers hash to these; highlights use 25%/30% overlay',
+    'const val shelfSwitchMs': 'shelf switch duration is the approved 300ms; phase fractions retained',
+    'const val hintMs': 'existing comic hint dwell/flash timing, not transition speed',
+    'fun background(night: Boolean)': 'comic day #F4EFE6 / night #0E0F11 from tokens.md',
+    'object Overlay': 'black/white scrim, dimming and image-viewer primitives',
+    'val shadowColors': 'page-curl shadow is 8% black fading to transparent, not a palette color',
+    'object ReaderContent': 'PAPER/NIGHT follow the UI palette; other user themes keep their own colors',
+    'val indicatorStroke': 'component geometry in LyricTokens.Component; touch targets >= 48dp',
+    'val focusTime': 'approved 52sp countdown display in Component',
     'const val breatheCycleMs': 'requested skeleton 1200ms rise, then reverse (no shimmer)',
 }
 for number, line in enumerate(tokens.read_text().splitlines(), 1):
@@ -84,7 +81,7 @@ for number, line in enumerate(tokens.read_text().splitlines(), 1):
 # Engine artwork remains authoritative outside the Compose scan; never silently recolor exports/content.
 external = {
     'app/src/main/java/com/lyric/ui/ReaderSettingsSheet.kt': ('ModalBottomSheet(', 'Material3 1.3.1 internal sheet tween is 300ms FastOutSlowIn; no public spec override (documented library exception)'),
-    'app/src/main/java/com/lyric/core/ThemePalette.kt': ('private val marker', 'legacy selection/marker alpha and curl-back artwork remain engine-specific; pending 美术设计'),
+    'app/src/main/java/com/lyric/core/ThemePalette.kt': ('fun selection(', 'selection and curl paper-back styles remain engine-specific; highlight fill now uses accent overlay 25%/30%'),
     'app/src/main/java/com/lyric/ui/ReaderScreen.kt': ('prefs.margin.dp', 'runtime user-selected reading margin, not a literal UI spacing value'),
     'app/src/main/java/com/lyric/ui/ShelfTransition.kt': (').dp.toPx()', 'runtime interpolated translation derived from shelfRise token'),
     'app/src/main/java/com/lyric/ui/ReaderInfo.kt': ('margin.dp', 'runtime reader margin supplied by preferences'),

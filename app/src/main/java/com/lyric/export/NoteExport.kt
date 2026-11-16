@@ -76,7 +76,7 @@ object NoteExport {
         val bg = LyricTokens.colors(night).background.toArgb()
         val muted = LyricTokens.colors(night).secondary.toArgb()
         val accent = LyricTokens.colors(night).vermilion.toArgb()
-        val divider = (if (night) LyricTokens.Night.stroke else LyricTokens.Pending.exportDayDivider).toArgb()
+        val divider = LyricTokens.colors(night).stroke.toArgb()
         val l = cardLayout(h, night, font, author)
         val bitmap = Bitmap.createBitmap(1080, 1440, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)

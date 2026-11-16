@@ -82,7 +82,7 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
     ) {
         Column(
             Modifier.fillMaxWidth()
-                .heightIn(max = LyricTokens.Pending.settingsMaxHeight)
+                .heightIn(max = LyricTokens.Component.settingsMaxHeight)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = LyricTokens.Page.margin)
                 .padding(bottom = LyricTokens.Space.xl)
@@ -131,9 +131,9 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                 Text("主题", color = Stone, style = LyricTokens.Type.auxiliary)
                 ReaderTheme.entries.take(4).forEach { theme ->
                     Box(
-                        Modifier.size(LyricTokens.Pending.buttonHeight)
+                        Modifier.size(LyricTokens.Component.buttonHeight)
                             .border(
-                                if (prefs.theme == theme) LyricTokens.Pending.indicatorStroke else LyricTokens.strokeWidth,
+                                if (prefs.theme == theme) LyricTokens.Component.indicatorStroke else LyricTokens.strokeWidth,
                                 if (prefs.theme == theme) Vermilion
                                 else MaterialTheme.colorScheme.outline,
                                 CircleShape,
@@ -150,10 +150,10 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
             ChoiceRow(
                 "字体",
                 listOf(LyricTokens.Fonts.songLabel, LyricTokens.Fonts.heiLabel, if (prefs.font.startsWith('/')) "已导入" else "导入"),
-                when (prefs.font) {
-                    LyricTokens.Fonts.songKey -> 0
-                    LyricTokens.Fonts.heiKey -> 1
-                    else -> 2
+                when {
+                    LyricTokens.Fonts.isCustom(prefs.font) -> 2
+                    LyricTokens.Fonts.resolveKey(prefs.font) == LyricTokens.Fonts.songKey -> 0
+                    else -> 1
                 },
             ) { index ->
                 when (index) {
@@ -351,12 +351,12 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
 /** Explicit levels; existing fractional preferences are preserved until the user taps. */
 @Composable
 internal fun SettingStepper(label: String, value: Float, levels: List<Float>, suffix: String, change: (Float) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = LyricTokens.Pending.touchTarget), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = LyricTokens.Component.touchTarget), verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.weight(1f))
         IconButton(onClick = { levels.lastOrNull { it < value - .001f }?.let(change) }, enabled = value > levels.first()) {
             Icon(Icons.Outlined.Remove, "减少$label", tint = MaterialTheme.colorScheme.secondary)
         }
-        Text(suffix, fontFamily = Serif, style = LyricTokens.Type.body, modifier = Modifier.width(LyricTokens.Pending.settingValueWidth),
+        Text(suffix, fontFamily = Serif, style = LyricTokens.Type.body, modifier = Modifier.width(LyricTokens.Component.settingValueWidth),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         IconButton(onClick = { levels.firstOrNull { it > value + .001f }?.let(change) }, enabled = value < levels.last()) {
             Icon(Icons.Outlined.Add, "增加$label", tint = MaterialTheme.colorScheme.secondary)
@@ -373,10 +373,10 @@ internal fun SettingSlider(
     change: (Float) -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = LyricTokens.Pending.touchTarget),
+        Modifier.fillMaxWidth().heightIn(min = LyricTokens.Component.touchTarget),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.width(LyricTokens.Pending.settingsLabelWidth))
+        Text(label, style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.width(LyricTokens.Component.settingsLabelWidth))
         Slider(
             value = value.coerceIn(range),
             onValueChange = change,
@@ -392,7 +392,7 @@ internal fun SettingSlider(
             suffix,
             fontFamily = Serif,
             style = LyricTokens.Type.body,
-            modifier = Modifier.widthIn(min = LyricTokens.Pending.switchWidth),
+            modifier = Modifier.widthIn(min = LyricTokens.Component.switchWidth),
             textAlign = androidx.compose.ui.text.style.TextAlign.End,
         )
     }
@@ -404,7 +404,7 @@ internal fun ChoiceRow(label: String, options: List<String>, selected: Int, choo
         Modifier.fillMaxWidth().padding(vertical = LyricTokens.Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.width(LyricTokens.Pending.touchTarget))
+        Text(label, style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.width(LyricTokens.Component.touchTarget))
         FlowRow(
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs),
@@ -429,7 +429,7 @@ internal fun ChoiceRow(label: String, options: List<String>, selected: Int, choo
 @Composable
 internal fun SettingToggle(label: String, checked: Boolean, change: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = LyricTokens.Pending.touchTarget),
+        Modifier.fillMaxWidth().heightIn(min = LyricTokens.Component.touchTarget),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -440,12 +440,12 @@ internal fun SettingToggle(label: String, checked: Boolean, change: (Boolean) ->
 
 @Composable
 private fun ColorField(label: String, value: Long, change: (Long) -> Unit) {
-    var hex by remember(value) { mutableStateOf("%06X".format(value and LyricTokens.Pending.rgbMask)) }
+    var hex by remember(value) { mutableStateOf("%06X".format(value and LyricTokens.Overlay.rgbMask)) }
     OutlinedTextField(
         value = hex,
         onValueChange = { text ->
             hex = text.take(6)
-            if (text.length == 6) text.toLongOrNull(16)?.let { change(LyricTokens.Pending.opaqueArgb or it) }
+            if (text.length == 6) text.toLongOrNull(16)?.let { change(LyricTokens.Overlay.opaqueArgb or it) }
         },
         label = { Text("$label · 六位 HEX") },
         leadingIcon = { Text("#") },

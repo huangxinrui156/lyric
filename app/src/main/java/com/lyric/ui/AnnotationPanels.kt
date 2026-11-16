@@ -73,10 +73,10 @@ fun TocPanel(book: Book, locator: Locator, current: Int, state: LazyListState, g
                     .clickable { go(Locator(entry.chapterIndex, entry.charOffset, fragment = entry.fragment)) },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.width(LyricTokens.Pending.indicatorStroke).fillMaxHeight().background(if (on) Vermilion else Color.Transparent))
+                Box(Modifier.width(LyricTokens.Component.indicatorStroke).fillMaxHeight().background(if (on) Vermilion else Color.Transparent))
                 Column(Modifier.weight(1f).padding(start = LyricTokens.Space.xl, top = LyricTokens.Space.md, bottom = LyricTokens.Space.md)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (on) Box(Modifier.padding(end = LyricTokens.Space.xs).size(LyricTokens.Pending.statusDot).background(Vermilion, CircleShape))
+                        if (on) Box(Modifier.padding(end = LyricTokens.Space.xs).size(LyricTokens.Component.statusDot).background(Vermilion, CircleShape))
                         Text(entry.title, style = LyricTokens.Type.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     Text(
@@ -84,7 +84,7 @@ fun TocPanel(book: Book, locator: Locator, current: Int, state: LazyListState, g
                         style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.padding(top = LyricTokens.Space.xs),
                     )
                 }
-                Box(Modifier.padding(end = LyricTokens.Space.lg, start = LyricTokens.Space.md).width(LyricTokens.Space.xxl).height(LyricTokens.Pending.progressStroke).background(Linen)) {
+                Box(Modifier.padding(end = LyricTokens.Space.lg, start = LyricTokens.Space.md).width(LyricTokens.Space.xxl).height(LyricTokens.Component.progressStroke).background(Linen)) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(p).background(Moss))
                 }
             }
@@ -121,7 +121,7 @@ fun BookmarkPanel(marks: List<BookmarkRow>, go: (BookmarkRow) -> Unit, note: (Bo
                         Text(if (mark.note.isBlank()) "加备注" else "改备注", style = LyricTokens.Type.auxiliary, color = Moss,
                             modifier = Modifier.padding(top = LyricTokens.Space.xs).clickable { note(mark) })
                     }
-                    IconButton(onClick = { delete(mark) }) { Icon(Icons.Outlined.Close, "删除书签", Modifier.size(LyricTokens.Pending.smallIcon), tint = Stone) }
+                    IconButton(onClick = { delete(mark) }) { Icon(Icons.Outlined.Close, "删除书签", Modifier.size(LyricTokens.Component.smallIcon), tint = Stone) }
                 }
             }
         }
@@ -150,7 +150,7 @@ fun HighlightPanel(rows: List<HighlightRow>, go: (HighlightRow) -> Unit, note: (
                             .combinedClickable(onClick = { go(h) }, onLongClick = { actions = true })
                             .padding(start = LyricTokens.Space.xl, end = LyricTokens.Space.lg, top = LyricTokens.Space.sm, bottom = LyricTokens.Space.sm)
                     ) {
-                        Box(Modifier.width(LyricTokens.Pending.indicatorStroke).fillMaxHeight().background(Vermilion))
+                        Box(Modifier.width(LyricTokens.Component.indicatorStroke).fillMaxHeight().background(Vermilion))
                         Column(Modifier.padding(start = LyricTokens.Space.sm)) {
                             Text(h.text, fontFamily = Serif, style = LyricTokens.Type.body, maxLines = 4, overflow = TextOverflow.Ellipsis)
                             NoteLine(h.note)
@@ -185,7 +185,7 @@ fun HighlightOptionsSheet(h: HighlightRow, color: (Int) -> Unit, note: () -> Uni
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.background, shape = LyricTokens.Radius.cardShape) {
         Column(Modifier.padding(horizontal = LyricTokens.Page.margin).padding(bottom = LyricTokens.Space.xl)) {
             Row(Modifier.height(IntrinsicSize.Min)) {
-                Box(Modifier.width(LyricTokens.Pending.indicatorStroke).fillMaxHeight().background(Vermilion))
+                Box(Modifier.width(LyricTokens.Component.indicatorStroke).fillMaxHeight().background(Vermilion))
                 Text(h.text, fontFamily = Serif, style = LyricTokens.Type.body, maxLines = 3,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = LyricTokens.Space.sm))
             }
@@ -193,7 +193,7 @@ fun HighlightOptionsSheet(h: HighlightRow, color: (Int) -> Unit, note: () -> Uni
             Text("颜色", style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.padding(top = LyricTokens.Space.lg, bottom = LyricTokens.Space.sm))
             Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md)) {
                 com.lyric.core.ThemePalette.highlightColors.forEachIndexed { i, rgb ->
-                    val c = Color(LyricTokens.Pending.opaqueArgb or rgb)
+                    val c = Color(LyricTokens.Overlay.opaqueArgb or rgb)
                     Box(Modifier.size(LyricTokens.Space.xxl).background(c.copy(alpha = if (i == h.color) 1f else .55f), CircleShape)
                         .clickable { color(i); dismiss() })
                 }

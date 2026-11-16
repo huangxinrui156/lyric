@@ -148,7 +148,7 @@ internal class CurlDrawing {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     val shadowColors = IntArray(3)
     val shadowStops = FloatArray(3)
-    val backColors = LyricTokens.Pending.curlBackColors.copyOf()
+    val backColors = LyricTokens.Curl.shadowColors.copyOf()
     val backStops = floatArrayOf(0f, .55f, 1f)
 }
 
@@ -191,7 +191,7 @@ internal fun drawPageCurl(canvas: AndroidCanvas, current: Bitmap, target: Bitmap
         drawing.backColors, drawing.backStops, Shader.TileMode.CLAMP)
     canvas.drawRect(bounds, paint); canvas.restore()
     paint.shader = null
-    paint.color = if (style != null) a(style.highlightAlpha) or LyricTokens.Pending.rgbMask.toInt() else LyricTokens.Pending.curlFallbackOutline
+    paint.color = if (style != null) a(style.highlightAlpha) or LyricTokens.Overlay.rgbMask.toInt() else LyricTokens.Curl.fallbackOutline
     paint.style = Paint.Style.STROKE; paint.strokeWidth = if (style != null) 1 * density else .8f
     canvas.drawPath(geometry.back, paint)
     canvas.restore()

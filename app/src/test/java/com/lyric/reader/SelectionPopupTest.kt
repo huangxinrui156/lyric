@@ -10,6 +10,8 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.widget.TextView
 import com.lyric.core.*
+import com.lyric.ui.theme.LyricTokens
+import androidx.compose.ui.graphics.toArgb
 import java.time.Duration
 import org.junit.Assert.*
 import org.junit.Test
@@ -173,10 +175,11 @@ class SelectionPopupTest {
     }
 
     @Test fun markerAlphaFollowsSpec() {
-        assertEquals((.38f * 255).toInt(), ThemePalette.markerFill(0, false) ushr 24)
-        assertEquals((.30f * 255).toInt(), ThemePalette.markerFill(0, true) ushr 24)
-        assertEquals((.65f * 255).toInt(), ThemePalette.markerFill(1, false, active = true) ushr 24)
-        assertEquals(0xFF4E6680.toInt(), ThemePalette.markerLine(3))
+        assertEquals(LyricTokens.Accents.highlight(0, false).toArgb() ushr 24, ThemePalette.markerFill(0, false) ushr 24)
+        assertEquals(LyricTokens.Accents.highlight(0, true).toArgb() ushr 24, ThemePalette.markerFill(0, true) ushr 24)
+        val active = LyricTokens.Accents.highlight(1, false).copy(alpha = minOf(LyricTokens.Accents.highlightDayAlpha * 1.6f, .65f))
+        assertEquals(active.toArgb() ushr 24, ThemePalette.markerFill(1, false, active = true) ushr 24)
+        assertEquals(LyricTokens.Accents.highlight(3, false).copy(alpha = 1f).toArgb(), ThemePalette.markerLine(3))
     }
 
 }

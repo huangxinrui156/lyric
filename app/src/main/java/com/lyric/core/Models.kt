@@ -111,13 +111,13 @@ enum class PageMode(val label: String) {
 }
 
 enum class ReaderTheme(val label: String, val bg: Long, val ink: Long, val meta: Long) {
-    PAPER("日间", LyricTokens.Pending.ReaderContent.paperBackground, LyricTokens.Pending.ReaderContent.paperInk, LyricTokens.Pending.ReaderContent.paperMeta),
-    BEIGE("纸张", LyricTokens.Pending.ReaderContent.beigeBackground, LyricTokens.Pending.ReaderContent.beigeInk, LyricTokens.Pending.ReaderContent.paperMeta),
-    MOSS("青苔", LyricTokens.Pending.ReaderContent.mossBackground, LyricTokens.Pending.ReaderContent.mossInk, LyricTokens.Pending.ReaderContent.mossMeta),
-    NIGHT("夜间", LyricTokens.Pending.ReaderContent.nightBackground, LyricTokens.Pending.ReaderContent.nightInk, LyricTokens.Pending.ReaderContent.nightMeta),
-    GREEN("深绿", LyricTokens.Pending.ReaderContent.greenBackground, LyricTokens.Pending.ReaderContent.greenInk, LyricTokens.Pending.ReaderContent.greenMeta),
-    BLACK("纯黑", LyricTokens.Pending.ReaderContent.blackBackground, LyricTokens.Pending.ReaderContent.nightInk, LyricTokens.Pending.ReaderContent.nightMeta),
-    CUSTOM("自定", LyricTokens.Pending.ReaderContent.paperBackground, LyricTokens.Pending.ReaderContent.paperInk, LyricTokens.Pending.ReaderContent.paperMeta),
+    PAPER("日间", LyricTokens.ReaderContent.paperBackground, LyricTokens.ReaderContent.paperInk, LyricTokens.ReaderContent.paperMeta),
+    BEIGE("纸张", LyricTokens.ReaderContent.beigeBackground, LyricTokens.ReaderContent.beigeInk, LyricTokens.ReaderContent.paperMeta),
+    MOSS("青苔", LyricTokens.ReaderContent.mossBackground, LyricTokens.ReaderContent.mossInk, LyricTokens.ReaderContent.mossMeta),
+    NIGHT("夜间", LyricTokens.ReaderContent.nightBackground, LyricTokens.ReaderContent.nightInk, LyricTokens.ReaderContent.nightMeta),
+    GREEN("深绿", LyricTokens.ReaderContent.greenBackground, LyricTokens.ReaderContent.greenInk, LyricTokens.ReaderContent.greenMeta),
+    BLACK("纯黑", LyricTokens.ReaderContent.blackBackground, LyricTokens.ReaderContent.nightInk, LyricTokens.ReaderContent.nightMeta),
+    CUSTOM("自定", LyricTokens.ReaderContent.paperBackground, LyricTokens.ReaderContent.paperInk, LyricTokens.ReaderContent.paperMeta),
 }
 
 @Serializable
@@ -152,8 +152,8 @@ data class ReaderSettings(
     val tapRight: Float = .72f,
     val reverseTaps: Boolean = false,
     val useBookStyle: Boolean = false,
-    val customBg: Long = LyricTokens.Pending.ReaderContent.paperBackground,
-    val customInk: Long = LyricTokens.Pending.ReaderContent.paperInk,
+    val customBg: Long = LyricTokens.ReaderContent.paperBackground,
+    val customInk: Long = LyricTokens.ReaderContent.paperInk,
     /** Comic reading direction: "rtl" (default, manga), "ltr" or "vertical" (条漫). Stored per book via SettingsScope.BOOK. */
     val comicDirection: String = "rtl",
     /** null = automatic: two-page spread in landscape only on large screens (smallest width >= 600dp). */

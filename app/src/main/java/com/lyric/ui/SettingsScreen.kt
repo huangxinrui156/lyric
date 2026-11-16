@@ -49,7 +49,7 @@ fun SettingsScreen(vm: MeViewModel, section: String, back: () -> Unit) {
                     Text("强调色", fontFamily = Serif, modifier = Modifier.padding(top = LyricTokens.Space.lg))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         AccentPresets.forEachIndexed { index, accent ->
-                            Box(Modifier.size(LyricTokens.Pending.buttonHeight).border(if (prefs.accentColor == index) LyricTokens.Pending.indicatorStroke else 0.dp,
+                            Box(Modifier.size(LyricTokens.Component.buttonHeight).border(if (prefs.accentColor == index) LyricTokens.Component.indicatorStroke else 0.dp,
                                 if (prefs.accentColor == index) MaterialTheme.colorScheme.onSurface else Color.Transparent, CircleShape)
                                 .padding(LyricTokens.Space.xs).background(accent, CircleShape)
                                 .clickable { vm.update(prefs.copy(accentColor = index)) }
@@ -73,8 +73,9 @@ fun SettingsScreen(vm: MeViewModel, section: String, back: () -> Unit) {
                     SettingSlider("页边距", prefs.margin, 12f..52f, prefs.margin.toInt().toString()) { vm.update(prefs.copy(margin = it)) }
                     SettingToggle("首行缩进", prefs.indent) { vm.update(prefs.copy(indent = it)) }
                     SettingToggle("两端对齐", prefs.justify) { vm.update(prefs.copy(justify = it)) }
-                    ChoiceRow("字体", listOf("宋体", "黑体", "等宽"), listOf("serif", "sans-serif", "monospace").indexOf(prefs.font)) {
-                        vm.update(prefs.copy(font = listOf("serif", "sans-serif", "monospace")[it]))
+                    ChoiceRow("字体", listOf(LyricTokens.Fonts.songLabel, LyricTokens.Fonts.heiLabel),
+                        listOf(LyricTokens.Fonts.songKey, LyricTokens.Fonts.heiKey).indexOf(LyricTokens.Fonts.resolveKey(prefs.font)).coerceAtLeast(0)) {
+                        vm.update(prefs.copy(font = listOf(LyricTokens.Fonts.songKey, LyricTokens.Fonts.heiKey)[it]))
                     }
                     ChoiceRow("翻页", PageMode.entries.map { it.label }, PageMode.entries.indexOf(prefs.pageMode)) { vm.update(prefs.copy(pageMode = PageMode.entries[it])) }
                     SettingSlider("左区宽", prefs.tapLeft, .1f.. .4f, "${(prefs.tapLeft * 100).toInt()}%") { vm.update(prefs.copy(tapLeft = it)) }

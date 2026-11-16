@@ -99,7 +99,8 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
     val paper = Color(if (theme == ReaderTheme.CUSTOM) prefs.customBg else theme.bg)
     val comic = state.book?.contentType == ContentType.COMIC || state.row?.contentType == ContentType.COMIC.name
     val pdf = state.row?.extension == "pdf"
-    Box(Modifier.fillMaxSize().background(if (comic && !pdf) LyricTokens.Pending.comicBackground else paper).drawWithContent {
+    val isNight = com.lyric.core.ThemePalette.isNight(theme, if (theme == ReaderTheme.CUSTOM) prefs.customBg else theme.bg)
+    Box(Modifier.fillMaxSize().background(if (comic && !pdf) LyricTokens.Comic.background(isNight) else paper).drawWithContent {
         drawContent()
         if (com.lyric.reader.PerfLog.enabled && stage == com.lyric.reader.LoadPresentation.CONTENT && state.error == null)
             com.lyric.reader.PerfLog.stage("first_frame_drawn")
@@ -146,7 +147,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
     }
     // Comics never flash the paper colour while loading.
     if (state.book == null && state.row?.contentType == ContentType.COMIC.name) {
-        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(LyricTokens.Pending.comicBackground))
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(LyricTokens.Comic.background(isSystemInDarkTheme())))
         return
     }
     val prefs by vm.settings.collectAsStateWithLifecycle()
@@ -296,7 +297,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                             Icons.Outlined.LinkOff,
                             null,
                             tint = meta,
-                            modifier = Modifier.size(LyricTokens.Pending.smallControl),
+                            modifier = Modifier.size(LyricTokens.Component.smallControl),
                         )
                         Text(
                             state.error ?: "无法打开书籍",
@@ -324,7 +325,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                     if (drawer.isOpen && drawerTab == 0) tocScroll.scrollToItem(currentToc)
                 }
                 ModalDrawerSheet(
-                    modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * .85f).dp.coerceAtMost(LyricTokens.Pending.drawerMaxWidth))
+                    modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * .85f).dp.coerceAtMost(LyricTokens.Component.drawerMaxWidth))
                         .fillMaxHeight(),
                     windowInsets = WindowInsets.safeDrawing,
                     drawerContainerColor = MaterialTheme.colorScheme.background,
@@ -499,7 +500,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                                 runCatching { java.util.Base64.getDecoder().decode(book.resources[path]) }.getOrNull()
                             }
                         }
-                        Box(Modifier.fillMaxSize().background(LyricTokens.Pending.overlayBlack).safeDrawingPadding()) {
+                        Box(Modifier.fillMaxSize().background(LyricTokens.Overlay.black).safeDrawingPadding()) {
                             val request = remember(data, path) {
                                 coil.request.ImageRequest.Builder(activity).data(data).apply {
                                     if (path.endsWith(".svg", true)) decoderFactory(coil.decode.SvgDecoder.Factory())
@@ -513,7 +514,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                                     }
                                 }.graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = dx; translationY = dy })
                             IconButton(onClick = { enlargedImage = null }, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
-                                Icon(Icons.Outlined.Close, "关闭大图", tint = LyricTokens.Pending.overlayWhite)
+                                Icon(Icons.Outlined.Close, "关闭大图", tint = LyricTokens.Overlay.white)
                             }
                         }
                     }
@@ -530,7 +531,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                     })
                 AnimatedVisibility(visible = menu, enter = fadeIn(LyricTokens.Motion.short()),
                     exit = fadeOut(LyricTokens.Motion.short()), modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()) {
-                    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = LyricTokens.Pending.readerToolbarElevation) {
+                    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = LyricTokens.Component.readerToolbarElevation) {
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -566,7 +567,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                                 topStart = LyricTokens.Radius.card,
                                 topEnd = LyricTokens.Radius.card,
                             ),
-                        shadowElevation = LyricTokens.Pending.readerSheetElevation,
+                        shadowElevation = LyricTokens.Component.readerSheetElevation,
                     ) {
                         val locator = locatorState.value
                         Column(
@@ -665,7 +666,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                 if (prefs.dim > 0f)
                     Box(
                         Modifier.fillMaxSize()
-                            .background(LyricTokens.Pending.overlayBlack.copy(alpha = prefs.dim.coerceIn(0f, .85f)))
+                            .background(LyricTokens.Overlay.black.copy(alpha = prefs.dim.coerceIn(0f, .85f)))
                     )
             }
         }
@@ -724,7 +725,7 @@ private fun ReaderTool(
         Modifier.clickable(onClick = click).padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.sm),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, label, Modifier.size(LyricTokens.Pending.toolbarIcon))
+        Icon(icon, label, Modifier.size(LyricTokens.Component.toolbarIcon))
         Text(label, style = LyricTokens.Type.auxiliary, modifier = Modifier.padding(top = LyricTokens.Space.xs))
     }
 }
