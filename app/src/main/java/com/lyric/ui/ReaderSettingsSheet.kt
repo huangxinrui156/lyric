@@ -22,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lyric.core.*
 import com.lyric.data.SettingsScope
@@ -29,7 +31,6 @@ import java.io.File
 import kotlinx.coroutines.*
 
 private val brightnessLevels = listOf(.01f) + (1..10).map { it / 10f }
-private val fontSizeLevels = (12..36).map { it.toFloat() }
 private val pageModeLabels = PageMode.entries.map { it.label }
 
 @Composable
@@ -120,7 +121,6 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
             SettingStepper("亮度", prefs.brightness, brightnessLevels, "${kotlin.math.round(prefs.brightness * 100).toInt()}%") {
                 update(prefs.copy(brightness = it))
             }
-            TypesetPresetRow(prefs, ::update)
             Row(
                 Modifier.fillMaxWidth().padding(vertical = LyricTokens.Space.md),
                 verticalAlignment = Alignment.CenterVertically,
@@ -145,6 +145,7 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                     }
                 }
             }
+            TypesetSettingsBlock(prefs, ::update)
             ChoiceRow(
                 "字体",
                 listOf(LyricTokens.Fonts.songLabel, LyricTokens.Fonts.heiLabel, if (prefs.font.startsWith('/')) "已导入" else "导入"),
@@ -207,23 +208,6 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
             }
             if (advanced) {
                 HorizontalDivider(Modifier.padding(vertical = LyricTokens.Space.lg))
-                SettingStepper("字号", prefs.fontSize, fontSizeLevels, "${prefs.fontSize.toInt()} sp") {
-                    update(prefs.copy(fontSize = it))
-                }
-                SettingSlider("行距", prefs.lineHeight, 1.1f..2.5f, "%.1f".format(prefs.lineHeight)) {
-                    update(prefs.copy(lineHeight = it))
-                }
-                SettingSlider(
-                    "段距",
-                    prefs.paragraphSpace,
-                    0f..1.5f,
-                    "%.1f".format(prefs.paragraphSpace),
-                ) {
-                    update(prefs.copy(paragraphSpace = it))
-                }
-                SettingSlider("页边距", prefs.margin, 12f..52f, "${prefs.margin.toInt()}") {
-                    update(prefs.copy(margin = it))
-                }
                 SettingToggle("首行缩进", prefs.indent) { update(prefs.copy(indent = it)) }
                 SettingToggle("两端对齐", prefs.justify) { update(prefs.copy(justify = it)) }
                 SettingToggle("跟随系统深色", prefs.followSystem) {
@@ -351,8 +335,41 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
 
 @Composable
 internal fun TypesetPresetRow(prefs: ReaderSettings, update: (ReaderSettings) -> Unit) {
-    ChoiceRow("排版", LyricTokens.Reading.presetLabels, prefs.matchedTypesetPresetIndex()) { index ->
+    ChoiceRow(LyricTokens.Reading.presetRowLabel, LyricTokens.Reading.presetLabels, prefs.matchedTypesetPresetIndex()) { index ->
         update(prefs.applyTypesetPreset(LyricTokens.Reading.presets[index]))
+    }
+}
+
+@Composable
+internal fun TypesetMoreRow(custom: Boolean, onToggle: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = LyricTokens.Component.touchTarget).clickable(onClick = onToggle)
+            .semantics { contentDescription = LyricTokens.Reading.moreLabel },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            LyricTokens.Reading.moreLabel,
+            style = LyricTokens.Type.body,
+            color = Stone,
+            modifier = Modifier.weight(1f),
+        )
+        if (custom) {
+            Text(LyricTokens.Reading.customLabel, style = LyricTokens.Type.auxiliary, color = Stone)
+        }
+    }
+}
+
+@Composable
+internal fun TypesetSettingsBlock(prefs: ReaderSettings, update: (ReaderSettings) -> Unit) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    TypesetPresetRow(prefs, update)
+    TypesetMoreRow(custom = prefs.matchedTypesetPreset() == null, onToggle = { expanded = !expanded })
+    if (expanded) {
+        val labels = LyricTokens.Reading.fineTuneLabels
+        SettingSlider(labels[0], prefs.fontSize, 12f..36f, prefs.fontSize.toInt().toString()) { update(prefs.copy(fontSize = it)) }
+        SettingSlider(labels[1], prefs.lineHeight, 1.1f..2.5f, "%.1f".format(prefs.lineHeight)) { update(prefs.copy(lineHeight = it)) }
+        SettingSlider(labels[2], prefs.paragraphSpace, 0f..1.5f, "%.1f".format(prefs.paragraphSpace)) { update(prefs.copy(paragraphSpace = it)) }
+        SettingSlider(labels[3], prefs.margin, 12f..52f, prefs.margin.toInt().toString()) { update(prefs.copy(margin = it)) }
     }
 }
 

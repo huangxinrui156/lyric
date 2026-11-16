@@ -67,23 +67,13 @@ fun SettingsScreen(vm: MeViewModel, section: String, back: () -> Unit) {
                     Text("$ownBooks 本书有单独设置", fontFamily = Serif, style = LyricTokens.Type.title)
                     TextButton(enabled = ownBooks > 0, onClick = { reset = true }, shape = LyricTokens.Radius.buttonShape) { Text("一键恢复所有书籍继承") }
                     Hint("这里直接编辑全局层。文字书籍层和本书层仍可覆盖全局；恢复继承只移除本书层。")
-                    TypesetPresetRow(prefs) { vm.update(it) }
-                    var typographyAdvanced by rememberSaveable { mutableStateOf(false) }
-                    TextButton(onClick = { typographyAdvanced = !typographyAdvanced }, shape = LyricTokens.Radius.buttonShape) {
-                        Text(if (typographyAdvanced) "收起细调" else "更多排版", style = LyricTokens.Type.auxiliary)
-                    }
-                    if (typographyAdvanced) {
-                        SettingSlider("字号", prefs.fontSize, 12f..36f, prefs.fontSize.toInt().toString()) { vm.update(prefs.copy(fontSize = it)) }
-                        SettingSlider("行距", prefs.lineHeight, 1.1f..2.5f, "%.1f".format(prefs.lineHeight)) { vm.update(prefs.copy(lineHeight = it)) }
-                        SettingSlider("段距", prefs.paragraphSpace, 0f..1.5f, "%.1f".format(prefs.paragraphSpace)) { vm.update(prefs.copy(paragraphSpace = it)) }
-                        SettingSlider("页边距", prefs.margin, 12f..52f, prefs.margin.toInt().toString()) { vm.update(prefs.copy(margin = it)) }
-                    }
-                    SettingToggle("首行缩进", prefs.indent) { vm.update(prefs.copy(indent = it)) }
-                    SettingToggle("两端对齐", prefs.justify) { vm.update(prefs.copy(justify = it)) }
+                    TypesetSettingsBlock(prefs) { vm.update(it) }
                     ChoiceRow("字体", listOf(LyricTokens.Fonts.songLabel, LyricTokens.Fonts.heiLabel),
                         listOf(LyricTokens.Fonts.songKey, LyricTokens.Fonts.heiKey).indexOf(LyricTokens.Fonts.resolveKey(prefs.font)).coerceAtLeast(0)) {
                         vm.update(prefs.copy(font = listOf(LyricTokens.Fonts.songKey, LyricTokens.Fonts.heiKey)[it]))
                     }
+                    SettingToggle("首行缩进", prefs.indent) { vm.update(prefs.copy(indent = it)) }
+                    SettingToggle("两端对齐", prefs.justify) { vm.update(prefs.copy(justify = it)) }
                     ChoiceRow("翻页", PageMode.entries.map { it.label }, PageMode.entries.indexOf(prefs.pageMode)) { vm.update(prefs.copy(pageMode = PageMode.entries[it])) }
                     SettingSlider("左区宽", prefs.tapLeft, .1f.. .4f, "${(prefs.tapLeft * 100).toInt()}%") { vm.update(prefs.copy(tapLeft = it)) }
                     SettingSlider("右区宽", 1 - prefs.tapRight, .1f.. .4f, "${((1 - prefs.tapRight) * 100).toInt()}%") { vm.update(prefs.copy(tapRight = 1 - it)) }

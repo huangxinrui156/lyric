@@ -12,6 +12,10 @@ class TypesetPresetTest {
         assertEquals(LyricTokens.Reading.comfortable, defaults.matchedTypesetPreset())
         assertEquals(LyricTokens.Reading.default, LyricTokens.Reading.comfortable)
         assertEquals(LyricTokens.Reading.presetLabels, listOf("紧凑", "舒适", "宽松"))
+        assertEquals("排版", LyricTokens.Reading.presetRowLabel)
+        assertEquals("更多", LyricTokens.Reading.moreLabel)
+        assertEquals("已自定义", LyricTokens.Reading.customLabel)
+        assertEquals(listOf("字号", "行距", "段距", "页边距"), LyricTokens.Reading.fineTuneLabels)
         assertEquals(1, defaults.matchedTypesetPresetIndex())
         assertEquals(18f, defaults.fontSize)
         assertEquals(1.7f, defaults.lineHeight)
@@ -51,6 +55,8 @@ class TypesetPresetTest {
         assertEquals(-1, custom.matchedTypesetPresetIndex())
         val almostComfortable = ReaderSettings().copy(margin = 28f)
         assertNull(almostComfortable.matchedTypesetPreset())
+        val restored = custom.applyTypesetPreset(LyricTokens.Reading.comfortable)
+        assertEquals(LyricTokens.Reading.comfortable, restored.matchedTypesetPreset())
     }
 
     @Test
