@@ -101,19 +101,39 @@ class OpenWithImportTest {
     }
 
     @Test
-    fun docxOpenedFromTheSystemIsNotImported() = env { repo ->
+    fun docxOpenedFromTheSystemIsImported() = env { repo ->
         val app = ApplicationProvider.getApplicationContext<Application>()
         val file = File(app.cacheDir, "share").apply {
             java.util.zip.ZipOutputStream(outputStream()).use { zip ->
-                zip.putNextEntry(java.util.zip.ZipEntry("word/document.xml"))
-                zip.write("<w:document/>".toByteArray())
-                zip.closeEntry()
+                fun put(name: String, text: String) {
+                    zip.putNextEntry(java.util.zip.ZipEntry(name))
+                    zip.write(text.toByteArray())
+                    zip.closeEntry()
+                }
+                put("[Content_Types].xml", "<Types/>")
+                put("word/document.xml",
+                    """<w:document xmlns:w="w"><w:body><w:p><w:r><w:t>第一章 开始</w:t></w:r></w:p><w:p><w:r><w:t>正文内容。</w:t></w:r></w:p></w:body></w:document>""")
+                put("docProps/core.xml", """<cp:coreProperties xmlns:cp="c" xmlns:dc="d"><dc:title>样例</dc:title></cp:coreProperties>""")
             }
         }
         repo.importUris(listOf(Uri.fromFile(file)), openWith = true)
         val status = repo.imports.value
-        assertEquals(BookFormats.UNSUPPORTED_OPEN_WITH, status.message)
-        assertTrue(repo.dao.all().isEmpty())
-        assertNull(status.openBookId)
+        assertEquals(status.toString(), 1, status.added)
+        assertEquals(0, status.failures)
+        assertNotEquals(BookFormats.UNSUPPORTED_OPEN_WITH, status.message)
+        assertEquals("docx", repo.dao.all().single().extension)
+        assertNotNull(status.openBookId)
+    }
+
+    @Test
+    fun mobiHeaderIsRecognizedAndNotRejectedAsUnsupported() = env { repo ->
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(app.cacheDir, "share").apply {
+            writeBytes(ByteArray(80).also { bytes -> "BOOKMOBI".toByteArray().copyInto(bytes, 60) })
+        }
+        assertEquals("mobi", BookFormats.sniffOpenWith(file))
+        repo.importUris(listOf(Uri.fromFile(file)), openWith = true)
+        val status = repo.imports.value
+        assertNotEquals(BookFormats.UNSUPPORTED_OPEN_WITH, status.message)
     }
 }

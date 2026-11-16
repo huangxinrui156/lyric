@@ -16,7 +16,7 @@ class OpenWithFilterTest {
     private val pm get() = ApplicationProvider.getApplicationContext<Context>().packageManager
 
     @Test
-    fun lyricAppearsForTxtEpubPdfCbzFromFileManagersAndWeChat() {
+    fun lyricAppearsForSupportedBooksFromFileManagersAndWeChat() {
         val cases = listOf(
             "text/plain" to "book.txt",
             "application/epub+zip" to "book.epub",
@@ -25,6 +25,8 @@ class OpenWithFilterTest {
             "application/x-cbz" to "book.cbz",
             "application/zip" to "book.cbz",
             "application/octet-stream" to "book.txt",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" to "book.docx",
+            "application/x-mobipocket-ebook" to "book.mobi",
         )
         for ((mime, name) in cases) {
             val uri = Uri.parse("content://com.tencent.mm.external.fileprovider/share/$name")
@@ -37,7 +39,7 @@ class OpenWithFilterTest {
 
     @Test
     fun lyricAppearsWhenProviderOmitsMimeAndUsesExtension() {
-        for (name in listOf("book.txt", "book.epub", "book.pdf", "book.cbz")) {
+        for (name in listOf("book.txt", "book.epub", "book.pdf", "book.cbz", "book.docx", "book.mobi")) {
             val uri = Uri.parse("file:///storage/emulated/0/Download/$name")
             val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "*/*").addCategory(Intent.CATEGORY_DEFAULT)
             assertTrue("$name extension VIEW should resolve Lyric", resolves(view))
