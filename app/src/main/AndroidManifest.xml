@@ -27,11 +27,6 @@
                 <data android:mimeType="application/vnd.amazon.ebook"/>
                 <data android:mimeType="application/vnd.amazon.mobi8-ebook"/>
                 <data android:mimeType="application/x-mobi8-ebook"/>
-                <data android:mimeType="image/jpeg"/>
-                <data android:mimeType="image/png"/>
-                <data android:mimeType="image/gif"/>
-                <data android:mimeType="image/webp"/>
-                <data android:mimeType="image/bmp"/>
             </intent-filter>
             <!-- WeChat and some managers send ZIP/CBZ or a generic binary type. -->
             <intent-filter>
@@ -60,12 +55,6 @@
                 <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.azw"/>
                 <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.prc"/>
                 <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.zip"/>
-                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.png"/>
-                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.jpg"/>
-                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.jpeg"/>
-                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.gif"/>
-                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.webp"/>
-                <data android:scheme="content" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.bmp"/>
                 <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.txt"/>
                 <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.epub"/>
                 <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.pdf"/>
@@ -76,12 +65,6 @@
                 <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.azw"/>
                 <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.prc"/>
                 <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.zip"/>
-                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.png"/>
-                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.jpg"/>
-                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.jpeg"/>
-                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.gif"/>
-                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.webp"/>
-                <data android:scheme="file" android:host="*" android:mimeType="*/*" android:pathPattern=".*\\.bmp"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
@@ -100,11 +83,6 @@
                 <data android:mimeType="application/vnd.amazon.ebook"/>
                 <data android:mimeType="application/vnd.amazon.mobi8-ebook"/>
                 <data android:mimeType="application/x-mobi8-ebook"/>
-                <data android:mimeType="image/jpeg"/>
-                <data android:mimeType="image/png"/>
-                <data android:mimeType="image/gif"/>
-                <data android:mimeType="image/webp"/>
-                <data android:mimeType="image/bmp"/>
                 <data android:mimeType="application/zip"/>
                 <data android:mimeType="application/octet-stream"/>
             </intent-filter>
