@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
@@ -89,9 +88,7 @@ fun DeskScreen(
         Row(Modifier.padding(horizontal = LyricTokens.Page.margin), verticalAlignment = Alignment.Bottom) {
             Text(
                 "lyric",
-                fontFamily = Serif,
-                fontStyle = FontStyle.Italic,
-                style = LyricTokens.Type.title,
+                style = LyricTokens.Type.wordmark,
             )
             Text(
                 " · 案头",

@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,6 +57,8 @@ object LyricTokens {
     }
     object Type {
         val title = TextStyle(fontFamily = Fonts.hei, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium)
+        /** Lowercase upright Noto Serif wordmark; matches the README banner. */
+        val wordmark = title.copy(fontFamily = Fonts.song, fontStyle = FontStyle.Normal)
         val subtitle = TextStyle(fontFamily = Fonts.hei, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium)
         val body = TextStyle(fontFamily = Fonts.hei, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal)
         val auxiliary = TextStyle(fontFamily = Fonts.hei, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal)

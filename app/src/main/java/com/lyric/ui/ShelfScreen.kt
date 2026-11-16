@@ -42,7 +42,6 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -308,9 +307,7 @@ private fun ShelfContent(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "lyric",
-                            fontFamily = Serif,
-                            fontStyle = FontStyle.Italic,
-                            style = LyricTokens.Type.title,
+                            style = LyricTokens.Type.wordmark,
                         )
                         Text(
                             " · ${section.label}",
