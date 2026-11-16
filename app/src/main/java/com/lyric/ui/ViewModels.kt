@@ -151,24 +151,26 @@ class ReaderViewModel(private val app: LyricApp, val id: String, initialLocator:
     }
     fun readingActivity(next: Locator) {
         val book = state.value.book ?: return
-        if (book.chapters[next.chapterIndex].pending) { goTo(next); return }
+        if (book.chapters.isEmpty()) return
+        val target = book.clamp(next)
+        if (book.chapters[target.chapterIndex].pending) { goTo(target); return }
         val old = locator.value
-        if (next != old && book.contentType == ContentType.COMIC) {
+        if (target != old && book.contentType == ContentType.COMIC) {
             val pages = { l: Locator -> book.chapters.take(l.chapterIndex).sumOf { it.units.size.toLong() } + l.page }
-            tracker.onActivity(kotlin.math.abs(pages(next) - pages(old)))
-        } else if (next != old) {
+            tracker.onActivity(kotlin.math.abs(pages(target) - pages(old)))
+        } else if (target != old) {
             val distance = if (book.progressReady) {
                 val a = book.textOffset(old.chapterIndex) + old.charOffset
-                val b = book.textOffset(next.chapterIndex) + next.charOffset
+                val b = book.textOffset(target.chapterIndex) + target.charOffset
                 kotlin.math.abs(b - a)
-            } else if (old.chapterIndex == next.chapterIndex) kotlin.math.abs(next.charOffset - old.charOffset).toLong()
+            } else if (old.chapterIndex == target.chapterIndex) kotlin.math.abs(target.charOffset - old.charOffset).toLong()
             else 0L
             tracker.onActivity(distance)
         }
-        engine.goTo(next)
+        engine.goTo(target)
         flush()
         com.lyric.reader.KillCheck.activity(app)
-        com.lyric.reader.KillCheck.record(app, id, book.title, book.clamp(next))
+        com.lyric.reader.KillCheck.record(app, id, book.title, target)
     }
     private var finishedRecorded = false
     fun finished() {
@@ -314,6 +316,7 @@ class ReaderViewModel(private val app: LyricApp, val id: String, initialLocator:
     fun highlightNote(rowId: Long, note: String) { viewModelScope.launch { repository.dao.highlightNote(rowId, note.trim()) } }
     fun highlightRange(rowId: Long, chapter: Int, start: Int, end: Int) {
         val text = state.value.book?.chapters?.getOrNull(chapter)?.text ?: return
+        if (start !in 0..text.length || end !in 0..text.length || start >= end) return
         viewModelScope.launch { repository.dao.highlightRange(rowId, start, end, text.substring(start, end)) }
     }
     fun highlightColor(rowId: Long, color: Int) { viewModelScope.launch { repository.dao.highlightColor(rowId, color) } }

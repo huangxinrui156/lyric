@@ -81,7 +81,10 @@ class ComicPages(book: Book) {
         c.units.mapIndexedNotNull { i, u -> (u as? ContentUnit.ImagePage)?.let { ComicPageRef(c.index, i, it) } }
     }
     fun indexOf(l: Locator): Int = pages.indexOfFirst { it.chapter == l.chapterIndex && it.page == l.page }.coerceAtLeast(0)
-    fun locator(i: Int): Locator = pages[i.coerceIn(0, pages.lastIndex)].let { Locator(it.chapter, 0, it.page) }
+    fun locator(i: Int): Locator {
+        if (pages.isEmpty()) return Locator()
+        return pages[i.coerceIn(0, pages.lastIndex)].let { Locator(it.chapter, 0, it.page) }
+    }
 }
 
 /** Which tap zone means "next": right→left books turn forward by tapping the left side. */
@@ -176,6 +179,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
     var zoomed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     suspend fun jumpToPage(page: Int) {
+        if (pages.pages.isEmpty()) return
         val target = page.coerceIn(0, pages.pages.lastIndex)
         if (vertical) listState.scrollToItem(target) else pager.scrollToPage(Spreads.indexOf(spreads, target))
         vm.readingActivity(pages.locator(target))
@@ -229,6 +233,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
     LaunchedEffect(hint) { if (hint) { delay(LyricTokens.Comic.hintMs); hint = false } }
     LaunchedEffect(listState, vertical) {
         if (vertical) snapshotFlow { listState.firstVisibleItemIndex }.collect { i ->
+            if (pages.pages.isEmpty()) return@collect
             vm.readingActivity(pages.locator(i)); if (i == pages.pages.lastIndex) vm.finished()
         }
     }
