@@ -22,7 +22,9 @@ import com.lyric.core.ContentType
 import com.lyric.core.Locator
 import com.lyric.core.clamp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.*
@@ -525,16 +527,21 @@ private fun ContinueCard(book: ShelfBook, repository: LibraryRepository, open: (
         }
     }
     val chapterIndex by produceState<Int?>(null, book.id, book.lastRead, book.chapterTitle, book.contentType) {
-        value = null
         if (book.contentType != ContentType.COMIC.name) {
             val title = book.chapterTitle.trim()
             if (title.isEmpty() || title == "未读") {
-                value = runCatching { repository.dao.progress(book.id)?.chapterIndex }.getOrNull()
+                value = try {
+                    withContext(Dispatchers.IO) { repository.dao.progress(book.id)?.chapterIndex }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    null
+                }
             }
         }
     }
     val chapterLabel = continueReadingChapterLabel(book.chapterTitle, chapterIndex)
-    val percentLabel = " · ${(book.percent * 100).toInt()}%"
+    val percentText = "${(book.percent * 100).toInt()}%"
+    val percentLabel = if (chapterLabel.isEmpty()) percentText else " · $percentText"
     val comicLabel = if (book.contentType == ContentType.COMIC.name) pages ?: "正在读取页码…" else null
     Row(
         Modifier.fillMaxWidth()
@@ -828,7 +835,9 @@ internal fun continueReadingBook(books: List<ShelfBook>): ShelfBook? =
 /** Chapter label for the continue-reading card; blank or the “未读” placeholder become “第 n 章”. */
 internal fun continueReadingChapterLabel(chapterTitle: String, chapterIndex: Int?): String {
     val title = chapterTitle.trim()
-    return if (title.isNotEmpty() && title != "未读") title else "第 ${(chapterIndex ?: 0) + 1} 章"
+    if (title.isNotEmpty() && title != "未读") return title
+    // Wait for the saved index so the card does not flash 「第 1 章」 on a later chapter.
+    return if (chapterIndex == null) "" else "第 ${chapterIndex + 1} 章"
 }
 
 internal fun comicPageLabel(book: Book, progress: ProgressRow?): String {

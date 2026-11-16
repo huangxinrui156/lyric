@@ -10,9 +10,9 @@ class ContinueReadingLabelTest {
     }
 
     @Test fun fallsBackToNumberedChapterWhenTitleIsMissing() {
-        assertEquals("第 1 章", continueReadingChapterLabel("", null))
-        assertEquals("第 1 章", continueReadingChapterLabel("   ", null))
-        assertEquals("第 1 章", continueReadingChapterLabel("未读", null))
+        assertEquals("", continueReadingChapterLabel("", null))
+        assertEquals("", continueReadingChapterLabel("   ", null))
+        assertEquals("", continueReadingChapterLabel("未读", null))
         assertEquals("第 5 章", continueReadingChapterLabel("", 4))
         assertEquals("第 5 章", continueReadingChapterLabel("未读", 4))
     }
