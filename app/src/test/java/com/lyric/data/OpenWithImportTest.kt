@@ -1,6 +1,7 @@
 package com.lyric.data
 
 import android.app.Application
+import com.lyric.core.BookFormats
 import android.content.Intent
 import android.net.Uri
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
@@ -69,5 +70,50 @@ class OpenWithImportTest {
         assertNotNull(id)
         assertNull(repo.consumeOpenBook())
         assertEquals(id, repo.books.first().single().id)
+    }
+
+    @Test
+    fun unsupportedBinaryIsRejectedWithOneLineMessageAndNotImported() = env { repo ->
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(app.cacheDir, "share.bin").apply {
+            writeBytes(byteArrayOf(0, 1, 2, 3, 0, 0xFF.toByte(), 0, 0x10, 0, 0, 7, 8, 9, 0))
+        }
+        repo.importUris(listOf(Uri.fromFile(file)), openWith = true)
+        val status = repo.imports.value
+        assertEquals(BookFormats.UNSUPPORTED_OPEN_WITH, status.message)
+        assertTrue(status.errors.isEmpty())
+        assertEquals(0, status.added)
+        assertEquals(1, status.failures)
+        assertNull(status.openBookId)
+        assertTrue(repo.dao.all().isEmpty())
+    }
+
+    @Test
+    fun namelessDecodableTextStillImportsThroughOpenWith() = env { repo ->
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(app.cacheDir, "share").apply { writeText("第一章 开始\n\n正文内容。".repeat(20)) }
+        repo.importUris(listOf(Uri.fromFile(file)), openWith = true)
+        val status = repo.imports.value
+        assertEquals(1, status.added)
+        assertEquals(0, status.failures)
+        assertNotNull(status.openBookId)
+        assertEquals("txt", repo.dao.all().single().extension)
+    }
+
+    @Test
+    fun docxOpenedFromTheSystemIsNotImported() = env { repo ->
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(app.cacheDir, "share").apply {
+            java.util.zip.ZipOutputStream(outputStream()).use { zip ->
+                zip.putNextEntry(java.util.zip.ZipEntry("word/document.xml"))
+                zip.write("<w:document/>".toByteArray())
+                zip.closeEntry()
+            }
+        }
+        repo.importUris(listOf(Uri.fromFile(file)), openWith = true)
+        val status = repo.imports.value
+        assertEquals(BookFormats.UNSUPPORTED_OPEN_WITH, status.message)
+        assertTrue(repo.dao.all().isEmpty())
+        assertNull(status.openBookId)
     }
 }

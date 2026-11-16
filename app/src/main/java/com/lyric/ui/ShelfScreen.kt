@@ -17,6 +17,7 @@ import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import com.lyric.core.Book
+import com.lyric.core.BookFormats
 import com.lyric.core.ContentType
 import com.lyric.core.Locator
 import com.lyric.core.clamp
@@ -87,7 +88,8 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     LaunchedEffect(status.running, status.message) {
-        if (!status.running && status.message.isNotBlank() && !status.folder) snackbar.showSnackbar(status.message)
+        if (!status.running && status.message.isNotBlank() && !status.folder &&
+            status.message != BookFormats.UNSUPPORTED_OPEN_WITH) snackbar.showSnackbar(status.message)
     }
     LaunchedEffect(status.running, status.batchId, status.openBookId) {
         if (status.running) return@LaunchedEffect
