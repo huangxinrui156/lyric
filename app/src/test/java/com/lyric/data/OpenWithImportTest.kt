@@ -2,6 +2,7 @@ package com.lyric.data
 
 import android.app.Application
 import com.lyric.core.BookFormats
+import com.lyric.core.tinyPng
 import android.content.Intent
 import android.net.Uri
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
@@ -135,5 +136,31 @@ class OpenWithImportTest {
         repo.importUris(listOf(Uri.fromFile(file)), openWith = true)
         val status = repo.imports.value
         assertNotEquals(BookFormats.UNSUPPORTED_OPEN_WITH, status.message)
+    }
+
+    @Test
+    fun azw3OpenedFromTheSystemIsRecognizedByName() = env { repo ->
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(app.cacheDir, "book.azw3").apply {
+            writeBytes(ByteArray(80).also { bytes -> "BOOKMOBI".toByteArray().copyInto(bytes, 60) })
+        }
+        assertEquals("azw3", BookFormats.sniffOpenWith(file, displayName = file.name))
+        repo.importUris(listOf(Uri.fromFile(file)), openWith = true)
+        val status = repo.imports.value
+        assertNotEquals(BookFormats.UNSUPPORTED_OPEN_WITH, status.message)
+        // A header-only file may fail to parse, but it must not be rejected as an unsupported type.
+    }
+
+    @Test
+    fun imageOpenedFromTheSystemIsImportedAsAComic() = env { repo ->
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(app.cacheDir, "page.png").apply { writeBytes(tinyPng(4, 4)) }
+        repo.importUris(listOf(Uri.fromFile(file)), openWith = true)
+        val status = repo.imports.value
+        assertEquals(status.toString(), 1, status.added)
+        assertEquals(0, status.failures)
+        assertNotEquals(BookFormats.UNSUPPORTED_OPEN_WITH, status.message)
+        assertEquals("cbz", repo.dao.all().single().extension)
+        assertNotNull(status.openBookId)
     }
 }

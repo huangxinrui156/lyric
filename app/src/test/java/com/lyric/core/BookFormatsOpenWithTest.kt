@@ -54,6 +54,10 @@ class BookFormatsOpenWithTest {
             })
         }
         assertEquals("mobi", BookFormats.sniffOpenWith(mobi))
+        assertEquals("azw3", BookFormats.sniffOpenWith(mobi, displayName = "book.azw3"))
+        assertEquals("azw3", BookFormats.sniffOpenWith(mobi, mimeType = "application/vnd.amazon.mobi8-ebook"))
+        assertEquals("mobi", BookFormats.sniffOpenWith(mobi, displayName = "book.azw"))
+        assertEquals("mobi", BookFormats.sniffOpenWith(mobi, displayName = "book.prc"))
     }
 
     @Test fun sniffRejectsImagesAndGenericZipsWithoutCrashing() {
