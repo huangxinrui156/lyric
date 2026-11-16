@@ -1,0 +1,26 @@
+name: 建议 / Feature
+description: 提出功能或体验上的改进。 / Suggest a feature or improvement.
+title: "[建议] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lyric 定位是安静的本地阅读器。书源、账号、广告和在线抓取不在考虑范围内。
+        Lyric is a quiet local reader. Catalogs, accounts, ads, and online scraping are out of scope.
+  - type: textarea
+    id: need
+    attributes:
+      label: 想解决什么 / What problem does this solve
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 建议的做法 / Proposed approach
+    validations:
+      required: true
+  - type: textarea
+    id: extras
+    attributes:
+      label: 其它说明 / Notes
