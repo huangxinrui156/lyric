@@ -49,6 +49,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -322,13 +323,22 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
                     // Mirrored for right-to-left: the start of the book is on the right.
                     CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                         var drag by remember { mutableStateOf<Float?>(null) }
+                        val sliderColors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = track)
                         Slider(drag ?: currentIndex.toFloat(), { drag = it },
                             valueRange = 0f..(pages.pages.lastIndex.coerceAtLeast(1)).toFloat(),
                             onValueChangeFinished = { drag?.let { v -> scope.launch { jumpToPage(v.toInt()) } }; drag = null },
                             modifier = Modifier.weight(1f).padding(horizontal = LyricTokens.Space.sm),
-                            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent, inactiveTrackColor = track),
+                            colors = sliderColors,
                             thumb = {
                                 Box(Modifier.size(LyricTokens.Component.comicSliderThumb).background(accent, CircleShape))
+                            },
+                            track = { state ->
+                                SliderDefaults.Track(
+                                    sliderState = state,
+                                    colors = sliderColors,
+                                    drawStopIndicator = {},
+                                    thumbTrackGapSize = 0.dp,
+                                )
                             })
                     }
                     Text(if (rtl) "1" else "${pages.pages.size}", color = meta, style = LyricTokens.Type.auxiliary)
