@@ -1,6 +1,11 @@
 package com.lyric.data
 
 import android.app.Application
+import java.util.zip.ZipOutputStream
+import java.util.zip.ZipEntry
+import com.lyric.core.tinyPng
+import androidx.room.Room
+import android.net.Uri
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.core.app.ApplicationProvider
 import com.lyric.core.ContentType
@@ -9,6 +14,7 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -100,6 +106,74 @@ class PerBookSettingsTest {
         } finally {
             secondJob.cancelAndJoin()
             file.delete()
+        }
+    }
+
+    @Test
+    fun changingAComicDoesNotLeakIntoTypeDefaultsOrTheNextImportedComic() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val store = SettingsStore(
+            context,
+            PreferenceDataStoreFactory.create(scope = scope) {
+                File(context.filesDir, "type-defaults-${System.nanoTime()}.preferences_pb")
+            },
+        )
+        val db = Room.inMemoryDatabaseBuilder(context, LibraryDatabase::class.java).allowMainThreadQueries().build()
+        fun cbz(name: String, pixel: Int): File {
+            val file = File(context.cacheDir, name)
+            ZipOutputStream(file.outputStream()).use { zip ->
+                zip.putNextEntry(ZipEntry("1.png"))
+                zip.write(tinyPng(pixel, pixel))
+                zip.closeEntry()
+            }
+            return file
+        }
+        try {
+            val repo = LibraryRepository(context, db, store)
+            repo.importUris(listOf(Uri.fromFile(cbz("first.cbz", 4))))
+            val first = repo.dao.all().single()
+            val before = store.settings(first.id, ContentType.COMIC).first()
+            assertEquals("rtl", before.comicDirection)
+            assertFalse(before.comicTrim)
+            val snapBefore = store.snapshot()
+
+            store.update(
+                SettingsScope.BOOK,
+                first.id,
+                before,
+                before.copy(comicDirection = "ltr", comicTrim = true, comicSpread = true),
+                ContentType.COMIC,
+            )
+            val snapAfter = store.snapshot()
+            assertEquals(snapBefore.strings["global"], snapAfter.strings["global"])
+            assertEquals(snapBefore.strings["type_TEXT"], snapAfter.strings["type_TEXT"])
+            assertEquals(snapBefore.strings["type_COMIC"], snapAfter.strings["type_COMIC"])
+            assertTrue(snapAfter.strings.containsKey("book_${first.id}"))
+
+            repo.importUris(listOf(Uri.fromFile(cbz("second.cbz", 8))))
+            val second = repo.dao.all().single { it.id != first.id }
+            val next = store.settings(second.id, ContentType.COMIC).first()
+            assertEquals("rtl", next.comicDirection)
+            assertFalse(next.comicTrim)
+            assertNull(next.comicSpread)
+            assertEquals("ltr", store.settings(first.id, ContentType.COMIC).first().comicDirection)
+
+            val comicType = store.settings("unused-for-type", ContentType.COMIC).first()
+            store.update(
+                SettingsScope.TYPE,
+                "",
+                comicType,
+                comicType.copy(comicDirection = "vertical"),
+                ContentType.COMIC,
+            )
+            repo.importUris(listOf(Uri.fromFile(cbz("third.cbz", 12))))
+            val third = repo.dao.all().single { it.id != first.id && it.id != second.id }
+            assertEquals("vertical", store.settings(third.id, ContentType.COMIC).first().comicDirection)
+            assertEquals("ltr", store.settings(first.id, ContentType.COMIC).first().comicDirection)
+        } finally {
+            db.close()
+            scope.cancel()
         }
     }
 }
