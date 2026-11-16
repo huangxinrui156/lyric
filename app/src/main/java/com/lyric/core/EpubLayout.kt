@@ -78,7 +78,7 @@ object EpubLayout {
                     currentRanges[node] = start to end
                     if (end > start) {
                         val heading = tag.removePrefix("h").toIntOrNull()?.takeIf { tag.startsWith('h') && it in 1..6 }
-                        styles += TextStyleRange(start, end,
+                        val structural = TextStyleRange(start, end,
                             bold = tag in setOf("b", "strong") || heading != null,
                             italic = tag in setOf("i", "em"),
                             sizeEm = heading?.let { (2.1f - it * .18f).coerceAtLeast(1f) },
@@ -88,13 +88,14 @@ object EpubLayout {
                             }.getOrNull() else null,
                             ruby = if (tag == "ruby") node.select("rt").joinToString(" ") { it.text() }.ifBlank { null } else null,
                             rule = tag == "hr")
-                        if (authored.isNotEmpty()) styles += TextStyleRange(start, end,
+                        if (structural.hasEffect()) styles += structural
+                        if (authored.isNotEmpty()) TextStyleRange(start, end,
                             bold = authored["font-weight"]?.let { it == "bold" || (it.toIntOrNull() ?: 0) >= 600 } ?: false,
                             italic = authored["font-style"] in setOf("italic", "oblique"),
                             sizeEm = em(authored["font-size"])?.coerceIn(.5f, 3f),
                             align = authored["text-align"], indentEm = em(authored["text-indent"]),
                             fontFamily = authored["font-family"]?.substringBefore(',')?.trim()?.trim('\'', '"'),
-                            bookStyle = true)
+                            bookStyle = true).takeIf { it.hasEffect() }?.let(styles::add)
                     }
                 }
             }
@@ -136,4 +137,7 @@ object EpubLayout {
         legacyWalk(body)
         return Result(out.toString().ifBlank { "本节无文字内容。" }, styles, mapping)
     }
+
+    private fun TextStyleRange.hasEffect() = bold || italic || sizeEm != null || align != null ||
+        indentEm != null || fontFamily != null || resource != null || ruby != null || rule
 }

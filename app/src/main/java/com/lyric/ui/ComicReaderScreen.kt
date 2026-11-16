@@ -30,6 +30,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -90,7 +91,7 @@ object ComicTaps {
 }
 
 @Composable
-fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
+fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirstReady: (Float?) -> Unit = {}) {
     val prefs by vm.settings.collectAsStateWithLifecycle()
     val locator by vm.locator.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -100,6 +101,14 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
     val rtl = dir == "rtl"
     val vertical = dir == "vertical"
     val pages = remember(book) { ComicPages(book) }
+    var firstPageReady by remember(book) { mutableStateOf(false) }
+    val latestFirstReady by rememberUpdatedState(onFirstReady)
+    val reportReady = { ratio: Float? ->
+        if (!firstPageReady) {
+            firstPageReady = true
+            latestFirstReady(ratio)
+        }
+    }
     val sourceState by produceState<Result<com.lyric.reader.PageSource>?>(null, vm.id, isPdf) {
         var source: com.lyric.reader.PageSource? = null
         try {
@@ -115,6 +124,9 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
         }
     }
     val archive = sourceState
+    LaunchedEffect(archive) {
+        if (archive?.isFailure == true || (archive != null && pages.pages.isEmpty())) reportReady(null)
+    }
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val largeScreen = LocalConfiguration.current.smallestScreenWidthDp >= 600
     val spreadOn = Spreads.enabled(prefs.comicSpread, largeScreen)
@@ -128,9 +140,10 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
         androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex = pages.indexOf(locator))
     }
     val latestLocator by rememberUpdatedState(locator)
-    val outline by produceState(emptyList<PdfOutline.Entry>(), archive) {
+    var chapters by remember { mutableStateOf(false) }
+    val outline by produceState(emptyList<PdfOutline.Entry>(), archive, chapters) {
         val source = archive?.getOrNull() as? PdfPageSource
-        value = if (source == null) emptyList() else withContext(Dispatchers.IO) { source.outline() }
+        if (source != null && chapters) value = withContext(Dispatchers.IO) { source.outline() }
     }
     var layoutMenu by remember { mutableStateOf(false) }
     var chrome by remember { mutableStateOf(false) }
@@ -152,7 +165,6 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
         }
     }
     var zoomed by remember { mutableStateOf(false) }
-    var chapters by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     suspend fun jumpToPage(page: Int) {
         val target = page.coerceIn(0, pages.pages.lastIndex)
@@ -216,9 +228,9 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
         pages.indexOf(locator).takeIf { it in currentSpread } ?: currentSpread.firstOrNull() ?: 0
 
     var viewport by remember { mutableStateOf(IntSize.Zero) }
-    LaunchedEffect(archive, vertical, currentIndex, viewport) {
+    LaunchedEffect(archive, vertical, currentIndex, viewport, firstPageReady) {
         val source = archive?.getOrNull() ?: return@LaunchedEffect
-        if (!vertical || viewport.width <= 0) return@LaunchedEffect
+        if (!firstPageReady || !vertical || viewport.width <= 0) return@LaunchedEffect
         withContext(Dispatchers.IO) {
             for (distance in 1..2) for (index in listOf(currentIndex + distance, currentIndex - distance)) {
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -238,17 +250,23 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit) {
             // 条漫: images fill the screen width, stacked without gaps.
             LazyColumn(Modifier.fillMaxSize().testTag("comic-strip"), state = listState) {
                 items(pages.pages.size, key = { it }) { index ->
-                    ComicStripPage(archive.getOrThrow(), pages.pages[index]) { hint = false; chrome = !chrome }
+                    ComicStripPage(archive.getOrThrow(), pages.pages[index],
+                        decodeEnabled = firstPageReady || index == currentIndex,
+                        initial = !firstPageReady && index == currentIndex,
+                        onReady = { if (index == currentIndex) reportReady(it) }) { hint = false; chrome = !chrome }
                 }
             }
         } else {
             CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
-                HorizontalPager(pager, Modifier.fillMaxSize(), beyondViewportPageCount = 2,
+                HorizontalPager(pager, Modifier.fillMaxSize(), beyondViewportPageCount = if (firstPageReady) 2 else 0,
                     userScrollEnabled = !zoomed, key = { it }) { index ->
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                         val pair = spreads[index].let { if (rtl) it.reversed() else it }
                         ComicPage(archive.getOrThrow(), pages.pages[pair.first()],
                             second = pair.getOrNull(1)?.let { pages.pages[it] }, trim = prefs.comicTrim, fillWidth = landscape,
+                            decodeEnabled = firstPageReady || index == pager.currentPage,
+                            initial = !firstPageReady && index == pager.currentPage,
+                            onReady = { if (index == pager.currentPage) reportReady(it) },
                             onZoom = { if (index == pager.currentPage) zoomed = it },
                             onTap = { x, w ->
                                 hint = false
@@ -401,24 +419,30 @@ fun DirectionIcon(dir: String, tint: Color, modifier: Modifier = Modifier.size(2
 
 /** 条漫 page: full width, height from the header aspect ratio (no layout jump), decoded at screen width. */
 @Composable
-private fun ComicStripPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, onTap: () -> Unit) {
+private fun ComicStripPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, decodeEnabled: Boolean, initial: Boolean, onReady: (Float?) -> Unit, onTap: () -> Unit) {
     val latestTap by rememberUpdatedState(onTap)
     var width by remember { mutableIntStateOf(0) }
     var attempt by remember { mutableIntStateOf(0) }
     var result by remember(ref, attempt) { mutableStateOf<Result<Bitmap>?>(null) }
-    LaunchedEffect(archive, ref, attempt, width) {
-        if (width > 0) result = withContext(Dispatchers.IO) { runCatching { archive.page(ref.unit.resource, width) } }
+    val readerManaged = remember(ref, attempt) { initial && attempt == 0 }
+    val readyCallback by rememberUpdatedState(onReady)
+    val stage = if (readerManaged) LoadPresentation.CONTENT else loadPresentation(ref to attempt, result != null)
+    val alpha = loadContentAlpha(stage)
+    LaunchedEffect(result) { result?.let { r -> readyCallback(r.getOrNull()?.let { it.width.toFloat() / it.height }) } }
+    LaunchedEffect(archive, ref, attempt, width, decodeEnabled) {
+        if (width > 0 && decodeEnabled) result = withContext(Dispatchers.IO) { runCatching { archive.page(ref.unit.resource, width) } }
     }
     val ratio = ref.unit.width?.let { w -> ref.unit.height?.takeIf { it > 0 && w > 0 }?.let { w.toFloat() / it } } ?: (1 / 1.4f)
     Box(Modifier.fillMaxWidth().aspectRatio(ratio).onSizeChanged { width = it.width }
         .pointerInput(ref) { detectTapGestures(onTap = { latestTap() }) }) {
         val r = result
         when {
-            r == null -> Box(Modifier.fillMaxSize().background(Skeleton))
+            r == null || (!readerManaged && !stage.content) -> if (!readerManaged && stage.skeleton) ComicPlaceholder(ratio, true)
             r.isFailure -> ComicError("这一页没能打开",
                 "${ref.unit.resource.substringAfterLast('/')} · ${r.exceptionOrNull()?.localizedMessage?.substringAfter(" · ") ?: "未知错误"}",
                 { attempt++ }, null)
-            else -> Image(r.getOrThrow().asImageBitmap(), null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxSize())
+            else -> Image(r.getOrThrow().asImageBitmap(), null, contentScale = ContentScale.FillWidth,
+                modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = if (readerManaged) 1f else alpha.value })
         }
     }
 }
@@ -443,17 +467,19 @@ internal fun artworkRatio(art: List<PageArtwork>, trimmed: Boolean): Float = art
 
 @Composable
 private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, second: ComicPageRef? = null, trim: Boolean = false, fillWidth: Boolean = false, onZoom: (Boolean) -> Unit,
-                      onTap: (Float, Float) -> Unit, onSkip: () -> Unit) {
+                      decodeEnabled: Boolean, initial: Boolean, onReady: (Float?) -> Unit, onTap: (Float, Float) -> Unit, onSkip: () -> Unit) {
     val latestTap by rememberUpdatedState(onTap)
     val latestZoom by rememberUpdatedState(onZoom)
     var size by remember { mutableStateOf(IntSize.Zero) }
     var attempt by remember { mutableIntStateOf(0) }
     var result by remember(ref, second, attempt) { mutableStateOf<Result<List<PageArtwork>>?>(null) }
-    var slow by remember(ref, second, attempt) { mutableStateOf(false) }
-    var verySlow by remember(ref, second, attempt) { mutableStateOf(false) }
-    LaunchedEffect(archive, ref, second, attempt, size, fillWidth) {
-        if (size.width == 0) return@LaunchedEffect
-        launch { delay(300); slow = true; delay(700); verySlow = true }
+    val readerManaged = remember(ref, second, attempt) { initial && attempt == 0 }
+    val readyCallback by rememberUpdatedState(onReady)
+    val stage = if (readerManaged) LoadPresentation.CONTENT else loadPresentation(listOf(ref, second, attempt), result != null)
+    val alpha = loadContentAlpha(stage)
+    LaunchedEffect(result) { result?.let { r -> readyCallback(r.getOrNull()?.let { artworkRatio(it, false) }) } }
+    LaunchedEffect(archive, ref, second, attempt, size, fillWidth, decodeEnabled) {
+        if (size.width == 0 || !decodeEnabled) return@LaunchedEffect
         result = withContext(Dispatchers.IO) { runCatching {
             listOfNotNull(ref, second).map { page ->
                 // Fill-width (landscape) pages are taller than the viewport: bound by width, not height.
@@ -502,22 +528,19 @@ private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, s
             }
         }, contentAlignment = Alignment.Center) {
         val r = result
-        val ratio = ref.unit.width?.let { w -> ref.unit.height?.takeIf { it > 0 && w > 0 }?.let { w.toFloat() / it } } ?: (3f / 4)
+        val ratio = listOfNotNull(ref, second).sumOf { page ->
+            (page.unit.width?.let { w -> page.unit.height?.takeIf { it > 0 && w > 0 }?.let { w.toFloat() / it } } ?: (3f / 4)).toDouble()
+        }.toFloat()
         when {
-            r == null -> Box(Modifier.fillMaxWidth().aspectRatio(ratio, matchHeightConstraintsFirst = ratio < size.width.toFloat() / size.height.coerceAtLeast(1))) {
-                if (slow) {
-                    val breathe by rememberInfiniteTransition(label = "skeleton").animateFloat(.06f, .09f,
-                        infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "breathe")
-                    Box(Modifier.fillMaxSize().background(Skeleton).background(Color.White.copy(alpha = breathe)))
-                    if (verySlow) Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(.4f).height(2.dp).background(ComicAccent.copy(alpha = .7f)))
-                }
-            }
+            r == null || (!readerManaged && !stage.content) -> if (!readerManaged && stage.skeleton) ComicPlaceholder(ratio, true)
             r.isFailure -> ComicError("这一页没能打开",
                 "${ref.unit.resource.substringAfterLast('/')} · ${r.exceptionOrNull()?.localizedMessage?.substringAfter(" · ") ?: "未知错误"}",
                 { attempt++ }, onSkip)
             else -> trimmedArtwork(r.getOrThrow(), trim).let { art ->
                 val trimmed = trim && art.any { it.crop != PageCrop() }
-                ComicArtworkViewport(art, trimmed, fillWidth, scale, offset)
+                Box(Modifier.fillMaxSize().graphicsLayer { this.alpha = if (readerManaged) 1f else alpha.value }) {
+                    ComicArtworkViewport(art, trimmed, fillWidth, scale, offset)
+                }
             }
         }
         if (scale > 1.01f) Text("${"%.1f".format(scale)}×", color = ComicInk, fontSize = 11.sp,

@@ -22,6 +22,7 @@ class ReaderCanvas(context: Context) : View(context) {
     var onLocator: (Locator) -> Unit = {}
     var onMenu: () -> Unit = {}
     var onContentReady: () -> Unit = {}
+    var onWindowReady: () -> Unit = {}
     private var contentReported = false
     private var describedLocator: Locator? = null
     var onEndReached: () -> Unit = {}
@@ -218,6 +219,7 @@ class ReaderCanvas(context: Context) : View(context) {
                 layoutKey = key
                 pendingKey = null
                 syncLocation()
+                onWindowReady()
                 worker.prioritize(this@ReaderCanvas.locator)
                 invalidate()
             }
@@ -411,7 +413,6 @@ class ReaderCanvas(context: Context) : View(context) {
         set.layout.draw(canvas)
         if (!contentReported) {
             contentReported = true
-            ReaderMetrics.endOpen()
             onContentReady()
         }
         if (describedLocator != locator) {

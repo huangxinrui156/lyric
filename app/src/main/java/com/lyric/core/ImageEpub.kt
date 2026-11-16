@@ -69,9 +69,15 @@ object ImageEpub {
 
         val pages = mutableListOf<Pair<String, String>>() // (spine doc path, image path)
         var docs = 0; var imageDocs = 0
+        var visited = 0
         val firstPageOfDoc = HashMap<String, Int>()
         refs.forEach { ref ->
             ImportProgress.check()
+            // Even if every remaining item is an image, this text book cannot meet
+            // the existing classification threshold. Avoid parsing its whole spine twice.
+            val remaining = refs.size - visited++
+            val threshold = if (prePaginated) .6f else .9f
+            if ((imageDocs + remaining).toFloat() / (docs + remaining) < threshold) return null
             val item = manifest[ref.attr("idref")] ?: return@forEach
             val path = importAttempt { EpubPaths.resolve(opfPath, item.attr("href")) }.getOrNull() ?: return@forEach
             docs++

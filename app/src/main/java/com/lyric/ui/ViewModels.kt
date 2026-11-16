@@ -182,7 +182,15 @@ class ReaderViewModel(private val app: LyricApp, val id: String) : ViewModel() {
         viewModelScope.launch {
             state.value = ReaderState()
             try {
+                val metadata = repository.dao.book(id)
+                state.value = ReaderState(row = metadata)
+                val initialSettings = async {
+                    repository.settings.settings(id, metadata?.contentType?.let(ContentType::valueOf) ?: ContentType.TEXT).first()
+                }
                 val (row, book) = repository.load(id)
+                val firstSettings = initialSettings.await()
+                engine.settings(if (metadata?.contentType == book.contentType.name) firstSettings else
+                    repository.settings.settings(id, book.contentType).first())
                 val p = repository.dao.progress(id)
                 val requestedMark = if (pendingBookmark != 0L) repository.dao.bookmark(pendingBookmark) else null
                 engine.open(

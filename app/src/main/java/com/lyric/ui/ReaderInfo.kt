@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.luminance
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -43,11 +44,14 @@ fun readerClockAndBattery(): Pair<String, String> {
 
 @Composable
 fun PaperSkeleton(paper: Color, ink: Color, margin: Float = 20f) {
-    Column(Modifier.fillMaxSize().background(paper).padding(horizontal = margin.dp, vertical = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        repeat(30) { row ->
-            Box(Modifier.fillMaxWidth(if (row % 4 == 3) .75f else 1f).height(7.dp)
-                .background(ink.copy(alpha = .065f), RoundedCornerShape(3.dp)))
+    val color = if (paper.luminance() < .2f) Color(0xFF2A2B2F) else Color(0xFFE9E2D6)
+    BoxWithConstraints(Modifier.fillMaxSize().background(paper).padding(horizontal = margin.dp, vertical = 32.dp)) {
+        val rows = ((maxHeight.value + 10) / 22).toInt().coerceAtLeast(1)
+        Column(Modifier.fillMaxSize().loadingBreathe(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        repeat(rows) { row ->
+            Box(Modifier.fillMaxWidth(if (row == rows - 1) .6f else 1f).height(12.dp)
+                .background(color, RoundedCornerShape(2.dp)))
+        }
         }
     }
 }

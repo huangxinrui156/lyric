@@ -6,7 +6,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** All page boundaries are retained; only a bounded set of expensive layouts/bitmaps is kept. */
+/** Boundaries survive layout eviction; count the active chapter and prefetch only adjacent windows. */
 class PrePaginator(
     private val book: Book,
     private val scope: CoroutineScope,
@@ -39,31 +39,37 @@ class PrePaginator(
         val next = Window(at.chapterIndex, at.charOffset / Typesetter.WINDOW * Typesetter.WINDOW)
         if (active == next && background?.isActive == true) return
         active = next
-        protected = buildSet {
-            val c = at.chapterIndex
-            val w = at.charOffset / Typesetter.WINDOW * Typesetter.WINDOW
-            for (offset in listOf(w - Typesetter.WINDOW, w, w + Typesetter.WINDOW)) {
-                if (offset >= 0 && offset < book.chapters[c].text.length.coerceAtLeast(1)) add(Window(c, offset))
-            }
-            if (c > 0) add(Window(c - 1, windows(book.chapters[c - 1].text.length).last()))
-            if (c < book.chapters.lastIndex) add(Window(c + 1, 0))
-        }
         background?.cancel()
-        val nearby = protected.toList()
         background = scope.launch(Dispatchers.Default) {
-            // Finish the adjacent windows before doing whole-book page counts.
+            val nearby = buildSet {
+                val c = at.chapterIndex
+                val w = at.charOffset / Typesetter.WINDOW * Typesetter.WINDOW
+                for (offset in listOf(w - Typesetter.WINDOW, w, w + Typesetter.WINDOW)) {
+                    if (offset >= 0 && offset < book.chapters[c].text.length.coerceAtLeast(1)) add(Window(c, offset))
+                }
+                if (c > 0) add(Window(c - 1, windows(book.chapters[c - 1].text.length).last()))
+                if (c < book.chapters.lastIndex) add(Window(c + 1, 0))
+            }
+            protected = nearby
+            // Only the visible chapter needs a total. Never typeset the rest of a
+            // thousand-chapter book speculatively while the reader/shelf is animating.
             for (window in nearby) {
                 ensureActive()
                 get(window.chapter, window.offset)
-                withContext(Dispatchers.Main) { changed(window.chapter) }
+                if (window.chapter == at.chapterIndex) withContext(Dispatchers.Main) { changed(window.chapter) }
+                delay(16)
             }
-            for (window in order(book.chapters.map { it.text.length }, at)) {
+            val offsets = windows(book.chapters[at.chapterIndex].text.length)
+            for (offset in offsets) {
                 ensureActive()
-                val near = window in protected
+                val window = Window(at.chapterIndex, offset)
                 val known = lock.withLock { boundaries.containsKey(window) }
-                if (!known || near) get(window.chapter, window.offset)
-                if (!known) withContext(Dispatchers.Main) { changed(window.chapter) }
-                yield()
+                if (!known) get(window.chapter, window.offset)
+                // Coalesce page-info updates; the first window never waits for these.
+                if (!known && (offset == offsets.last() ||
+                            offset % (Typesetter.WINDOW * 8) == 0))
+                    withContext(Dispatchers.Main) { changed(window.chapter) }
+                delay(16)
             }
         }
     }

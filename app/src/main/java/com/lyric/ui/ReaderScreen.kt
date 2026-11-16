@@ -70,6 +70,45 @@ import kotlinx.coroutines.launch
 @Composable
 fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, back: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val prefs by vm.settings.collectAsStateWithLifecycle()
+    var ready by remember(vm) { mutableStateOf(false) }
+    var decodedRatio by remember(vm) { mutableStateOf<Float?>(null) }
+    var generation by remember(vm) { mutableIntStateOf(0) }
+    LaunchedEffect(state.loading) { if (state.loading) { ready = false; decodedRatio = null; generation++ } }
+    val stage = loadPresentation(vm to generation, ready || state.error != null)
+    val alpha = loadContentAlpha(stage)
+    val activity = LocalContext.current as? Activity
+    LaunchedEffect(stage) {
+        if (stage == com.lyric.reader.LoadPresentation.CONTENT && state.error == null) {
+            // Include the hold/fade in device traces; a decoded but hidden page is not readable.
+            withFrameNanos { }
+            com.lyric.reader.ReaderMetrics.endOpen()
+            activity?.reportFullyDrawn()
+        }
+    }
+    val theme = if (prefs.followSystem && isSystemInDarkTheme()) ReaderTheme.NIGHT else prefs.theme
+    val paper = Color(if (theme == ReaderTheme.CUSTOM) prefs.customBg else theme.bg)
+    val comic = state.book?.contentType == ContentType.COMIC || state.row?.contentType == ContentType.COMIC.name
+    val pdf = state.row?.extension == "pdf"
+    Box(Modifier.fillMaxSize().background(if (comic && !pdf) Color(0xFF111111) else paper)) {
+        if (stage.skeleton) {
+            if (comic) {
+                val at = vm.locator.value
+                val unit = state.book?.chapters?.getOrNull(at.chapterIndex)?.content?.getOrNull(at.page) as? ContentUnit.ImagePage
+                val ratio = decodedRatio ?: if (unit?.width != null && unit.height != null && unit.height > 0)
+                    unit.width.toFloat() / unit.height else 3f / 4f
+                ComicPlaceholder(ratio, !pdf || paper.luminance() < .2f)
+            } else PaperSkeleton(paper, Color(theme.ink), prefs.margin)
+        }
+        Box(Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha.value }) {
+            ReaderContent(vm, drawerExtra, { ratio -> decodedRatio = ratio; ready = true }, back)
+        }
+    }
+}
+
+@Composable
+private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit, onFirstReady: (Float?) -> Unit, back: () -> Unit) {
+    val state by vm.state.collectAsStateWithLifecycle()
     // Install before the comic/PDF branch so every reader resumes and drains its durable writers.
     val lifecycle = LocalLifecycleOwner.current
     DisposableEffect(lifecycle, vm) {
@@ -85,7 +124,7 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
         }
     }
     state.book?.takeIf { it.contentType == ContentType.COMIC }?.let { comic ->
-        ComicReaderScreen(vm, comic, back)
+        ComicReaderScreen(vm, comic, back, onFirstReady)
         return
     }
     // Comics never flash the paper colour while loading.
@@ -231,8 +270,7 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
                 Modifier.fillMaxSize().background(bg).safeDrawingPadding(),
                 contentAlignment = Alignment.Center,
             ) {
-                if (state.loading) PaperSkeleton(bg, ink, prefs.margin)
-                else
+                if (!state.loading)
                     Column(
                         Modifier.padding(32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -337,7 +375,7 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
                             key(System.identityHashCode(book)) { AndroidView(
                                 factory = { context -> ReaderCanvas(context).also { view ->
                                     canvas = view
-                                    view.onContentReady = { activity.reportFullyDrawn() }
+                                    view.onWindowReady = { onFirstReady(null) }
                                     view.onExcerpt = { at, text -> vm.bookmark(at, text) }
                                     view.onHighlightEdit = { hid, action, x, y ->
                                         val row = view.highlights.firstOrNull { it.id == hid }

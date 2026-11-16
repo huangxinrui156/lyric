@@ -125,6 +125,7 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
         }
         val anchors = mutableMapOf<String, Locator>()
         val ruleCache = HashMap<String, List<EpubLayout.Rule>>()
+        val sheetCache = HashMap<String, String>()
         val inlineSheets = mutableListOf<Pair<String, String>>()
         val chapters =
             spine.mapIndexed { index, item ->
@@ -133,7 +134,10 @@ class EpubParser(private val tempDirectory: File? = null) : BookParser {
                 val html = document(path)
                 fun relative(href: String) = EpubPaths.resolve(path, href)
                 val chapterCss = html.select("link[rel=stylesheet]").joinToString("\n") {
-                    importAttempt { files[relative(it.attr("href"))]?.readText(Charsets.UTF_8) }.getOrNull().orEmpty()
+                    importAttempt {
+                        val sheet = relative(it.attr("href"))
+                        sheetCache.getOrPut(sheet) { files[sheet]?.readText(Charsets.UTF_8).orEmpty() }
+                    }.getOrNull().orEmpty()
                 }
                 val inline = html.select("style").joinToString("\n") { it.data().ifBlank { it.html() } }
                 if (inline.isNotBlank()) inlineSheets += path to inline
