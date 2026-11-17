@@ -191,9 +191,13 @@ class LibraryRepository(
     @Volatile private var importJob: kotlinx.coroutines.Job? = null
     fun cancelImport() { importJob?.cancel(CancellationException("导入已取消")) }
     fun dismissScanned(id: String) { imports.value = imports.value.copy(scannedPdfs = imports.value.scannedPdfs.filterNot { it.first == id }) }
-    fun consumeOpenBook() { if (imports.value.openBookId != null) imports.value = imports.value.copy(openBookId = null) }
+    @Synchronized fun consumeOpenBook(): String? {
+        val id = imports.value.openBookId
+        if (id != null) imports.value = imports.value.copy(openBookId = null)
+        return id
+    }
 
-    suspend fun importUris(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null) =
+    suspend fun importUris(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null, openWith: Boolean = false) =
         withContext(Dispatchers.IO) {
             importLock.withLock {
                 importJob = currentCoroutineContext()[kotlinx.coroutines.Job]
@@ -292,7 +296,7 @@ class LibraryRepository(
                         activeFile = name
                         status = status.copy(message = name, detail = "", detailFraction = 0f)
                         imports.value = status
-                        val result = runCatching { importOne(uri, name, retainSource = retained[uri] == false) }
+                        val result = runCatching { importOne(uri, name, retainSource = retained[uri] == false, openWith = openWith) }
                         result.exceptionOrNull()?.let {
                             if (it is CancellationException) throw it
                             Log.e(ImportTrace.TAG, "$name：${it.importReason()}", it)
@@ -315,7 +319,11 @@ class LibraryRepository(
                         !folder && files.size == 1 && comicFolders.isEmpty() &&
                             status.failures == 0 && lastBookCount == 1 && status.scannedPdfs.isEmpty()
                     }
-                    imports.value = status.completed().copy(openBookId = openBookId)
+                    val done = status.completed().copy(openBookId = openBookId)
+                    imports.value = if (openWith && done.added == 0 && done.duplicates == 0 && done.failures > 0 &&
+                        done.errors.all { it.substringAfter("：", it) == BookFormats.UNSUPPORTED_OPEN_WITH }) {
+                        done.copy(message = BookFormats.UNSUPPORTED_OPEN_WITH, errors = emptyList())
+                    } else done
                 } catch (e: CancellationException) {
                     val status = imports.value
                     val interrupted = if (activeFile != null) 1 else 0
@@ -336,7 +344,7 @@ class LibraryRepository(
             }
         }
 
-    private suspend fun importOne(uri: Uri, name: String, retainSource: Boolean = false): ImportOneResult {
+    private suspend fun importOne(uri: Uri, name: String, retainSource: Boolean = false, openWith: Boolean = false): ImportOneResult {
         val temp = ImportTrace.stage("创建导入缓存") { File.createTempFile("import-", ".tmp", context.cacheDir) }
         try {
             val digest = MessageDigest.getInstance("SHA-256")
@@ -363,7 +371,9 @@ class LibraryRepository(
             // opaque SAF filenames/MIME types without probing every EPUB or text as a bitmap.
             val prefix = temp.inputStream().use { it.readBounded(68) }
             val imageExtension = BookFormats.imageExtension(prefix)
-            if (imageExtension != null) {
+            // In-app 「+」 still packs a single image as a one-page CBZ. The system open-with
+            // path must not: Lyric is no longer an image viewer, including octet-stream.
+            if (imageExtension != null && !openWith) {
                 val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 android.graphics.BitmapFactory.decodeFile(temp.path, bounds)
                 require(bounds.outWidth > 0 && bounds.outHeight > 0) { "图片已损坏或无法解码" }
@@ -372,11 +382,18 @@ class LibraryRepository(
                     return importOne(Uri.fromFile(packed), "${name.substringBeforeLast('.')}.cbz", retainSource = true)
                 } finally { packed.delete() }
             }
-            val extension = ImportTrace.stage("识别格式") { BookFormats.detect(
-                prefix, name,
-                runCatching { context.contentResolver.getType(uri) }.getOrNull(),
-                uri.lastPathSegment.orEmpty(),
-            ).let { if (it == "epub" || it == "cbz") BookFormats.zipKind(temp) else it } }
+            val extension = ImportTrace.stage("识别格式") {
+                if (openWith) BookFormats.sniffOpenWith(
+                    temp, prefix, name,
+                    runCatching { context.contentResolver.getType(uri) }.getOrNull(),
+                    uri.lastPathSegment.orEmpty(),
+                ) ?: throw FriendlyImportException(BookFormats.UNSUPPORTED_OPEN_WITH)
+                else BookFormats.detect(
+                    prefix, name,
+                    runCatching { context.contentResolver.getType(uri) }.getOrNull(),
+                    uri.lastPathSegment.orEmpty(),
+                ).let { if (it == "epub" || it == "cbz") BookFormats.zipKind(temp) else it }
+            }
             val id = digest.digest().joinToString("") { "%02x".format(it) }
             // Comics are read page by page with random access, so they always keep a private copy.
             var keepCopy = retainSource || extension == "cbz" || extension == "pdf"

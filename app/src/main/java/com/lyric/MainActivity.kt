@@ -1,20 +1,36 @@
 package com.lyric
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.*
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import com.lyric.core.BookFormats
+import com.lyric.data.bookUris
+import com.lyric.data.isBookOpenIntent
 import com.lyric.ui.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
 
 class MainActivity : ReaderActivity() {
+    private val inbound = MutableStateFlow<Intent?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) inbound.value = intent
         enableEdgeToEdge(navigationBarStyle = androidx.activity.SystemBarStyle.auto(
             android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT,
         ))
@@ -31,6 +47,26 @@ class MainActivity : ReaderActivity() {
                     com.lyric.reader.PerfLog.beginOpen()
                     nav.navigate(route, builder)
                 }
+                val incoming by inbound.collectAsState()
+                LaunchedEffect(incoming) {
+                    val request = incoming?.takeIf { it.isBookOpenIntent() } ?: return@LaunchedEffect
+                    val uris = request.bookUris()
+                    if (uris.isEmpty()) return@LaunchedEffect
+                    withContext(Dispatchers.IO) { app.repository.importUris(uris, grantFlags = request.flags, openWith = true) }
+                }
+                val imports by app.repository.imports.collectAsState()
+                LaunchedEffect(imports.running, imports.batchId, imports.openBookId) {
+                    if (imports.running) return@LaunchedEffect
+                    val id = app.repository.consumeOpenBook() ?: return@LaunchedEffect
+                    openReader("reader/$id/-1/0/0") { launchSingleTop = true }
+                }
+                val importSnackbar = remember { SnackbarHostState() }
+                LaunchedEffect(imports.running, imports.batchId, imports.message) {
+                    if (!imports.running && imports.message == BookFormats.UNSUPPORTED_OPEN_WITH) {
+                        importSnackbar.showSnackbar(imports.message)
+                    }
+                }
+                Box(Modifier.fillMaxSize()) {
                 NavHost(navController = nav, startDestination = "shelf") {
                     composable("shelf") {
                         val vm: ShelfViewModel = viewModel(factory = LyricFactory(app))
@@ -91,7 +127,15 @@ class MainActivity : ReaderActivity() {
                         ReaderScreen(vm, drawerExtra = { FocusRemainingLabel(desk, id) }) { vm.pause(); nav.popBackStack() }
                     }
                 }
+                SnackbarHost(importSnackbar, Modifier.align(Alignment.BottomCenter))
+                }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        inbound.value = intent
     }
 }

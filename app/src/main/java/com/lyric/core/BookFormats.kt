@@ -5,6 +5,8 @@ import java.util.zip.ZipFile
 
 /** SAF providers often report a generic MIME type or omit the display-name suffix. */
 object BookFormats {
+    const val UNSUPPORTED_OPEN_WITH = "不支持这种文件"
+
     val pickerMimeTypes = arrayOf("text/plain", "application/epub+zip", "application/octet-stream",
         "application/zip", "application/x-zip", "application/x-zip-compressed", "application/x-epub+zip",
         "application/vnd.comicbook+zip", "application/x-cbz", "application/pdf",
@@ -74,5 +76,76 @@ object BookFormats {
             importAttempt { checkArchive(file) }
             "epub"
         }
+    }
+    /**
+     * Content sniff used by the system "open with" path.
+     * Accepts every format the in-app 「+」 importer can handle: TXT / EPUB / PDF / CBZ / DOCX / MOBI / AZW3 (and AZW/PRC as MOBI). Anything else is [UNSUPPORTED_OPEN_WITH].
+     * Never throws: unreadable or ambiguous bytes return null.
+     */
+    fun sniffOpenWith(
+        file: File,
+        prefix: ByteArray = file.inputStream().use { input -> ByteArray(68).let { buf -> val n = input.read(buf); if (n <= 0) byteArrayOf() else buf.copyOf(n) } },
+        displayName: String = "",
+        mimeType: String? = null,
+        uriName: String = "",
+    ): String? = runCatching {
+        fun ascii(at: Int, s: String) = prefix.size >= at + s.length && String(prefix, at, s.length, Charsets.ISO_8859_1) == s
+        fun azw3Name() = displayName.endsWith(".azw3", true) || uriName.endsWith(".azw3", true) ||
+            mimeType?.substringBefore(';') in setOf("application/vnd.amazon.mobi8-ebook", "application/x-mobi8-ebook")
+        when {
+            ascii(0, "%PDF") -> "pdf"
+            isZip(prefix) -> zipOpenWithKind(file)
+            imageExtension(prefix) != null -> null
+            ascii(60, "BOOKMOBI") || ascii(60, "TEXtREAd") -> if (azw3Name()) "azw3" else "mobi"
+            prefix.size >= 4 && (prefix[0].toInt() and 255) == 0xD0 && (prefix[1].toInt() and 255) == 0xCF &&
+                (prefix[2].toInt() and 255) == 0x11 && (prefix[3].toInt() and 255) == 0xE0 -> null
+            isDecodableText(file) -> "txt"
+            else -> null
+        }
+    }.getOrNull()
+
+    private fun isZip(prefix: ByteArray) =
+        prefix.size >= 4 && prefix[0] == 0x50.toByte() && prefix[1] == 0x4b.toByte() &&
+            prefix[2] == 3.toByte() && prefix[3] == 4.toByte()
+
+    /** DOCX = word/document.xml; EPUB = mimetype or container.xml; CBZ = ZIP of images. */
+    private fun zipOpenWithKind(file: File): String? =
+        runCatching {
+            ZipFile(file, Charsets.ISO_8859_1).use { zip ->
+                val mime = zip.getEntry("mimetype")?.let { entry ->
+                    zip.getInputStream(entry).use { it.readBytes().toString(Charsets.US_ASCII).trim() }
+                }
+                if (zip.getEntry("word/document.xml") != null) return@use "docx"
+                if (mime == "application/epub+zip" || zip.getEntry("META-INF/container.xml") != null) return@use "epub"
+                val names = zip.entries().asSequence().filter { !it.isDirectory }.map { it.name }.toList()
+                when {
+                    names.any { it.endsWith(".opf", true) } -> "epub"
+                    names.any(ComicParser::isImage) -> "cbz"
+                    else -> null
+                }
+            }
+        }.getOrNull()
+
+    private fun isDecodableText(file: File): Boolean {
+        val bytes = file.inputStream().use { input ->
+            val buffer = ByteArray(65_536)
+            val read = input.read(buffer)
+            if (read <= 0) byteArrayOf() else buffer.copyOf(read)
+        }
+        if (bytes.isEmpty()) return false
+        if (bytes[0] == 0x1F.toByte() && bytes.getOrNull(1) == 0x8B.toByte()) return false
+        if (bytes.size >= 4 && bytes[0] == 0x37.toByte() && bytes[1] == 0x7A.toByte() &&
+            bytes[2] == 0xBC.toByte() && bytes[3] == 0xAF.toByte()) return false
+        if (bytes.size >= 4 && String(bytes, 0, 4, Charsets.ISO_8859_1) == "Rar!") return false
+        val encoding = Encoding.detect(bytes)
+        val utf16 = encoding.startsWith("UTF-16")
+        if (!utf16 && bytes.count { it == 0.toByte() } > bytes.size / 20) return false
+        val text = runCatching { String(bytes, charset(encoding)).removePrefix("\uFEFF") }.getOrNull() ?: return false
+        if (text.isEmpty()) return false
+        val replacement = text.count { it == '\uFFFD' }
+        if (replacement > text.length / 50) return false
+        val ok = text.count { it == '\n' || it == '\r' || it == '\t' || !it.isISOControl() }
+        if (ok < text.length * 85 / 100) return false
+        return text.any { it.isLetter() }
     }
 }
