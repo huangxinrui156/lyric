@@ -109,7 +109,7 @@ class SettingsStore(
             require(key == "global" || key.startsWith("type_") || key.startsWith("book_")) { "未知设置项" }
             json.decodeFromString<ReaderSettings>(raw)
         }
-        require(snapshot.flags.keys.all { it in setOf("grid", "sort_title", "seeded") }) { "未知设置项" }
+        require(snapshot.flags.keys.all { it in setOf("grid", "sort_title", "seeded", "shelf_compact", "comic_shelf_compact") }) { "未知设置项" }
     }
 
     suspend fun restore(snapshot: SettingsSnapshot) {
@@ -151,6 +151,14 @@ class SettingsStore(
     suspend fun seeded() = store.edit { it[booleanPreferencesKey("seeded")] = true }
 
     suspend fun isSeeded() = store.data.first()[booleanPreferencesKey("seeded")] ?: false
+
+    private fun compactKey(section: ShelfSection) =
+        booleanPreferencesKey(if (section == ShelfSection.COMIC) "comic_shelf_compact" else "shelf_compact")
+
+    fun shelfCompact(section: ShelfSection) =
+        store.data.map { it[compactKey(section)] ?: false }.distinctUntilChanged()
+
+    suspend fun shelfCompact(section: ShelfSection, compact: Boolean) = store.edit { it[compactKey(section)] = compact }
 }
 
 @kotlinx.serialization.Serializable

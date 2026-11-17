@@ -142,3 +142,28 @@ class StorageAndSettingsTest {
     }
 
 }
+
+    @Test fun compactDensityIsRememberedSeparatelyAndSurvivesRecreate() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(context.filesDir, "compact-${System.nanoTime()}.preferences_pb")
+        val firstJob = SupervisorJob()
+        val first = SettingsStore(context, PreferenceDataStoreFactory.create(scope = CoroutineScope(firstJob + Dispatchers.IO)) { file })
+        assertFalse(first.shelfCompact(ShelfSection.BOOK).first())
+        assertFalse(first.shelfCompact(ShelfSection.COMIC).first())
+        first.shelfCompact(ShelfSection.BOOK, true)
+        first.shelfCompact(ShelfSection.COMIC, false)
+        assertTrue(first.shelfCompact(ShelfSection.BOOK).first())
+        assertFalse(first.shelfCompact(ShelfSection.COMIC).first())
+        first.shelfCompact(ShelfSection.COMIC, true)
+        val snapshot = first.snapshot()
+        first.validate(snapshot)
+        firstJob.cancelAndJoin()
+        val secondJob = SupervisorJob()
+        val second = SettingsStore(context, PreferenceDataStoreFactory.create(scope = CoroutineScope(secondJob + Dispatchers.IO)) { file })
+        assertTrue(second.shelfCompact(ShelfSection.BOOK).first())
+        assertTrue(second.shelfCompact(ShelfSection.COMIC).first())
+        second.shelfCompact(ShelfSection.BOOK, false)
+        assertFalse(second.shelfCompact(ShelfSection.BOOK).first())
+        assertTrue(second.shelfCompact(ShelfSection.COMIC).first())
+        secondJob.cancelAndJoin()
+    }

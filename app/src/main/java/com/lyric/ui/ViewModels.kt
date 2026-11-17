@@ -57,6 +57,16 @@ class ShelfViewModel(private val app: LyricApp) : ViewModel() {
         viewModelScope.launch { repository.settings.shelfSort(mode, section) }
     }
 
+    val compact =
+        repository.settings.shelfCompact(ShelfSection.BOOK)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val comicCompact =
+        repository.settings.shelfCompact(ShelfSection.COMIC)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    fun compact(section: ShelfSection, compact: Boolean) {
+        viewModelScope.launch { repository.settings.shelfCompact(section, compact) }
+    }
+
     fun import(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null) {
         app.applicationScope.launch { repository.importUris(uris, folder, grantFlags) }
     }

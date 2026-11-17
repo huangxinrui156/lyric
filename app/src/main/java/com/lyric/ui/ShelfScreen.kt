@@ -9,6 +9,7 @@ package com.lyric.ui
 import com.lyric.ui.theme.LyricTokens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.Crossfade
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -287,6 +288,7 @@ private fun ShelfContent(
     open: (String) -> Unit, import: () -> Unit, importFiles: () -> Unit, actions: (ShelfBook) -> Unit,
 ) {
     val sortMode by (if (section == ShelfSection.COMIC) vm.comicSortMode else vm.sortMode).collectAsStateWithLifecycle()
+    val compact by (if (section == ShelfSection.COMIC) vm.comicCompact else vm.compact).collectAsStateWithLifecycle()
     val books = remember(allBooks, section) { allBooks.filter { it.section == section.name } }
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableIntStateOf(0) }
@@ -306,11 +308,17 @@ private fun ShelfContent(
         continueReadingBook(books)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val emptyAnchor = maxHeight * LyricTokens.emptyShelfHeightFraction
+        Crossfade(
+            targetState = grid to compact,
+            animationSpec = LyricTokens.Motion.medium(),
+            label = "shelf-density",
+        ) { (gridMode, compactMode) ->
+        val dense = gridMode && compactMode
         LazyVerticalGrid(
-            columns = shelfGridCells(grid),
+            columns = shelfGridCells(gridMode, compactMode),
             contentPadding = PaddingValues(start = LyricTokens.Page.margin, end = LyricTokens.Page.margin, bottom = LyricTokens.Space.xl),
-            horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md),
-            verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.lg),
+            horizontalArrangement = Arrangement.spacedBy(if (dense) LyricTokens.Shelf.compactColumnGap else LyricTokens.Space.md),
+            verticalArrangement = Arrangement.spacedBy(if (dense) LyricTokens.Shelf.compactRowGap else LyricTokens.Space.lg),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }, contentType = "header") {
                 Column {
@@ -347,35 +355,39 @@ private fun ShelfContent(
                         ContinueCard(continuing, vm.repository) { open(continuing.id) }
                         Spacer(Modifier.height(LyricTokens.Space.xl))
                     }
-                    Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                        filterLabels(section).forEachIndexed { index, label
-                            ->
-                            Column(
-                                Modifier.padding(end = LyricTokens.Space.lg).clickable {
-                                    filter = index
-                                },
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text(
-                                    label,
-                                    style = LyricTokens.Type.body,
-                                    color =
-                                        if (filter == index)
-                                            MaterialTheme.colorScheme.onBackground
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Spacer(Modifier.height(LyricTokens.Component.statusDot))
-                                Box(
-                                    Modifier.width(LyricTokens.Component.toolbarIcon)
-                                        .height(LyricTokens.Component.indicatorStroke)
-                                        .background(
-                                            if (filter == index) Vermilion
-                                            else Color.Transparent
-                                        )
-                                )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            filterLabels(section).forEachIndexed { index, label
+                                ->
+                                Column(
+                                    Modifier.padding(end = LyricTokens.Space.lg).clickable {
+                                        filter = index
+                                    },
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        label,
+                                        style = LyricTokens.Type.body,
+                                        color =
+                                            if (filter == index)
+                                                MaterialTheme.colorScheme.onBackground
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(Modifier.height(LyricTokens.Component.statusDot))
+                                    Box(
+                                        Modifier.width(LyricTokens.Component.toolbarIcon)
+                                            .height(LyricTokens.Component.indicatorStroke)
+                                            .background(
+                                                if (filter == index) Vermilion
+                                                else Color.Transparent
+                                            )
+                                    )
+                                }
                             }
                         }
-                        Spacer(Modifier.weight(1f))
                         IconButton(
                             onClick = { vm.grid(!grid) },
                             modifier = Modifier.size(LyricTokens.Component.smallControl),
@@ -385,6 +397,17 @@ private fun ShelfContent(
                                 else Icons.Outlined.GridView,
                                 if (grid) "切换列表" else "切换网格",
                                 Modifier.size(LyricTokens.Component.mediumIcon),
+                            )
+                        }
+                        IconButton(
+                            onClick = { vm.compact(section, !compact) },
+                            modifier = Modifier.size(LyricTokens.Component.touchTarget),
+                        ) {
+                            Icon(
+                                if (compact) Icons.Outlined.GridView else Icons.Outlined.Apps,
+                                if (compact) "切换到标准封面" else "切换到紧凑封面",
+                                Modifier.size(LyricTokens.Shelf.densityIcon),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -408,17 +431,17 @@ private fun ShelfContent(
             items(
                 visible,
                 key = { it.id },
-                contentType = { if (grid) "book_grid" else "book_list" },
+                contentType = { if (gridMode) "book_grid" else "book_list" },
             ) { book ->
-                if (grid) BookTile(book, { open(book.id) }, { actions(book) })
+                if (gridMode) BookTile(book, { open(book.id) }, { actions(book) }, compact = compactMode)
                 else BookListRow(book, { open(book.id) }, { actions(book) })
             }
             if (!empty) item(contentType = "import") {
-                if (grid)
+                if (gridMode)
                     Column(Modifier.clickable { import() }) {
                         Box(
                             Modifier.fillMaxWidth()
-                                .aspectRatio(.74f)
+                                .aspectRatio(if (compactMode) LyricTokens.Shelf.coverAspect else .74f)
                                 .background(
                                     MaterialTheme.colorScheme.surfaceVariant,
                                     RoundedCornerShape(LyricTokens.Radius.cover),
@@ -458,11 +481,12 @@ private fun ShelfContent(
                     }
             }
         }
+        }
     }
 }
 
 @Composable
-fun BookCover(book: ShelfBook, modifier: Modifier = Modifier) {
+fun BookCover(book: ShelfBook, modifier: Modifier = Modifier, compact: Boolean = false) {
     Box(
         modifier
             .clip(RoundedCornerShape(LyricTokens.Radius.cover))
@@ -506,7 +530,7 @@ fun BookCover(book: ShelfBook, modifier: Modifier = Modifier) {
             Text(
                 book.title.take(12).map { it.toString() }.joinToString("\n"),
                 fontFamily = Serif,
-                style = LyricTokens.Type.body,
+                style = if (compact) LyricTokens.Type.auxiliary else LyricTokens.Type.body,
                 color = LyricTokens.Day.background,
                 maxLines = 9,
                 overflow = TextOverflow.Ellipsis,
@@ -521,6 +545,12 @@ fun BookCover(book: ShelfBook, modifier: Modifier = Modifier) {
             ) {
                 Text("文件失效", color = LyricTokens.Day.background, style = LyricTokens.Type.auxiliary)
             }
+        if (compact && book.isInProgress()) {
+            ContinueProgressBar(
+                book.percent,
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(LyricTokens.Component.continueProgressStroke),
+            )
+        }
     }
 }
 
@@ -612,17 +642,21 @@ private fun ContinueCard(book: ShelfBook, repository: LibraryRepository, open: (
 }
 
 @Composable
-private fun BookTile(book: ShelfBook, open: () -> Unit, remove: () -> Unit) {
+private fun BookTile(book: ShelfBook, open: () -> Unit, remove: () -> Unit, compact: Boolean = false) {
     Column(Modifier.combinedClickable(onClick = open, onLongClick = remove)) {
-        BookCover(book, Modifier.fillMaxWidth().aspectRatio(.74f))
-        Text(
-            book.title,
-            style = LyricTokens.Type.auxiliary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = LyricTokens.Space.xs),
+        BookCover(
+            book,
+            Modifier.fillMaxWidth().aspectRatio(if (compact) LyricTokens.Shelf.coverAspect else .74f),
+            compact = compact,
         )
         Text(
+            book.title,
+            style = if (compact) LyricTokens.Type.auxiliary else LyricTokens.Type.body,
+            maxLines = if (compact) LyricTokens.Shelf.compactTitleMaxLines else 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = LyricTokens.Space.xs).semantics { contentDescription = "书架书名 ${book.title}" },
+        )
+        if (!compact) Text(
             if (book.invalid) "请重新导入"
             else if (book.lastRead == 0L) "未读" else "${(book.percent * 100).toInt()}%",
             style = LyricTokens.Type.auxiliary,
@@ -874,5 +908,11 @@ internal fun comicPageLabel(book: Book, progress: ProgressRow?): String {
 }
 
 /** List mode keeps a single track; grid tracks never shrink below the shelf token. */
-internal fun shelfGridCells(grid: Boolean): GridCells =
-    if (grid) GridCells.Adaptive(LyricTokens.Shelf.minColumnWidth) else GridCells.Fixed(1)
+internal fun shelfGridCells(grid: Boolean, compact: Boolean = false): GridCells = when {
+    !grid -> GridCells.Fixed(1)
+    compact -> GridCells.Adaptive(LyricTokens.Shelf.compactMinColumnWidth)
+    else -> GridCells.Adaptive(LyricTokens.Shelf.minColumnWidth)
+}
+
+/** 在读：已打开且未读完。 */
+internal fun ShelfBook.isInProgress(): Boolean = lastRead > 0L && percent < .99f

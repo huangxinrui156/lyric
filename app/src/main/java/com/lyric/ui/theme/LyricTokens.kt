@@ -101,6 +101,12 @@ object LyricTokens {
     }
     object Shelf {
         val minColumnWidth = 104.dp
+        val compactMinColumnWidth = 72.dp
+        val compactColumnGap = Space.sm
+        val compactRowGap = Space.md
+        val densityIcon = 24.dp
+        const val coverAspect = 2f / 3f
+        const val compactTitleMaxLines = 2
         const val emptyCopy = "书架还空着"
         const val emptyImportLabel = "导入书籍"
         const val emptyComicCopy = "画架还空着"
