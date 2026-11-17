@@ -16,3 +16,8 @@ __pycache__/
 
 # JVM-rendered README screenshot candidates (not committed until design picks).
 /screens/
+
+# Release signing material — never commit.
+*.jks
+*.keystore
+keystore.properties

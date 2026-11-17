@@ -6,6 +6,16 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+/** Optional release signing. Set LYRIC_KEYSTORE_PROPERTIES or -Plyric.keystore.properties to a properties file. Absent or unreadable file leaves release unsigned. */
+fun loadOptionalReleaseSigning(): java.util.Properties? {
+    val path = System.getenv("LYRIC_KEYSTORE_PROPERTIES")
+        ?: (findProperty("lyric.keystore.properties") as String?)
+        ?: return null
+    val file = java.io.File(path)
+    if (!file.isFile) return null
+    return java.util.Properties().apply { file.reader(Charsets.UTF_8).use { load(it) } }
+}
+
 android {
     namespace = "com.lyric"
     compileSdk = 35
@@ -19,7 +29,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
+    val releaseSigning = loadOptionalReleaseSigning()
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = file(releaseSigning.getProperty("storeFile"))
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
+        getByName("release") {
+            // Null when the keystore properties file is not provided, so CI still packages an unsigned release.
+            signingConfig = signingConfigs.findByName("release")
+        }
         create("benchmark") {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
