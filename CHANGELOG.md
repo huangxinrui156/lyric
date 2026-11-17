@@ -6,12 +6,18 @@ This file lists user-facing changes. More detailed notes live in `docs/v0.3.4-ch
 
 ## Unreleased
 
-1.0 公开版筹备中：视觉 token 统一、性能底线、全书百分比、屏幕适配、排版三档、空书架、系统打开方式、继续阅读、按书设置，以及本仓库的 README / CHANGELOG / Issue 模板、许可证检查，和 JVM 截图脚本（tools/render-screens.sh）。正式签名发布包尚未就绪。
+## 1.0.0
 
-- 明确声明不采集、不上传任何数据。性能记录仅出现在调试包（关于页连点版本号 7 次）；正式包无法开启，也不会根据旧偏好写入记录。
-- 视觉审查：小写 lyric 标题、继续阅读自定义进度条、正文段距与章标题、漫画日间顶底栏、底栏仅顶边、生成封面改用均匀哈希。
+版本 1.0.0（versionCode 36）。自 0.9.7.1 起的公开版变更如下。正式签名包尚未就绪，当前提供 debug 与 benchmark APK（benchmark 为正式风格但使用 debug 签名）。
 
-Work toward the 1.0 public release is in progress (visual tokens, performance baseline, open-with, continue reading, per-book settings, and this repository’s public docs). A signed release build is not available yet. The app does not collect or upload data; performance recording is debug-only.
+- 统一 v1.0 视觉 token；按验收修正标题、进度条、段距、漫画栏与封面色；夜间页标题使用正文墨色。
+- 标准书架与画架固定两列；增加紧凑封面（手机约四列），书架与画架各自记忆。
+- 排版三档：紧凑 / 舒适 / 宽松。案头专注时长可选 25 分钟、45 分钟或自定义（5–180 分钟）。
+- 书架与画架可按阅读状态、导入时间筛选；筛完为空时可一键清除。
+- 空书架一句引导、一键导入。导入一开始就显示「正在导入 n 本…」；完成后不跳转当前页面，摘要只在书架出现一次，4 秒或点击后消失。
+- 系统打开方式：在文件管理或微信里点书可直接进入阅读。继续阅读卡片出现在书架顶部。阅读方向、分页、双页和裁白边按书保存。全书百分比未就绪时先显示「第 n 章」。
+- 屏幕与安全区适配。增加 1.0 性能底线测量路径（验收机型 Find X9 Pro，真机指标仍待测）。
+- 不采集、不上传任何数据。性能记录仅调试包可开（关于页连点版本号 7 次）。补充 README、变更日志、Issue 模板与许可证检查。
 
 ## 0.9.7.1
 
