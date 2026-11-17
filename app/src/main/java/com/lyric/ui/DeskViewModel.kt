@@ -69,6 +69,7 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
 
     val focusBookId = MutableStateFlow<String?>(null)
     val plannedMin = MutableStateFlow(25)
+    val customPlanned = MutableStateFlow(false)
     val focus = MutableStateFlow(FocusUi())
     val focusPulse = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -102,6 +103,15 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
                 delay(30_000)
             }
         }
+        viewModelScope.launch {
+            val minutes = app.repository.settings.focusPlannedMin.first()
+            val custom = app.repository.settings.focusCustom.first()
+            if (!focus.value.running) {
+                plannedMin.value = minutes
+                customPlanned.value = custom
+                focus.value = focus.value.copy(plannedMin = minutes, remainSec = minutes * 60L)
+            }
+        }
         viewModelScope.launch { restoreActiveFocus() }
     }
 
@@ -115,11 +125,16 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
 
     fun pickBook(id: String) { focusBookId.value = id }
 
-    fun planned(min: Int) {
+    fun planned(min: Int, custom: Boolean = false) {
         if (focus.value.running) return
-        plannedMin.value = min
-        focus.value = focus.value.copy(plannedMin = min, remainSec = min * 60L)
+        val snapped = com.lyric.ui.theme.LyricTokens.Focus.snapMinutes(min)
+        plannedMin.value = snapped
+        customPlanned.value = custom
+        focus.value = focus.value.copy(plannedMin = snapped, remainSec = snapped * 60L)
+        viewModelScope.launch { app.repository.settings.focusPlan(snapped, custom) }
     }
+
+    fun stepPlanned(delta: Int) = planned(plannedMin.value + delta, custom = true)
 
 
     fun startFocus(): Boolean {

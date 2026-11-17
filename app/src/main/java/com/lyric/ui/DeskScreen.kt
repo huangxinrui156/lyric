@@ -13,6 +13,10 @@ import android.os.VibratorManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.luminance
@@ -38,6 +42,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -187,22 +193,48 @@ fun DeskScreen(
                 val focusState by vm.focus.collectAsStateWithLifecycle()
                 // Only flips when a session starts/ends, not on every tick.
                 val active by remember { derivedStateOf { focusState.running } }
-                if (!active) Row(Modifier.padding(top = LyricTokens.Space.md), horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm)) {
-                    listOf(25, 45).forEach { min ->
-                        val on = planned == min
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .height(LyricTokens.Component.smallControl)
-                                .background(if (on) dSegOn else dSegOff, LyricTokens.Radius.pill)
-                                .clickable { vm.planned(min) },
-                            contentAlignment = Alignment.Center,
+                val custom by vm.customPlanned.collectAsStateWithLifecycle()
+                if (!active) Column(Modifier.padding(top = LyricTokens.Space.md)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm)) {
+                        LyricTokens.Focus.presets.forEach { min ->
+                            val on = LyricTokens.Focus.isPreset(planned, custom) && planned == min
+                            FocusDurationChip(LyricTokens.Focus.chipLabel(min, false), on) { vm.planned(min, custom = false) }
+                        }
+                        FocusDurationChip(
+                            if (custom) LyricTokens.Focus.chipLabel(planned, true) else LyricTokens.Focus.customLabel,
+                            custom,
+                        ) { vm.planned(planned, custom = true) }
+                    }
+                    AnimatedVisibility(
+                        visible = custom,
+                        enter = fadeIn(animationSpec = LyricTokens.Motion.medium()),
+                        exit = fadeOut(animationSpec = LyricTokens.Motion.medium()),
+                    ) {
+                        Row(
+                            Modifier.padding(top = LyricTokens.Space.md).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            val atMin = planned <= LyricTokens.Focus.minMinutes
+                            val atMax = planned >= LyricTokens.Focus.maxMinutes
+                            Box(
+                                Modifier.size(LyricTokens.Focus.stepperButton)
+                                    .border(LyricTokens.strokeWidth, LyricTokens.colors(deskDark()).stroke, CircleShape)
+                                    .clickable(enabled = !atMin) { vm.stepPlanned(-LyricTokens.Focus.stepMinutes) },
+                                contentAlignment = Alignment.Center,
+                            ) { Text("−", style = LyricTokens.Focus.stepperValue, color = if (atMin) dSub else dPrimary) }
                             Text(
-                                "$min 分钟",
-                                style = LyricTokens.Type.body,
-                                color = if (on) dSegOnText else dSegOffText,
+                                "$planned",
+                                style = LyricTokens.Focus.stepperValue,
+                                color = dPrimary,
+                                modifier = Modifier.padding(horizontal = LyricTokens.Space.lg).semantics { contentDescription = "自定义时长 $planned 分钟" },
                             )
+                            Box(
+                                Modifier.size(LyricTokens.Focus.stepperButton)
+                                    .border(LyricTokens.strokeWidth, LyricTokens.colors(deskDark()).stroke, CircleShape)
+                                    .clickable(enabled = !atMax) { vm.stepPlanned(LyricTokens.Focus.stepMinutes) },
+                                contentAlignment = Alignment.Center,
+                            ) { Text("+", style = LyricTokens.Focus.stepperValue, color = if (atMax) dSub else dPrimary) }
                         }
                     }
                 }
@@ -645,6 +677,23 @@ internal fun deskBookLabel(title: String, chapter: String): String {
 }
 
 // 0.8.4 美术设计 dark spec for 案头; light values are the 0.8.0 ones, unchanged.
+@Composable
+private fun FocusDurationChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val fill = if (selected) dSegOn else dCard
+    val text = if (selected) dSegOnText else dPrimary
+    Box(
+        Modifier
+            .height(LyricTokens.Focus.chipHeight)
+            .background(fill, LyricTokens.Radius.pill)
+            .then(if (selected) Modifier else Modifier.border(LyricTokens.strokeWidth, LyricTokens.colors(deskDark()).stroke, LyricTokens.Radius.pill))
+            .clickable(onClick = onClick)
+            .padding(horizontal = LyricTokens.Space.md),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = LyricTokens.Type.body, color = text)
+    }
+}
+
 @Composable internal fun deskDark() = MaterialTheme.colorScheme.background.luminance() < .5f
 private val dCard @Composable get() = if (deskDark()) LyricTokens.Night.card else CardPaper
 private val dCardStroke @Composable get() = BorderStroke(LyricTokens.strokeWidth, LyricTokens.colors(deskDark()).stroke)

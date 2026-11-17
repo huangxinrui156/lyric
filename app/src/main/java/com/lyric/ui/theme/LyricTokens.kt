@@ -134,6 +134,22 @@ object LyricTokens {
         val chapterTitleGap = Space.xl
         val chapterTitleSize = chapterTitleSp.sp
     }
+    object Focus {
+        const val minMinutes = 5
+        const val maxMinutes = 180
+        const val stepMinutes = 5
+        val presets = listOf(25, 45)
+        val chipHeight = 32.dp
+        val stepperButton = 40.dp
+        val stepperValue = TextStyle(fontFamily = Fonts.hei, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium)
+        const val customLabel = "自定义"
+        fun snapMinutes(min: Int): Int {
+            val stepped = ((min + stepMinutes / 2) / stepMinutes) * stepMinutes
+            return stepped.coerceIn(minMinutes, maxMinutes)
+        }
+        fun isPreset(min: Int, custom: Boolean) = !custom && min in presets
+        fun chipLabel(min: Int, custom: Boolean) = if (custom) "$min 分钟" else if (min in presets) "$min" else "$min 分钟"
+    }
     object Motion {
         const val shortMs = 150
         const val mediumMs = 200

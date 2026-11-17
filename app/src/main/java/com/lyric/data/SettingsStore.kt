@@ -109,7 +109,7 @@ class SettingsStore(
             require(key == "global" || key.startsWith("type_") || key.startsWith("book_")) { "未知设置项" }
             json.decodeFromString<ReaderSettings>(raw)
         }
-        require(snapshot.flags.keys.all { it in setOf("grid", "sort_title", "seeded", "shelf_compact", "comic_shelf_compact") }) { "未知设置项" }
+        require(snapshot.flags.keys.all { it in setOf("grid", "sort_title", "seeded", "shelf_compact", "comic_shelf_compact", "focus_custom") }) { "未知设置项" }
     }
 
     suspend fun restore(snapshot: SettingsSnapshot) {
@@ -159,7 +159,20 @@ class SettingsStore(
         store.data.map { it[compactKey(section)] ?: false }.distinctUntilChanged()
 
     suspend fun shelfCompact(section: ShelfSection, compact: Boolean) = store.edit { it[compactKey(section)] = compact }
+
+    val focusPlannedMin = store.data.map {
+        val raw = it[intPreferencesKey("focus_planned_min")] ?: 25
+        val stepped = ((raw + 2) / 5) * 5
+        stepped.coerceIn(5, 180)
+    }.distinctUntilChanged()
+    val focusCustom = store.data.map { it[booleanPreferencesKey("focus_custom")] ?: false }.distinctUntilChanged()
+    suspend fun focusPlan(minutes: Int, custom: Boolean) = store.edit {
+        val stepped = ((minutes + 2) / 5) * 5
+        it[intPreferencesKey("focus_planned_min")] = stepped.coerceIn(5, 180)
+        it[booleanPreferencesKey("focus_custom")] = custom
+    }
 }
+
 
 @kotlinx.serialization.Serializable
 data class SettingsSnapshot(val strings: Map<String, String> = emptyMap(), val flags: Map<String, Boolean> = emptyMap())
