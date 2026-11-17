@@ -177,7 +177,7 @@ class ReaderCanvas(context: Context) : View(context) {
         this.highlight = highlight
         if (oldLoc != locator || changedBook) {
             describedLocator = null
-            contentDescription = preview(book.chapters[locator.chapterIndex].text, locator.charOffset, 800)
+            contentDescription = preview(book.chapters.getOrNull(locator.chapterIndex)?.text.orEmpty(), locator.charOffset, 800)
         }
         val window = locator.charOffset / Typesetter.WINDOW
         val key =

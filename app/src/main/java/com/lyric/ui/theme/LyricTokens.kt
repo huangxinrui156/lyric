@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,6 +57,8 @@ object LyricTokens {
     }
     object Type {
         val title = TextStyle(fontFamily = Fonts.hei, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium)
+        /** Lowercase upright Noto Serif wordmark; matches the README banner. */
+        val wordmark = title.copy(fontFamily = Fonts.song, fontStyle = FontStyle.Normal)
         val subtitle = TextStyle(fontFamily = Fonts.hei, fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium)
         val body = TextStyle(fontFamily = Fonts.hei, fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal)
         val auxiliary = TextStyle(fontFamily = Fonts.hei, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal)
@@ -121,6 +124,9 @@ object LyricTokens {
         val fineTuneLabels = listOf("字号", "行距", "段距", "页边距")
         const val bodyMaxWidthDp = 640f
         val bodyMaxWidth = bodyMaxWidthDp.dp
+        const val chapterTitleSp = 20f
+        val chapterTitleGap = Space.xl
+        val chapterTitleSize = chapterTitleSp.sp
     }
     object Motion {
         const val shortMs = 150
@@ -171,8 +177,17 @@ object LyricTokens {
         fun highlight(index: Int, night: Boolean): Color =
             highlightAccents[index.coerceIn(0, highlightAccents.lastIndex)].color(night)
                 .copy(alpha = if (night) highlightNightAlpha else highlightDayAlpha)
-        fun cover(title: String, night: Boolean = false) =
-            color((title.hashCode() and Int.MAX_VALUE) % all.size, night)
+        fun coverIndex(title: String): Int {
+            var hash = FNV_OFFSET
+            for (ch in title) {
+                hash = hash xor ch.code
+                hash *= FNV_PRIME
+            }
+            return hash.toUInt().mod(all.size.toUInt()).toInt()
+        }
+        fun cover(title: String, night: Boolean = false) = color(coverIndex(title), night)
+        private const val FNV_OFFSET = -0x7ee3623b
+        private const val FNV_PRIME = 0x01000193
     }
 
     object Comic {
@@ -183,8 +198,22 @@ object LyricTokens {
         val ink = Color(0xFFD0CABE)
         val meta = Color(0xFF8E897F)
         val track = Color(0xFF3A3A3E)
-        val errorPanel = Color(0xFF1A1A1D)
-        val outline = Color(0xFF45444A)
+        fun barBackground(night: Boolean) = if (night) bar else Day.card
+        fun barInk(night: Boolean) = if (night) ink else Day.ink
+        fun barMeta(night: Boolean) = if (night) meta else Day.secondary
+        fun barTrack(night: Boolean) = if (night) track else Day.stroke
+        fun barDivider(night: Boolean) = if (night) Night.stroke else Day.stroke
+        fun barAccent(night: Boolean) = if (night) Night.vermilion else Day.vermilion
+        /** Overlay surfaces (zoom badge, chapter dialog, page-error card) follow the UI palette. */
+        const val zoomBadgeAlpha = .9f
+        fun overlayCard(night: Boolean) = colors(night).card
+        fun overlayStroke(night: Boolean) = colors(night).stroke
+        fun overlayInk(night: Boolean) = colors(night).ink
+        fun overlaySecondary(night: Boolean) = colors(night).secondary
+        fun overlayAccent(night: Boolean) = colors(night).vermilion
+        fun overlayPrimaryFill(night: Boolean) = colors(night).primaryFill
+        fun overlayPrimaryText(night: Boolean) = colors(night).primaryText
+        fun zoomBadgeBackground(night: Boolean) = overlayCard(night).copy(alpha = zoomBadgeAlpha)
     }
 
     /** 8% black fading to transparent; explicitly not a palette color. */
@@ -228,6 +257,7 @@ object LyricTokens {
         val dashLength = 6.dp
         val heatmapCell = 9.dp
         val sliderThumb = 14.dp
+        val comicSliderThumb = 16.dp
         val smallIcon = 18.dp
         val mediumIcon = 20.dp
         val toolbarIcon = 22.dp

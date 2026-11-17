@@ -86,4 +86,41 @@ class TypesetterTest {
         assertNull(assets.font("missing"))
     }
 
+
+    @Test fun blankLinesCollapseToParagraphGapWithoutShiftingLocators() {
+        val settings = ReaderSettings(paragraphSpace = 0.5f, indent = false, fontSize = 18f, lineHeight = 1.7f)
+        val loose = "第一段。\n\n\n第二段在这里。"
+        val tight = "第一段。\n第二段在这里。"
+        val looseChapter = Chapter(0, "段距", loose)
+        val tightChapter = Chapter(0, "段距", tight)
+        val withBlanks = layout(looseChapter, settings)
+        val compact = layout(tightChapter, settings)
+        assertEquals(loose, withBlanks.plainText)
+        val at = loose.indexOf("第二")
+        assertTrue(withBlanks.pages.any { at - withBlanks.sourceStart in it.start until it.end })
+        assertEquals(loose[at], withBlanks.plainText[at])
+        // Collapsed blank lines should not add a full extra line of height.
+        val extra = withBlanks.layout.height - compact.layout.height
+        assertTrue("blank lines added ${extra}px", extra in 0..4)
+    }
+
+    @Test fun chapterTitleHasNoIndentMediumSizeAndGapBeforeBody() {
+        val title = "第一章 晨光"
+        val text = "$title\n\n窗边有风经过。"
+        val chapter = Chapter(0, title, text)
+        val settings = ReaderSettings(paragraphSpace = 0.5f, indent = true, fontSize = 18f, lineHeight = 1.7f)
+        val result = layout(chapter, settings)
+        val spanned = result.layout.text as Spanned
+        val titleEnd = title.length
+        assertEquals(0, spanned.getSpans(0, titleEnd, android.text.style.LeadingMarginSpan::class.java).size)
+        val bodyStart = text.indexOf("窗边")
+        assertTrue(spanned.getSpans(bodyStart, bodyStart + 2, android.text.style.LeadingMarginSpan::class.java).isNotEmpty())
+        val titleLineHeight = result.layout.getLineBottom(0) - result.layout.getLineTop(0)
+        val bodyLine = (0 until result.layout.lineCount).first { result.layout.getLineStart(it) >= bodyStart }
+        val bodyLineHeight = result.layout.getLineBottom(bodyLine) - result.layout.getLineTop(bodyLine)
+        // 20sp title plus 24dp gap is distinctly taller than a body line (18sp × 1.7 plus 0.5em).
+        assertTrue("title line $titleLineHeight vs body $bodyLineHeight", titleLineHeight > bodyLineHeight)
+        assertTrue("expected 24dp gap in the title line, was $titleLineHeight", titleLineHeight >= 24 + 20)
+        assertEquals(text, result.plainText)
+    }
 }

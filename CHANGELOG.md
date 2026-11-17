@@ -9,6 +9,7 @@ This file lists user-facing changes. More detailed notes live in `docs/v0.3.4-ch
 1.0 公开版筹备中：视觉 token 统一、性能底线、全书百分比、屏幕适配、排版三档、空书架、系统打开方式、继续阅读、按书设置，以及本仓库的 README / CHANGELOG / Issue 模板、许可证检查，和 JVM 截图脚本（tools/render-screens.sh）。正式签名发布包尚未就绪。
 
 - 明确声明不采集、不上传任何数据。性能记录仅出现在调试包（关于页连点版本号 7 次）；正式包无法开启，也不会根据旧偏好写入记录。
+- 视觉审查：小写 lyric 标题、继续阅读自定义进度条、正文段距与章标题、漫画日间顶底栏、底栏仅顶边、生成封面改用均匀哈希。
 
 Work toward the 1.0 public release is in progress (visual tokens, performance baseline, open-with, continue reading, per-book settings, and this repository’s public docs). A signed release build is not available yet. The app does not collect or upload data; performance recording is debug-only.
 

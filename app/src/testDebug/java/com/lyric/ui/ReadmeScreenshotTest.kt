@@ -41,10 +41,11 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Opt-in JVM screenshots for README candidates. Run via tools/render-screens.sh
- * (or -Plyric.render.screens=true). Uses only invented sample books.
+ * (or -Plyric.render.screens=true). Uses public-domain titles and generated covers.
+ * 1080×2400 at density 2.75 → w393dp-h873dp-440dpi.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(application = LyricApp::class, sdk = [35], qualifiers = "w360dp-h800dp-xxhdpi")
+@Config(application = LyricApp::class, sdk = [35], qualifiers = "w393dp-h873dp-440dpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ReadmeScreenshotTest {
     @get:Rule val compose = createAndroidComposeRule<androidx.activity.ComponentActivity>()
@@ -76,11 +77,11 @@ class ReadmeScreenshotTest {
 
         plantShelf(app)
         showShelf(app, dark = false)
-        waitForText("窗边的午后")
+        waitForText("红楼梦")
         capture("shelf-day.png", out)
 
         showShelf(app, dark = true)
-        waitForText("窗边的午后")
+        waitForText("红楼梦")
         capture("shelf-night.png", out)
 
         val textId = plantReaderBook(app)
@@ -217,12 +218,12 @@ class ReadmeScreenshotTest {
             app.repository.settings.shelfSection(ShelfSection.BOOK)
             app.repository.books.first().forEach { app.repository.remove(it.id) }
             val samples = listOf(
-                Sample("sample-a.txt", "窗边的午后", "示例作者", "第一章 晨光", 0.34f, lastRead = 40),
-                Sample("sample-b.txt", "河上的信", "示例作者", "第二章 渡口", 0.12f, lastRead = 20),
-                Sample("sample-c.txt", "南山小记", "示例作者", "第一章 开卷", 0f, lastRead = 0),
-                Sample("sample-d.txt", "灯下集", "示例作者", "未读", 0f, lastRead = 0),
-                Sample("sample-e.txt", "雨后笔记", "示例作者", "未读", 0f, lastRead = 0),
-                Sample("sample-f.txt", "旅途手札", "示例作者", "未读", 0f, lastRead = 0),
+                Sample("sample-a.txt", "红楼梦", "曹雪芹", "第一回 甄士隐梦幻识通灵", 0.34f, lastRead = 40),
+                Sample("sample-b.txt", "浮生六记", "沈复", "闺房记乐", 0.12f, lastRead = 20),
+                Sample("sample-c.txt", "西游记", "吴承恩", "第一回 灵根育孕源流出", 0f, lastRead = 0),
+                Sample("sample-d.txt", "水浒传", "施耐庵", "未读", 0f, lastRead = 0),
+                Sample("sample-e.txt", "三国演义", "罗贯中", "未读", 0f, lastRead = 0),
+                Sample("sample-f.txt", "牡丹亭", "汤显祖", "未读", 0f, lastRead = 0),
             )
             samples.forEachIndexed { index, sample ->
                 val file = File(app.cacheDir, sample.file).apply {
@@ -243,7 +244,7 @@ class ReadmeScreenshotTest {
                         lastRead = sample.lastRead,
                         chapterTitle = sample.chapter,
                         percent = sample.percent,
-                        excerpt = "这是为界面截图准备的示例摘录。",
+                        excerpt = "此开卷第一回也。",
                     ),
                 )
             }
@@ -254,14 +255,14 @@ class ReadmeScreenshotTest {
         val file = File(app.cacheDir, "reader-sample.txt").apply {
             writeText(
                 """
-                第一章 晨光
+                第一回 甄士隐梦幻识通灵
 
-                窗边有风经过。桌上放着一杯凉掉的茶，书页还停在昨天折起的地方。
+                此开卷第一回也。作者自云：因曾历过一番梦幻之后，故将真事隐去，而借通灵之说，撰此石头记一书也。故曰甄士隐云云。
 
-                这些句子是为截图专门写下的示例正文，不是任何已出版的作品。读到这里，只是为了让页面看起来像一本正在读的书。
+                看官：你道此书从何而来？说起根由虽近荒唐，细按则深有趣味。待在下将此来历注明，方使阅者了然不惑。
 
-                隔了一会儿，水面上才又起了一圈细纹。
-                """.trimIndent().let { it + "\n\n" + "示例段落，供排版占满一页。\n".repeat(20) },
+                满纸荒唐言，一把辛酸泪。都云作者痴，谁解其中味？
+                """.trimIndent().let { it + "\n\n" + "列位看官：你道此书从何而来？说起根由虽近荒唐，细按则深有趣味。\n".repeat(16) },
             )
         }
         app.repository.importUris(listOf(Uri.fromFile(file)))
@@ -269,7 +270,7 @@ class ReadmeScreenshotTest {
     }
 
     private fun plantComic(app: LyricApp): String = runBlocking(Dispatchers.IO) {
-        val file = File(app.cacheDir, "示例漫画.cbz")
+        val file = File(app.cacheDir, "点石斋画报.cbz")
         ZipOutputStream(file.outputStream()).use { zip ->
             repeat(3) { page ->
                 zip.putNextEntry(ZipEntry("p${page + 1}.png"))
@@ -279,7 +280,7 @@ class ReadmeScreenshotTest {
         }
         app.repository.importUris(listOf(Uri.fromFile(file)))
         val row = app.repository.dao.all().first { it.name == file.name }
-        val book = row.copy(title = "示例漫画", author = "示例作者")
+        val book = row.copy(title = "点石斋画报", author = "吴友如")
         app.repository.dao.update(book)
         row.id
     }
@@ -300,17 +301,17 @@ class ReadmeScreenshotTest {
             strokeWidth = 8f
         }
         canvas.drawRect(72f, 96f, 1008f, 1344f, frame)
-        canvas.drawText("示例漫画", 140f, 280f, ink)
+        canvas.drawText("点石斋画报", 140f, 280f, ink)
         canvas.drawText("第 ${index + 1} 页 / $total", 140f, 400f, ink)
         val note = Paint(ink).apply { textSize = 42f; color = 0xFF8A8478.toInt() }
-        canvas.drawText("为截图绘制的示例页，不是扫描件。", 140f, 500f, note)
+        canvas.drawText("为截图绘制的彩页，不是扫描件。", 140f, 500f, note)
         return java.io.ByteArrayOutputStream().also {
             bmp.compress(Bitmap.CompressFormat.PNG, 100, it)
         }.toByteArray()
     }
 
     private fun sampleBody(title: String, chapter: String) =
-        "$chapter\n\n$title\n\n这是为界面截图准备的示例正文，并非已有作品。\n".repeat(6)
+        "$chapter\n\n$title\n\n此开卷第一回也。作者自云：因曾历过一番梦幻之后，故将真事隐去。\n".repeat(6)
 
     private data class Sample(
         val file: String,
@@ -325,12 +326,24 @@ class ReadmeScreenshotTest {
         idle()
         val bitmap = runCatching { compose.onRoot().captureToImage().asAndroidBitmap() }
             .getOrElse { drawDecor() }
-        val scaled = if (bitmap.width == 1080 && bitmap.height == 2400) bitmap
-        else Bitmap.createScaledBitmap(bitmap, 1080, 2400, true)
+        val fitted = fitScreenshot(bitmap)
         val file = File(out, name)
-        file.outputStream().use { scaled.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        file.outputStream().use { fitted.compress(Bitmap.CompressFormat.PNG, 100, it) }
         check(file.length() > 8_000) { "$name is too small (${file.length()} bytes), capture likely failed" }
-        println("LYRIC_SCREEN $name ${scaled.width}x${scaled.height} ${file.length()} bytes (source ${bitmap.width}x${bitmap.height})")
+        println("LYRIC_SCREEN $name ${fitted.width}x${fitted.height} ${file.length()} bytes (source ${bitmap.width}x${bitmap.height})")
+    }
+
+    /** Crop or pad when the capture is off by a single pixel; scale only if the size is farther off. */
+    private fun fitScreenshot(src: Bitmap): Bitmap {
+        if (src.width == 1080 && src.height == 2400) return src
+        val nearWidth = kotlin.math.abs(src.width - 1080) <= 1
+        val nearHeight = kotlin.math.abs(src.height - 2400) <= 1
+        if (nearWidth && nearHeight) {
+            val out = Bitmap.createBitmap(1080, 2400, Bitmap.Config.ARGB_8888)
+            Canvas(out).drawBitmap(src, (1080 - src.width) / 2f, (2400 - src.height) / 2f, null)
+            return out
+        }
+        return Bitmap.createScaledBitmap(src, 1080, 2400, true)
     }
 
     private fun drawDecor(): Bitmap {
