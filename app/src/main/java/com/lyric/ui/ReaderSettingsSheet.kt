@@ -433,7 +433,7 @@ internal fun SettingToggle(label: String, checked: Boolean, change: (Boolean) ->
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = LyricTokens.Type.body)
+        Text(label, style = LyricTokens.Type.body, modifier = Modifier.weight(1f).padding(end = LyricTokens.Space.sm))
         Switch(checked = checked, onCheckedChange = change)
     }
 }

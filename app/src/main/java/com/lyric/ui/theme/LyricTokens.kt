@@ -96,6 +96,9 @@ object LyricTokens {
         fun margin(smallestWidthDp: Int) = if (smallestWidthDp >= tabletSmallestWidthDp) tabletMargin else phoneMargin
         val margin @Composable get() = margin(LocalConfiguration.current.smallestScreenWidthDp)
     }
+    object Shelf {
+        val minColumnWidth = 104.dp
+    }
     object Reading {
         data class Preset(val fontSizeSp: Float, val lineHeight: Float, val marginDp: Float, val paragraphEm: Float) {
             val fontSize get() = fontSizeSp.sp

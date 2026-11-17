@@ -70,4 +70,26 @@ class TokenVisualTest {
         assertEquals(24.dp, LyricTokens.Page.margin(600))
         assertEquals(24.dp, LyricTokens.Page.margin(840))
     }
+    private fun verifyThemeModes(systemDark: Boolean) {
+        assertEquals("system", ReaderSettings().appTheme)
+        compose.setContent {
+            Column {
+                listOf("system", "light", "dark").forEach { mode ->
+                    LyricTheme(ReaderSettings(appTheme = mode)) {
+                        val background = MaterialTheme.colorScheme.background
+                        val expected = LyricTokens.colors(if (mode == "system") systemDark else mode == "dark").background
+                        SideEffect { assertEquals("$mode with systemDark=$systemDark", expected, background) }
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+    }
+
+    @Test @Config(qualifiers = "w360dp-h800dp-notnight")
+    fun defaultFollowsLightSystemAndManualModesOverrideIt() = verifyThemeModes(systemDark = false)
+
+    @Test @Config(qualifiers = "w360dp-h800dp-night")
+    fun defaultFollowsDarkSystemAndManualModesOverrideIt() = verifyThemeModes(systemDark = true)
+
 }

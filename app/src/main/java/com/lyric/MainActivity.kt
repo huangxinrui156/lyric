@@ -15,7 +15,10 @@ import com.lyric.ui.*
 class MainActivity : ReaderActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(navigationBarStyle = androidx.activity.SystemBarStyle.auto(
+            android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT,
+        ))
+        if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         setContent {
             val app = LocalContext.current.applicationContext as LyricApp
             val preferences by app.repository.settings.global.collectAsState(initial = com.lyric.core.ReaderSettings())

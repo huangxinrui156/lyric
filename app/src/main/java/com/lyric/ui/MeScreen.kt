@@ -42,10 +42,10 @@ fun MeScreen(vm: MeViewModel, navigate: (String) -> Unit) {
                 border = BorderStroke(LyricTokens.strokeWidth, Linen)) {
                 Column(Modifier.padding(LyricTokens.Space.lg)) {
                     Text("阅读足迹", fontFamily = Serif, style = LyricTokens.Type.subtitle)
-                    Row(Modifier.fillMaxWidth().padding(top = LyricTokens.Space.xl), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Footprint("${todaySeconds / 60} 分", "今日 · 本周 ${weekSeconds / 60} 分")
-                        Footprint("${totals.finished} 本", "累计读完")
-                        Footprint("${ReadingStats.streak(days, today)} 天", "连续阅读")
+                    Row(Modifier.fillMaxWidth().padding(top = LyricTokens.Space.xl), horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm)) {
+                        Footprint("${todaySeconds / 60} 分", "今日 · 本周 ${weekSeconds / 60} 分", Modifier.weight(1f))
+                        Footprint("${totals.finished} 本", "累计读完", Modifier.weight(1f))
+                        Footprint("${ReadingStats.streak(days, today)} 天", "连续阅读", Modifier.weight(1f))
                     }
                     Text("共读 ${totals.durationSec / 60} 分钟  ›", color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = LyricTokens.Type.auxiliary, modifier = Modifier.padding(top = LyricTokens.Space.lg))
@@ -88,8 +88,8 @@ fun MeScreen(vm: MeViewModel, navigate: (String) -> Unit) {
 }
 
 @Composable
-private fun Footprint(value: String, label: String) {
-    Column {
+private fun Footprint(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
         Text(value, fontFamily = Serif, style = LyricTokens.Type.title)
         Text(label, style = LyricTokens.Type.auxiliary, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = LyricTokens.Space.sm))
     }
@@ -109,7 +109,7 @@ internal fun MeLink(title: String, subtitle: String, click: () -> Unit) {
 
 @Composable
 internal fun MePage(title: String, back: () -> Unit, content: @Composable (PaddingValues) -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text(title, fontFamily = Serif) }, navigationIcon = {
+    Scaffold(contentWindowInsets = WindowInsets.safeDrawing, topBar = { TopAppBar(windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top), title = { Text(title, fontFamily = Serif) }, navigationIcon = {
         IconButton(onClick = back) { Icon(Icons.Outlined.ArrowBack, "返回") }
     }) }) { padding -> Box(Modifier.fillMaxSize().padding(padding).paperGrain(deskDark())) { content(PaddingValues(LyricTokens.Page.margin)) } }
 }

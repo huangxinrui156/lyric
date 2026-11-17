@@ -389,7 +389,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                     } else drawContent()
                 }.background(bg).paperGrain(com.lyric.core.ThemePalette.isNight(theme, prefs.customBg))) {
                     Column(Modifier.fillMaxSize().windowInsetsPadding(
-                        WindowInsets.systemBarsIgnoringVisibility.union(WindowInsets.displayCutout)
+                        readerSafeInsets()
                     ).padding(top = LyricTokens.Space.sm, bottom = LyricTokens.Space.sm)) {
                         ReaderChapterHeading(book, prefs, meta, visibleLocator)
                         Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -534,7 +534,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                         }
                     })
                 AnimatedVisibility(visible = menu, enter = fadeIn(LyricTokens.Motion.short()),
-                    exit = fadeOut(LyricTokens.Motion.short()), modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()) {
+                    exit = fadeOut(LyricTokens.Motion.short()), modifier = Modifier.align(Alignment.TopCenter).windowInsetsPadding(readerSafeInsets().only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
                     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = LyricTokens.Component.readerToolbarElevation) {
                         Row(
                             Modifier.fillMaxWidth(),
@@ -562,7 +562,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                     visible = menu,
                     enter = slideInVertically(LyricTokens.Motion.long()) { it } + fadeIn(LyricTokens.Motion.short()),
                     exit = slideOutVertically(LyricTokens.Motion.long()) { it } + fadeOut(LyricTokens.Motion.short()),
-                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+                    modifier = Modifier.align(Alignment.BottomCenter).windowInsetsPadding(readerSafeInsets().only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
                 ) {
                     Surface(
                         color = MaterialTheme.colorScheme.surface,
@@ -665,7 +665,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                 }
                 SnackbarHost(
                     snack,
-                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+                    modifier = Modifier.align(Alignment.BottomCenter).windowInsetsPadding(readerSafeInsets().only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
                 )
                 if (prefs.dim > 0f)
                     Box(
@@ -703,11 +703,12 @@ private fun ReaderChapterHeading(book: Book, prefs: ReaderSettings, meta: Color,
 }
 
 @Composable
-private fun ReaderFooter(book: Book, prefs: ReaderSettings, meta: Color, night: Boolean,
+internal fun ReaderFooter(book: Book, prefs: ReaderSettings, meta: Color, night: Boolean,
                          pageInfo: State<String>, visible: State<Locator>) {
     val lengthsReady = book.deferred?.lengthsReady?.collectAsStateWithLifecycle()?.value ?: true
-    Row(Modifier.fillMaxWidth().padding(horizontal = prefs.margin.dp).padding(top = LyricTokens.Space.md),
-        horizontalArrangement = Arrangement.SpaceBetween) {
+    FlowRow(Modifier.fillMaxWidth().padding(horizontal = prefs.margin.dp).padding(top = LyricTokens.Space.md),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs)) {
         val infoStyle = LyricTokens.Type.auxiliary
         if (prefs.showPage) Text(pageInfo.value, color = meta, style = infoStyle)
         if (prefs.showPercent) {
