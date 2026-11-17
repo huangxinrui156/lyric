@@ -1,0 +1,48 @@
+name: 缺陷 / Bug
+description: 报告崩溃、显示错误或与预期不符的行为。 / Report a crash, display bug, or unexpected behavior.
+title: "[缺陷] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请尽量提供可复现的步骤。Lyric 不采集数据，维护者看不到你设备上的日志，除非你主动附上。
+        Please include steps to reproduce. Lyric does not collect telemetry; maintainers only see what you paste.
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果 / Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果 / Actual
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / Version
+      description: 例如 0.9.7.1（versionCode 35），或 commit。
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: 设备与系统 / Device and OS
+      description: 例如 Find X9 Pro · ColorOS / Android 15。
+  - type: textarea
+    id: extra
+    attributes:
+      label: 附加信息 / Extra
+      description: 日志、截图或示例文件说明（请勿上传受版权保护的整书）。

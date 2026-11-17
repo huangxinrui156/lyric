@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+<rect width="1280" height="640" fill="#F4EFE6"/>
+<g transform="translate(250 320) scale(3.6) translate(-54 -54)">
+<rect x="14" y="14" width="80" height="80" rx="20" fill="#F3ECDF" stroke="#E2DBCE" stroke-width="0.4"/>
+<path d="M51.6,64.8 C49,55 56,38 84.7,26.9 C76,32 70,38 68.3,44.2 C62,52 56,58 51.6,64.8 Z" fill="#E9D9C2" transform="translate(54 54) scale(0.74) translate(-54 -54)"/>
+<g transform="translate(54 54) scale(0.74) translate(-54 -54)">
+<path d="M84.7,26.9 C85,40 80,52 53.5,63.8 C60,56 64,50 68.3,44.2 C72,38 78,32 84.7,26.9 Z" fill="#C96B4C"/>
+<path d="M68.3,44.5 C62,52 54,62 49,69.3 C42,78 26,82 23.6,77.4 C21.5,73 34,70 44,72.5 C55,75 63,80 70.8,80.6" fill="none" stroke="#6B4A32" stroke-width="1.8" stroke-linecap="round"/>
+<circle cx="78.6" cy="77.4" r="3.9" fill="#C96B4C"/></g></g>
+<text x="500" y="330" font-family="Noto Serif CJK SC" font-size="140" fill="#2B2A27" letter-spacing="2">lyric</text>
+<text x="506" y="400" font-family="Noto Serif CJK SC" font-size="32" fill="#8A8478" letter-spacing="4">安静的本地书籍与漫画阅读器</text>
+<text x="506" y="446" font-family="Noto Serif CJK SC" font-size="24" fill="#B3AC9F" letter-spacing="2">EPUB · TXT · PDF · CBZ  ·  Android</text>
+</svg>

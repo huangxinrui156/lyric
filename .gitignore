@@ -13,3 +13,6 @@ build/
 /benchmark-results/
 
 __pycache__/
+
+# JVM-rendered README screenshot candidates (not committed until design picks).
+/screens/

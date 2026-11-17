@@ -92,3 +92,12 @@ dependencies {
 }
 
 kapt { arguments { arg("room.schemaLocation", "$projectDir/schemas") } }
+
+tasks.withType<Test>().configureEach {
+    if (project.hasProperty("lyric.render.screens")) {
+        systemProperty("lyric.render.screens", "true")
+        val dir = project.findProperty("lyric.screens.dir")?.toString()
+            ?: layout.buildDirectory.dir("outputs/readme-screens").get().asFile.absolutePath
+        systemProperty("lyric.screens.dir", dir)
+    }
+}

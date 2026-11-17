@@ -1,0 +1,50 @@
+# 仓库截图（JVM 渲染）
+
+1.0 README 需要书架、阅读、漫画、夜间等截图。本仓库用 **Robolectric + Compose 在 JVM 上出图**，不启动模拟器或真机。项目里已有 `GraphicsMode.NATIVE` 的 UI 测试，因此没有再加 Roborazzi 依赖。
+
+The README will include shelf, reading, comic, and night screenshots. They are rendered **on the JVM with Robolectric + Compose**, without an emulator or device. The project already uses `GraphicsMode.NATIVE`, so Roborazzi was not added.
+
+## 尺寸 / Size
+
+按 Find X9 Pro 量级：`1080×2400`、约 `xxhdpi`（360×800 dp @ 3x）。限定符：`w360dp-h800dp-xxhdpi`。
+
+## 如何生成 / How to render
+
+```bash
+export JAVA_HOME=/home/box/jdk17 ANDROID_HOME=/home/box/Android
+bash tools/render-screens.sh
+```
+
+等价 Gradle：
+
+```bash
+./gradlew :app:testDebugUnitTest \
+  -Plyric.render.screens=true \
+  -Plyric.screens.dir="$PWD/app/build/outputs/readme-screens" \
+  --tests com.lyric.ui.ReadmeScreenshotTest
+```
+
+默认把 PNG 复制到仓库根目录的 `screens/`（已在 `.gitignore`，不提交）。美术设计选定后再拷进 `docs/images/` 并写入 README。未加 `-Plyric.render.screens=true` 时，该测试会被跳过，不影响日常 `./gradlew test`。
+
+PNGs are copied to `screens/` at the repo root (gitignored). After design picks, copy them into `docs/images/` and reference them from the README. Without `-Plyric.render.screens=true` the test is skipped.
+
+## 画面与数据 / Shots and data
+
+全部使用专门编写的示例书名、作者和正文，不含真实用户内容或受版权保护的作品。漫画页是程序绘制的色板，不是 PDF 扫描件。
+
+| 文件 | 内容 |
+|---|---|
+| `shelf-day.png` | 书架，日间 |
+| `shelf-night.png` | 书架，夜间 |
+| `empty-shelf-day.png` | 空书架，日间 |
+| `empty-shelf-night.png` | 空书架，夜间 |
+| `reader-day.png` | 文字阅读页，日间 |
+| `reader-night.png` | 文字阅读页，夜间 |
+| `comic-day.png` | 漫画阅读页，日间主题框 |
+| `comic-night.png` | 漫画阅读页，夜间主题框 |
+
+## 限制 / Limits
+
+- 系统栏、字体渲染、OEM 皮肤与真机（ColorOS 等）不会完全一致。
+- 漫画为自制位图页；未渲染真实 PDF / 扫描件。若某张图空白或尺寸不是 1080×2400，以测试日志为准。
+- 这些文件不是 golden 回归图，不作像素对比。

@@ -1,22 +1,82 @@
+<p align="center">
+  <img src="docs/images/banner.png" alt="Lyric · 抒情诗" width="800">
+</p>
+
 # Lyric · 抒情诗
 
-一个安静、离线的 Android TXT / EPUB 阅读器。Kotlin + Jetpack Compose / Material 3，界面为简体中文。没有网络权限、账号、广告或在线书源。首次打开是空书架：一句「书架还空着」和一个「导入书籍」按钮，选一本即可开始读。
+**一句话定位：** 安静的本地阅读器：打开即读，没有多余的东西。  
+**One-liner:** A quiet, local Android reader: open a book and start reading, with nothing extra.
 
-视觉依据 [design/design-spec.md](design/design-spec.md) v1.1 与 `design/src/`：和纸背景、苔绿控件、朱红进度、宋体正文、三列竖排封面、20dp 卡片、24dp 底部面板。书架显示实际藏书数量，不虚构阅读统计；设计稿“发现”改为本地导入。正文与书架标题内置思源宋体 Noto Serif CJK SC，UI 使用系统黑体；可另行导入 TTF/OTF。字体遵循 SIL OFL，授权见 `third_party/NotoSerif-OFL.txt`。提供由原图标重绘的自适应 launcher icon（含单色层）。
+Lyric 是一个纯本地、无书源、无广告的 Android 阅读器。支持 TXT / EPUB / PDF / CBZ / DOCX / MOBI / AZW3，以及图片与 ZIP 漫画包。Kotlin + Jetpack Compose / Material 3，界面为简体中文。没有网络权限、账号、广告或在线书源。首次打开是空书架：一句「书架还空着」和一个「导入书籍」按钮，选一本即可开始读。
 
-## 构建与运行
+Lyric is a free, open-source, offline Android reader. It opens TXT, EPUB, PDF, CBZ, DOCX, MOBI, and AZW3 books (plus images or ZIP comic archives) and stays on the device. There are no accounts, ads, or online catalogs. The first launch is an empty shelf with one short prompt and an import button.
 
-需要 JDK 17、Android SDK 35 / Build Tools 35.0.0。Gradle 8.9 wrapper 已提交；首次构建需联网下载构建依赖，应用运行不联网。
+视觉与字体：依据 [design/v1.0/tokens.md](design/v1.0/tokens.md) 与 [design/design-spec.md](design/design-spec.md)。正文内置思源宋体 Noto Serif CJK SC（[SIL Open Font License 1.1](third_party/NotoSerif-OFL.txt)），界面使用系统黑体，也可自行导入 TTF/OTF。
+
+## 下载 / Download
+
+最低 Android 8.0（API 26），目标 API 35。1.0 性能验收机型为 **Find X9 Pro**。
+
+正式签名包将随「正式发布包」发布到 [GitHub Releases](https://github.com/huangxinrui156/lyric/releases)，并附 SHA256。当前请从源码构建（见下方）；debug APK 路径为 `app/build/outputs/apk/debug/app-debug.apk`。
+
+The signed release will be published on [GitHub Releases](https://github.com/huangxinrui156/lyric/releases) with a SHA256 checksum. Until then, build from source. Minimum Android 8.0 (API 26). The 1.0 performance baseline is measured on a Find X9 Pro.
+
+## 截图 / Screenshots
+
+书架、阅读页、漫画与夜间模式的截图将在美术设计从 JVM 渲染稿中选定后放入。生成方法见 [docs/screenshots.md](docs/screenshots.md)：
+
+```bash
+bash tools/render-screens.sh
+```
+
+输出在 `screens/`（不进 git）。本轮不先把未选定的 PNG 写进 README。
+
+Screenshots of the shelf, reading view, comic view, and night theme will be added after design picks from the JVM-rendered set. See [docs/screenshots.md](docs/screenshots.md). Run `bash tools/render-screens.sh`; PNGs land in `screens/` (not committed). Unpicked images are not embedded in this README yet.
+
+## 构建 / Build
+
+需要 JDK 17、Android SDK 35 / Build Tools 35.0.0。仓库已包含 Gradle 8.9 wrapper。首次构建需联网下载依赖；**应用运行时不访问网络**。
+
+You need JDK 17 and Android SDK 35 (Build Tools 35.0.0). The Gradle 8.9 wrapper is committed. The first build needs a network connection to fetch dependencies; **the app itself does not use the network**.
 
 ```bash
 export JAVA_HOME=/home/box/jdk17
 export ANDROID_HOME=/home/box/Android
 # 其他机器：在 local.properties 中设置 sdk.dir，或设置 ANDROID_HOME
-./gradlew assembleDebug test lintDebug
+./gradlew assembleDebug test assembleBenchmark
+bash tools/check-tokens.sh
+bash tools/check-licenses.sh
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-最低 Android 8.0 / API 26，目标 API 35。APK：`app/build/outputs/apk/debug/app-debug.apk`。测试报告：`app/build/reports/tests/testDebugUnitTest/index.html`；Lint 报告：`app/build/reports/lint-results-debug.html`。
+测试报告：`app/build/reports/tests/testDebugUnitTest/index.html`。Lint：`app/build/reports/lint-results-debug.html`。更完整的设备验证步骤见 [docs/validation.md](docs/validation.md)。
+
+## 隐私 / Privacy
+
+所有书籍、进度、摘录、阅读统计与设置仅存本机。没有账号、广告、分析 SDK 或遥测。应用未声明 `INTERNET` 网络权限，不访问网络；本地文件仅使用系统文件选择器授予的权限读取。仅在你主动导出时，将备份或摘录写到你选择的位置。卸载应用将删除私有数据。
+
+All books, progress, highlights, reading stats, and settings stay on the device. There is no account, advertising, analytics SDK, or telemetry. The app does not declare the `INTERNET` permission and does not access the network. Local files are read only through permissions you grant with the system file picker. Backups or exported notes are written only when you choose a destination. Uninstalling the app removes its private data.
+
+## 许可证 / License
+
+Lyric 以 [Apache License 2.0](LICENSE) 发布。Copyright 2026 黄新瑞。第三方依赖的许可证见下方与应用内 [open-source-notices.txt](app/src/main/assets/open-source-notices.txt)。请运行 `bash tools/check-licenses.sh`，确认 `app/build.gradle.kts` 中的实现依赖均在已知许可证清单内。
+
+Lyric is released under the [Apache License 2.0](LICENSE). Copyright 2026 黄新瑞. Third-party notices are listed below and in [open-source-notices.txt](app/src/main/assets/open-source-notices.txt). `bash tools/check-licenses.sh` fails if a new runtime dependency is added without a recorded license.
+
+| 依赖 / Dependency | 许可证 / License |
+|---|---|
+| Kotlin, kotlinx.coroutines, kotlinx.serialization | Apache-2.0 |
+| AndroidX（Compose、Material 3、Room、DataStore 等） | Apache-2.0 |
+| Coil 2（含 coil-svg）、AndroidSVG 1.4 | Apache-2.0 |
+| jsoup | MIT |
+| juniversalchardet | MPL-1.1 |
+| Noto Serif CJK SC | SIL Open Font License 1.1 |
+
+变更记录见 [CHANGELOG.md](CHANGELOG.md)。问题与建议请用 [Issue 模板](.github/ISSUE_TEMPLATE)。
+
+---
+
+以下为开发与验收记录（含 0.9.7.1 加载与 1.0 性能底线）。
 
 ## 加载卡顿专项（0.9.7.1 / vc35）
 
