@@ -108,6 +108,12 @@ object LyricTokens {
         val comfortable = Preset(18f, 1.7f, 24f, .5f)
         val loose = Preset(20f, 1.9f, 32f, .6f)
         val default = comfortable
+        val presets = listOf(compact, comfortable, loose)
+        val presetLabels = listOf("紧凑", "舒适", "宽松")
+        const val presetRowLabel = "排版"
+        const val moreLabel = "更多"
+        const val customLabel = "已自定义"
+        val fineTuneLabels = listOf("字号", "行距", "段距", "页边距")
         const val bodyMaxWidthDp = 640f
         val bodyMaxWidth = bodyMaxWidthDp.dp
     }
