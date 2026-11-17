@@ -2,17 +2,22 @@ package com.lyric.ui
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint
 import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -63,15 +68,9 @@ class AcceptanceScreenshotTest {
             app.repository.settings.shelfCompact(ShelfSection.BOOK, false)
             app.repository.settings.shelfFilter(ShelfSection.BOOK, ShelfFilter())
         }
-        showShelf(app, dark = false)
-        waitFor("筛选")
-        compose.onNodeWithText("筛选").performClick()
-        waitFor("阅读状态")
+        openFilterSheet(app, dark = false)
         capture("filter-sheet-day.png", out)
-        showShelf(app, dark = true)
-        waitFor("筛选")
-        compose.onNodeWithText("筛选").performClick()
-        waitFor("阅读状态")
+        openFilterSheet(app, dark = true)
         capture("filter-sheet-night.png", out)
 
         val active = ShelfFilter(statuses = setOf(ReadingStatusFilter.READING, ReadingStatusFilter.UNREAD), imported = ImportedWithin.DAYS_30)
@@ -142,7 +141,11 @@ class AcceptanceScreenshotTest {
         val hosted = vm
         scene = {
             LyricTheme(ReaderSettings(appTheme = if (dark) "dark" else "light")) {
-                DeskScreen(hosted, { _, _ -> }, {}, {}, {})
+                // DeskScreen is hosted in the shelf scaffold in the app; paint the theme
+                // background here so night screenshots are not the light window color.
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                    DeskScreen(hosted, { _, _ -> }, {}, {}, {})
+                }
             }
         }
         idle()
@@ -165,23 +168,81 @@ class AcceptanceScreenshotTest {
         compose.waitForIdle()
     }
 
+    private fun openFilterSheet(app: LyricApp, dark: Boolean) {
+        showShelf(app, dark)
+        waitFor("筛选")
+        compose.onNodeWithText("筛选", substring = false).performClick()
+        waitFor("阅读状态")
+        waitFor("重置")
+        waitFor("完成")
+        // Let the sheet finish sliding in. Do not waitForIdle here: dismissing or
+        // lingering sheet animations have hung the clock in this harness before.
+        compose.mainClock.autoAdvance = false
+        compose.mainClock.advanceTimeBy(500)
+        compose.mainClock.autoAdvance = true
+        org.robolectric.shadows.ShadowBuild.setFingerprint("lyric-native-curl-test")
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+    }
+
     private fun capture(name: String, out: File) {
         idle()
-        val bitmap = runCatching { compose.onRoot().captureToImage().asAndroidBitmap() }.getOrElse {
-            val decor = compose.activity.window.decorView
-            var bmp: Bitmap? = null
-            compose.runOnUiThread {
-                val created = Bitmap.createBitmap(decor.width.takeIf { it > 0 } ?: 1080, decor.height.takeIf { it > 0 } ?: 2400, Bitmap.Config.ARGB_8888)
-                decor.draw(Canvas(created))
-                bmp = created
-            }
-            idle()
-            bmp!!
-        }
+        val bitmap = captureFrame(includeDialogs = name.startsWith("filter-sheet"))
         val fitted = if (bitmap.width == 1080 && bitmap.height == 2400) bitmap else Bitmap.createScaledBitmap(bitmap, 1080, 2400, true)
         val file = File(out, name)
         file.outputStream().use { fitted.compress(Bitmap.CompressFormat.PNG, 100, it) }
         check(file.length() > 8_000) { "$name is too small (${file.length()} bytes)" }
         println("LYRIC_SCREEN $name ${fitted.width}x${fitted.height} ${file.length()} bytes")
+    }
+
+    /**
+     * ModalBottomSheet is shown in a dialog window. [androidx.compose.ui.test.onRoot]
+     * only captures the activity, which is why filter-sheet previously looked like a
+     * plain shelf. Composite every compose root and any shown dialog decor.
+     */
+    private fun captureFrame(includeDialogs: Boolean): Bitmap {
+        val layers = mutableListOf<Bitmap>()
+        val rootCount = compose.onAllNodes(isRoot()).fetchSemanticsNodes().size
+        println("LYRIC_SCREEN roots=$rootCount dialogs=${org.robolectric.shadows.ShadowDialog.getShownDialogs().size} includeDialogs=$includeDialogs")
+        val lastRoot = if (includeDialogs) rootCount else minOf(rootCount, 1)
+        for (index in 0 until lastRoot) {
+            runCatching { compose.onAllNodes(isRoot())[index].captureToImage().asAndroidBitmap() }
+                .onSuccess { layers += it }
+        }
+        if (layers.isEmpty()) {
+            runCatching { compose.onRoot().captureToImage().asAndroidBitmap() }.onSuccess { layers += it }
+        }
+        compose.runOnUiThread {
+            fun draw(view: android.view.View): Bitmap? {
+                val width = view.width.takeIf { it > 0 } ?: return null
+                val height = view.height.takeIf { it > 0 } ?: return null
+                val created = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                view.draw(Canvas(created))
+                return created
+            }
+            if (layers.isEmpty()) draw(compose.activity.window.decorView)?.let { layers += it }
+            if (includeDialogs) {
+                org.robolectric.shadows.ShadowDialog.getShownDialogs().forEach { dialog ->
+                    dialog.window?.decorView?.let { decor -> draw(decor)?.let { layers += it } }
+                }
+            }
+        }
+        org.robolectric.shadows.ShadowBuild.setFingerprint("lyric-native-curl-test")
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        check(layers.isNotEmpty()) { "no window to capture" }
+        val base = layers.first()
+        if (layers.size == 1) return base
+        val out = Bitmap.createBitmap(base.width, base.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+        for (layer in layers) {
+            if (layer.width == out.width && layer.height == out.height) {
+                canvas.drawBitmap(layer, 0f, 0f, paint)
+            } else {
+                val left = (out.width - layer.width).coerceAtLeast(0) / 2f
+                val top = (out.height - layer.height).coerceAtLeast(0).toFloat()
+                canvas.drawBitmap(layer, left, top, paint)
+            }
+        }
+        return out
     }
 }
