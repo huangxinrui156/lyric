@@ -57,11 +57,32 @@ class ShelfViewModel(private val app: LyricApp) : ViewModel() {
         viewModelScope.launch { repository.settings.shelfSort(mode, section) }
     }
 
+    val compact =
+        repository.settings.shelfCompact(ShelfSection.BOOK)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val comicCompact =
+        repository.settings.shelfCompact(ShelfSection.COMIC)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    fun compact(section: ShelfSection, compact: Boolean) {
+        viewModelScope.launch { repository.settings.shelfCompact(section, compact) }
+    }
+
+    val shelfFilter =
+        repository.settings.shelfFilter(ShelfSection.BOOK)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ShelfFilter())
+    val comicFilter =
+        repository.settings.shelfFilter(ShelfSection.COMIC)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ShelfFilter())
+    fun filter(section: ShelfSection, filter: ShelfFilter) {
+        viewModelScope.launch { repository.settings.shelfFilter(section, filter) }
+    }
+
     fun import(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null) {
         app.applicationScope.launch { repository.importUris(uris, folder, grantFlags) }
     }
 
     fun consumeOpenBook(): String? = repository.consumeOpenBook()
+    fun consumeImportMessage(batchId: Long) = repository.consumeImportMessage(batchId)
 
     fun remove(id: String) {
         viewModelScope.launch { repository.remove(id) }

@@ -44,15 +44,13 @@ class OpenWithImportTest {
         val file = txt(app, "already.txt")
         val uri = Uri.fromFile(file)
         repo.importUris(listOf(uri))
-        val first = repo.imports.value.openBookId
-        assertNotNull(first)
-        assertEquals(1, repo.books.first().size)
-        repo.consumeOpenBook()
         assertNull(repo.imports.value.openBookId)
+        val first = repo.books.first().single().id
+        assertEquals(1, repo.books.first().size)
 
         val inbound = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "text/plain")
         assertTrue(inbound.isBookOpenIntent())
-        repo.importUris(inbound.bookUris(), grantFlags = inbound.flags)
+        repo.importUris(inbound.bookUris(), grantFlags = inbound.flags, openWith = true)
         val status = repo.imports.value
         assertEquals(0, status.added)
         assertEquals(1, status.duplicates)
@@ -66,7 +64,7 @@ class OpenWithImportTest {
     @Test
     fun consumeOpenBookReturnsTheIdOnce() = env { repo ->
         val app = ApplicationProvider.getApplicationContext<Application>()
-        repo.importUris(listOf(Uri.fromFile(txt(app, "once.txt"))))
+        repo.importUris(listOf(Uri.fromFile(txt(app, "once.txt"))), openWith = true)
         val id = repo.consumeOpenBook()
         assertNotNull(id)
         assertNull(repo.consumeOpenBook())
@@ -172,7 +170,7 @@ class OpenWithImportTest {
         assertEquals(status.toString(), 1, status.added)
         assertEquals(0, status.failures)
         assertEquals("cbz", repo.dao.all().single().extension)
-        assertNotNull(status.openBookId)
+        assertNull(status.openBookId)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.lyric.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -9,6 +10,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.animateColorAsState
 import com.lyric.core.ReaderSettings
 import com.lyric.ui.theme.LyricTokens
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
@@ -24,6 +26,15 @@ val Vermilion @Composable get() = LocalLyricColors.current.vermilion
 val Stone @Composable get() = LocalLyricColors.current.secondary
 val Linen @Composable get() = LocalLyricColors.current.stroke
 val CardPaper @Composable get() = LocalLyricColors.current.card
+
+/** Shared 「lyric · 分区」 page title; always uses the theme body ink (night #D0CABE). */
+@Composable
+fun LyricWordmarkTitle(section: String, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text("lyric", style = LyricTokens.Type.wordmark, color = Ink)
+        Text(" · $section", fontFamily = Serif, style = LyricTokens.Type.title, color = Ink)
+    }
+}
 
 private fun colorScheme(night: Boolean): ColorScheme {
     val p = LyricTokens.colors(night)

@@ -122,8 +122,13 @@ class ScreenAdaptationUiTest {
         val sort = compose.onNodeWithText("书名", useUnmergedTree = true).getUnclippedBoundsInRoot()
         val count = countNode.getUnclippedBoundsInRoot()
         assertTrue("Count must wrap or follow sort chips", count.top >= sort.bottom || count.left >= sort.right)
+        if (count.left >= sort.right) {
+            val countMid = (count.top + count.bottom) / 2
+            val chipMid = (sort.top + sort.bottom) / 2
+            assertEquals("Book count should sit on the same vertical center as sort chips", chipMid.value, countMid.value, 2f)
+        }
         compose.onNodeWithText("案头").performClick()
-        listOf(" · 案头", "今日一句", "专注阅读", "25 分钟", "45 分钟").forEach(::assertTextFits)
+        listOf(" · 案头", "今日一句", "专注阅读", "25 分钟", "45 分钟", "自定义").forEach(::assertTextFits)
         compose.onNodeWithText("我的").performClick()
         listOf("阅读足迹", "累计读完", "连续阅读").forEach(::assertTextFits)
         val left = compose.onNodeWithText("今日 · 本周 0 分", useUnmergedTree = true).getUnclippedBoundsInRoot()

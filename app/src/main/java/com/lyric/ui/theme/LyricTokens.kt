@@ -101,11 +101,30 @@ object LyricTokens {
     }
     object Shelf {
         val minColumnWidth = 104.dp
+        val compactMinColumnWidth = 72.dp
+        val compactColumnGap = Space.sm
+        val compactRowGap = Space.md
+        val densityIcon = 24.dp
+        const val coverAspect = 2f / 3f
+        const val compactTitleMaxLines = 2
+        val filterIcon = 16.dp
+        val filterDismiss = 16.dp
+        const val filterLabel = "筛选"
+        const val filterEmptyCopy = "没有符合条件的书"
+        const val clearFilterLabel = "清除筛选"
+        val emptyActionGap = Space.lg
+        const val filterStatusTitle = "阅读状态"
+        const val filterImportedTitle = "导入时间"
+        const val filterReset = "重置"
+        const val filterDone = "完成"
         const val emptyCopy = "书架还空着"
         const val emptyImportLabel = "导入书籍"
         const val emptyComicCopy = "画架还空着"
         const val emptyComicImportLabel = "导入漫画"
         const val addLabel = "添加"
+        const val standardColumns = 2
+        const val importing = "正在导入…"
+        fun importingCopy(total: Int) = if (total > 0) "正在导入 $total 本…" else importing
     }
     object Reading {
         data class Preset(val fontSizeSp: Float, val lineHeight: Float, val marginDp: Float, val paragraphEm: Float) {
@@ -128,10 +147,27 @@ object LyricTokens {
         val chapterTitleGap = Space.xl
         val chapterTitleSize = chapterTitleSp.sp
     }
+    object Focus {
+        const val minMinutes = 5
+        const val maxMinutes = 180
+        const val stepMinutes = 5
+        val presets = listOf(25, 45)
+        val chipHeight = 32.dp
+        val stepperButton = 40.dp
+        val stepperValue = TextStyle(fontFamily = Fonts.hei, fontSize = 20.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium)
+        const val customLabel = "自定义"
+        fun snapMinutes(min: Int): Int {
+            val stepped = ((min + stepMinutes / 2) / stepMinutes) * stepMinutes
+            return stepped.coerceIn(minMinutes, maxMinutes)
+        }
+        fun isPreset(min: Int, custom: Boolean) = !custom && min in presets
+        fun chipLabel(min: Int, custom: Boolean = false) = "$min 分钟"
+    }
     object Motion {
         const val shortMs = 150
         const val mediumMs = 200
         const val longMs = 300
+        const val ephemeralSnackbarMs = 4000L
         const val instantMs = 0
         val easeOut = CubicBezierEasing(0f, 0f, .2f, 1f)
         fun <T> short(): TweenSpec<T> = duration(shortMs)

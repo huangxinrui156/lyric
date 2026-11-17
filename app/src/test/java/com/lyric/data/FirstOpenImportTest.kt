@@ -1,6 +1,7 @@
 package com.lyric.data
 
 import android.app.Application
+
 import android.net.Uri
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
@@ -39,10 +40,24 @@ class FirstOpenImportTest {
         File(app.cacheDir, name).apply { writeText("第一章 $name\n\n正文内容。".repeat(40)) }
 
     @Test
-    fun singleFileImportSetsOpenBookIdAndConsumeClearsIt() = env { repo ->
+    fun inAppSingleFileImportDoesNotSetOpenBookId() = env { repo ->
         val app = ApplicationProvider.getApplicationContext<Application>()
         val file = txt(app, "first-open.txt")
         repo.importUris(listOf(Uri.fromFile(file)))
+        val status = repo.imports.value
+        assertEquals(1, status.added)
+        assertEquals(0, status.failures)
+        assertFalse(status.running)
+        assertNull(status.openBookId)
+        assertNull(repo.consumeOpenBook())
+        assertEquals(1, repo.books.first().size)
+    }
+
+    @Test
+    fun openWithSingleFileImportSetsOpenBookIdAndConsumeClearsIt() = env { repo ->
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        val file = txt(app, "open-with.txt")
+        repo.importUris(listOf(Uri.fromFile(file)), openWith = true)
         val status = repo.imports.value
         assertEquals(1, status.added)
         assertEquals(0, status.failures)
@@ -53,6 +68,17 @@ class FirstOpenImportTest {
         assertEquals(id, repo.consumeOpenBook())
         assertNull(repo.imports.value.openBookId)
         assertEquals(1, repo.books.first().size)
+    }
+
+    @Test
+    fun inAppImportWhileAlreadyRunningIsIgnored() = env { repo ->
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        repo.imports.value = ImportStatus(running = true, total = 2, message = "正在扫描本地文件…", batchId = 99L)
+        repo.importUris(listOf(Uri.fromFile(txt(app, "ignored.txt"))))
+        assertEquals(99L, repo.imports.value.batchId)
+        assertTrue(repo.imports.value.running)
+        assertEquals(0, repo.imports.value.added)
+        assertTrue(repo.books.first().isEmpty())
     }
 
     @Test

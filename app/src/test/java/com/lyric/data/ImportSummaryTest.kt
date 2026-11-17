@@ -99,4 +99,16 @@ class ImportSummaryTest {
         assertEquals("导入 2 · 跳过 0 · 失败 0", status.summary)
         assertTrue(status.message.startsWith(status.summary))
     }
+
+    @Test fun consumeImportMessageClearsTheSnackbarTextOnce() = env { repo ->
+        repo.imports.value = ImportStatus(duplicates = 1, message = "导入 0 · 跳过 1 · 失败 0", batchId = 9L)
+        repo.consumeImportMessage(9L)
+        assertEquals("", repo.imports.value.message)
+        assertEquals("导入 0 · 跳过 1 · 失败 0", repo.imports.value.summary)
+        repo.consumeImportMessage(9L)
+        assertEquals("", repo.imports.value.message)
+        repo.imports.value = repo.imports.value.copy(running = true, message = "正在扫描本地文件…", batchId = 10L)
+        repo.consumeImportMessage(10L)
+        assertEquals("正在扫描本地文件…", repo.imports.value.message)
+    }
 }

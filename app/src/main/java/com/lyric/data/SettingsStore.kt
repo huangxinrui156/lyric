@@ -106,10 +106,14 @@ class SettingsStore(
                 require(ShelfSection.entries.any { it.name == raw }) { "未知分区" }
                 return@forEach
             }
+            if (key == "shelf_filter" || key == "comic_shelf_filter") {
+                ShelfFilter.decode(raw)
+                return@forEach
+            }
             require(key == "global" || key.startsWith("type_") || key.startsWith("book_")) { "未知设置项" }
             json.decodeFromString<ReaderSettings>(raw)
         }
-        require(snapshot.flags.keys.all { it in setOf("grid", "sort_title", "seeded") }) { "未知设置项" }
+        require(snapshot.flags.keys.all { it in setOf("grid", "sort_title", "seeded", "shelf_compact", "comic_shelf_compact", "focus_custom") }) { "未知设置项" }
     }
 
     suspend fun restore(snapshot: SettingsSnapshot) {
@@ -151,7 +155,39 @@ class SettingsStore(
     suspend fun seeded() = store.edit { it[booleanPreferencesKey("seeded")] = true }
 
     suspend fun isSeeded() = store.data.first()[booleanPreferencesKey("seeded")] ?: false
+
+    private fun compactKey(section: ShelfSection) =
+        booleanPreferencesKey(if (section == ShelfSection.COMIC) "comic_shelf_compact" else "shelf_compact")
+
+    fun shelfCompact(section: ShelfSection) =
+        store.data.map { it[compactKey(section)] ?: false }.distinctUntilChanged()
+
+    suspend fun shelfCompact(section: ShelfSection, compact: Boolean) = store.edit { it[compactKey(section)] = compact }
+
+    val focusPlannedMin = store.data.map {
+        val raw = it[intPreferencesKey("focus_planned_min")] ?: 25
+        val stepped = ((raw + 2) / 5) * 5
+        stepped.coerceIn(5, 180)
+    }.distinctUntilChanged()
+    val focusCustom = store.data.map { it[booleanPreferencesKey("focus_custom")] ?: false }.distinctUntilChanged()
+    private fun filterKey(section: ShelfSection) =
+        stringPreferencesKey(if (section == ShelfSection.COMIC) "comic_shelf_filter" else "shelf_filter")
+
+    fun shelfFilter(section: ShelfSection) =
+        store.data.map { ShelfFilter.decode(it[filterKey(section)]) }.distinctUntilChanged()
+
+    suspend fun shelfFilter(section: ShelfSection, filter: ShelfFilter) = store.edit {
+        val key = filterKey(section)
+        if (filter.isActive) it[key] = filter.encode() else it.remove(key)
+    }
+
+    suspend fun focusPlan(minutes: Int, custom: Boolean) = store.edit {
+        val stepped = ((minutes + 2) / 5) * 5
+        it[intPreferencesKey("focus_planned_min")] = stepped.coerceIn(5, 180)
+        it[booleanPreferencesKey("focus_custom")] = custom
+    }
 }
+
 
 @kotlinx.serialization.Serializable
 data class SettingsSnapshot(val strings: Map<String, String> = emptyMap(), val flags: Map<String, Boolean> = emptyMap())

@@ -4,6 +4,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
 import com.lyric.LyricApp
+import com.lyric.data.ImportStatus
 import com.lyric.data.ShelfSection
 import com.lyric.ui.theme.LyricTokens
 import kotlinx.coroutines.Dispatchers
@@ -82,20 +83,65 @@ class EmptyShelfUiTest {
         compose.onNodeWithText(LyricTokens.Shelf.emptyImportLabel).assertDoesNotExist()
     }
 
-    @Test fun emptyImportOpensTheBookWithoutAFourthStep() {
+    @Test fun emptyImportStaysOnTheShelfWithoutOpening() {
         val opened = mutableListOf<String>()
         val (app, _) = openEmptyShelf { opened += it }
         val file = java.io.File(app.cacheDir, "empty-open.txt").apply {
             writeText("第一章 开始\n\n" + "正文。".repeat(80))
         }
         runBlocking(Dispatchers.IO) { app.repository.importUris(listOf(android.net.Uri.fromFile(file))) }
+        val expected = "导入 1 · 跳过 0 · 失败 0"
         compose.waitUntil(10_000) {
             org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-            opened.isNotEmpty()
+            compose.onAllNodesWithText(expected, substring = true).fetchSemanticsNodes().isNotEmpty()
         }
-        val id = runBlocking { app.repository.books.first().single().id }
-        assertEquals(listOf(id), opened)
+        compose.onNodeWithText(expected, substring = true).assertIsDisplayed()
+        assertTrue(opened.isEmpty())
         assertNull(app.repository.imports.value.openBookId)
+        assertEquals(1, runBlocking { app.repository.books.first().size })
+    }
+
+    @Test fun emptyShelfShowsImportingProgressWhileRunning() {
+        val (app, _) = openEmptyShelf()
+        compose.runOnUiThread {
+            app.repository.imports.value = ImportStatus(
+                running = true, done = 0, total = 3, message = "正在扫描本地文件…", batchId = 7L,
+            )
+        }
+        val label = LyricTokens.Shelf.importingCopy(3)
+        compose.waitUntil(10_000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(label).assertIsDisplayed()
+        compose.onNodeWithText(LyricTokens.Shelf.emptyCopy).assertIsDisplayed()
+    }
+
+    @Test fun inAppImportCompletionOnMeDoesNotOpenOrLeaveTheTab() {
+        val opened = mutableListOf<String>()
+        val (app, _) = openEmptyShelf { opened += it }
+        compose.onNodeWithText("我的").performClick()
+        compose.waitForIdle()
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        val file = java.io.File(app.cacheDir, "while-on-me.txt").apply {
+            writeText("第一章 开始\n\n" + "正文。".repeat(80))
+        }
+        runBlocking(Dispatchers.IO) { app.repository.importUris(listOf(android.net.Uri.fromFile(file))) }
+        compose.waitForIdle()
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertTrue(opened.isEmpty())
+        assertNull(app.repository.imports.value.openBookId)
+        val expected = "导入 1 · 跳过 0 · 失败 0"
+        compose.onAllNodesWithText(expected, substring = true).assertCountEquals(0)
+        assertEquals(expected, app.repository.imports.value.summary)
+        assertTrue(app.repository.imports.value.message.isNotBlank())
+        compose.onNodeWithText("书架").performClick()
+        compose.waitUntil(10_000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            compose.onAllNodesWithText(expected, substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(expected, substring = true).assertIsDisplayed()
+        assertTrue(opened.isEmpty())
     }
 
     @Test fun multiFileImportStaysOnShelfAndShowsLegacySummary() {
