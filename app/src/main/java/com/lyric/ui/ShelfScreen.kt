@@ -22,7 +22,9 @@ import com.lyric.core.ContentType
 import com.lyric.core.Locator
 import com.lyric.core.clamp
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.*
@@ -287,7 +289,7 @@ private fun ShelfContent(
         }
     val empty = books.isEmpty()
     val continuing =
-        books.firstOrNull { it.lastRead > 0 && !it.invalid } ?: books.firstOrNull { !it.invalid }
+        continueReadingBook(books)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val emptyAnchor = maxHeight * LyricTokens.emptyShelfHeightFraction
         LazyVerticalGrid(
@@ -329,9 +331,10 @@ private fun ShelfContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(LyricTokens.Component.toolbarIcon))
-                    if (continuing != null)
-                        ContinueCard(continuing, section, vm.repository) { open(continuing.id) }
-                    Spacer(Modifier.height(LyricTokens.Space.lg))
+                    if (continuing != null) {
+                        ContinueCard(continuing, vm.repository) { open(continuing.id) }
+                        Spacer(Modifier.height(LyricTokens.Space.xl))
+                    }
                     Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                         filterLabels(section).forEachIndexed { index, label
                             ->
@@ -510,7 +513,7 @@ fun BookCover(book: ShelfBook, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ContinueCard(book: ShelfBook, section: ShelfSection, repository: LibraryRepository, open: () -> Unit) {
+private fun ContinueCard(book: ShelfBook, repository: LibraryRepository, open: () -> Unit) {
     val pages by produceState<String?>(null, book.id, book.lastRead, book.contentType) {
         value = null
         if (book.contentType == ContentType.COMIC.name) {
@@ -523,50 +526,78 @@ private fun ContinueCard(book: ShelfBook, section: ShelfSection, repository: Lib
             }
         }
     }
+    val chapterIndex by produceState<Int?>(null, book.id, book.lastRead, book.chapterTitle, book.contentType) {
+        if (book.contentType != ContentType.COMIC.name) {
+            val title = book.chapterTitle.trim()
+            if (title.isEmpty() || title == "未读") {
+                value = try {
+                    withContext(Dispatchers.IO) { repository.dao.progress(book.id)?.chapterIndex }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    null
+                }
+            }
+        }
+    }
+    val chapterLabel = continueReadingChapterLabel(book.chapterTitle, chapterIndex)
+    val percentText = "${(book.percent * 100).toInt()}%"
+    val percentLabel = if (chapterLabel.isEmpty()) percentText else " · $percentText"
+    val comicLabel = if (book.contentType == ContentType.COMIC.name) pages ?: "正在读取页码…" else null
     Row(
         Modifier.fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(LyricTokens.Radius.card))
+            .background(CardPaper, RoundedCornerShape(LyricTokens.Radius.card))
             .border(LyricTokens.strokeWidth, Linen, RoundedCornerShape(LyricTokens.Radius.card))
             .clickable(onClick = open)
             .padding(LyricTokens.Space.lg),
         horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         BookCover(book, Modifier.width(LyricTokens.Component.continueCoverWidth).height(LyricTokens.Component.continueCoverHeight))
         Column(Modifier.weight(1f)) {
             Text(
                 book.title,
-                fontFamily = Serif,
                 style = LyricTokens.Type.subtitle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                if (book.contentType == ContentType.COMIC.name) pages ?: "正在读取页码…"
-                else if (section == ShelfSection.COMIC) book.author else "${book.author} · ${book.chapterTitle}",
-                style = LyricTokens.Type.auxiliary,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = LyricTokens.Space.xs),
-            )
-            Text(
-                if (book.contentType == ContentType.COMIC.name) book.author else book.excerpt,
-                style = LyricTokens.Type.auxiliary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = LyricTokens.Space.sm),
-            )
+            if (comicLabel != null) {
+                Text(
+                    comicLabel,
+                    style = LyricTokens.Type.auxiliary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = LyricTokens.Space.xs),
+                )
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = LyricTokens.Space.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        chapterLabel,
+                        style = LyricTokens.Type.auxiliary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Text(
+                        percentLabel,
+                        style = LyricTokens.Type.auxiliary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
             LinearProgressIndicator(
                 progress = { book.percent },
-                color = Vermilion,
+                color = MaterialTheme.colorScheme.secondary,
                 trackColor = MaterialTheme.colorScheme.outlineVariant,
-                modifier = Modifier.fillMaxWidth().height(LyricTokens.Component.progressStroke).padding(top = 0.dp),
-            )
-            Text(
-                "${(book.percent * 100).toInt()}% · 继续阅读 →",
-                style = LyricTokens.Type.auxiliary,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = LyricTokens.Space.xs),
+                modifier = Modifier.fillMaxWidth()
+                    .padding(top = LyricTokens.Space.sm)
+                    .height(LyricTokens.Component.continueProgressStroke),
             )
         }
     }
@@ -796,6 +827,17 @@ private fun ImportFilterChips(filter: ImportFilter, change: (ImportFilter) -> Un
         FilterChip(selected = filter == ImportFilter.COMIC, onClick = { change(ImportFilter.COMIC) }, label = { Text("漫画格式") }, shape = LyricTokens.Radius.pill)
         FilterChip(selected = filter == ImportFilter.ALL, onClick = { change(ImportFilter.ALL) }, label = { Text("所有格式") }, shape = LyricTokens.Radius.pill)
     }
+}
+
+internal fun continueReadingBook(books: List<ShelfBook>): ShelfBook? =
+    books.filter { it.lastRead > 0 && !it.invalid }.maxByOrNull { it.lastRead }
+
+/** Chapter label for the continue-reading card; blank or the “未读” placeholder become “第 n 章”. */
+internal fun continueReadingChapterLabel(chapterTitle: String, chapterIndex: Int?): String {
+    val title = chapterTitle.trim()
+    if (title.isNotEmpty() && title != "未读") return title
+    // Wait for the saved index so the card does not flash 「第 1 章」 on a later chapter.
+    return if (chapterIndex == null) "" else "第 ${chapterIndex + 1} 章"
 }
 
 internal fun comicPageLabel(book: Book, progress: ProgressRow?): String {

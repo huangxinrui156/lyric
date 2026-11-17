@@ -42,4 +42,13 @@ class V05LogicTest {
         assertEquals(listOf("1", "3", "2"), sortShelf(list, 1).map { it.id })
         assertEquals(3, sortShelf(list, 2).size)
     }
+    @Test fun continueCardPicksTheMostRecentlyReadValidBook() {
+        val older = shelf("old", "旧书", read = 10)
+        val latest = shelf("new", "最近在读", read = 30)
+        val unread = shelf("fresh", "刚导入", added = 40, read = 0)
+        val broken = shelf("bad", "失效", read = 50).copy(invalid = true)
+        assertEquals("new", continueReadingBook(listOf(unread, broken, older, latest))?.id)
+        assertNull(continueReadingBook(listOf(unread, broken)))
+        assertNull(continueReadingBook(emptyList()))
+    }
 }

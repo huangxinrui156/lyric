@@ -214,7 +214,7 @@ class ReaderViewModel(private val app: LyricApp, val id: String, initialLocator:
                     repository.settings.settings(id, book.contentType).first())
                 val p = repository.dao.progress(id)
                 val requestedMark = if (pendingBookmark != 0L) repository.dao.bookmark(pendingBookmark) else null
-                val initial = requestedMark?.let { Locator(it.chapterIndex, it.charOffset, it.page) } ?: pendingJump ?: p?.let { Locator(it.chapterIndex, it.charOffset, it.page) } ?: Locator()
+                val initial = requestedMark?.let { Locator(it.chapterIndex, it.charOffset, it.page) } ?: resumeLocator(pendingJump, p)
                 book.ensureChapter(initial.chapterIndex)
                 engine.open(book, initial)
                 pendingJump = null
