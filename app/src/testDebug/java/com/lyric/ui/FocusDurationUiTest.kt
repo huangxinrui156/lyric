@@ -61,10 +61,10 @@ class FocusDurationUiTest {
         compose.onNodeWithText("45").performClick()
         compose.waitUntil(10_000) {
             idle()
-            !vm.customPlanned.value && vm.plannedMin.value == 45
+            !vm.customPlanned.value && vm.plannedMin.value == 45 &&
+                !runBlocking { app.repository.settings.focusCustom.first() } &&
+                runBlocking { app.repository.settings.focusPlannedMin.first() } == 45
         }
-        assertFalse(runBlocking { app.repository.settings.focusCustom.first() })
-        assertEquals(45, runBlocking { app.repository.settings.focusPlannedMin.first() })
     }
 
     private fun idle() {

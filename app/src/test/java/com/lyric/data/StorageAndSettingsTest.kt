@@ -141,8 +141,6 @@ class StorageAndSettingsTest {
         } finally { secondJob.cancelAndJoin(); file.delete() }
     }
 
-}
-
     @Test fun compactDensityIsRememberedSeparatelyAndSurvivesRecreate() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Application>()
         val file = File(context.filesDir, "compact-${System.nanoTime()}.preferences_pb")
@@ -166,7 +164,8 @@ class StorageAndSettingsTest {
         assertFalse(second.shelfCompact(ShelfSection.BOOK).first())
         assertTrue(second.shelfCompact(ShelfSection.COMIC).first())
         secondJob.cancelAndJoin()
-    
+    }
+
     @Test fun focusPlanSurvivesStoreRecreation() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Application>()
         val file = File(context.filesDir, "focus-${System.nanoTime()}.preferences_pb")
