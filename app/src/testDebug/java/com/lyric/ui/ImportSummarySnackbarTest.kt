@@ -64,8 +64,8 @@ class ImportSummarySnackbarTest {
         compose.onNodeWithText("书架").performClick()
         compose.waitForIdle()
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-        // First showing may still be on screen until Short duration elapses; it must not be started again.
-        compose.mainClock.advanceTimeBy(5_000)
+        // First showing may still be on screen until the 4s timer elapses; it must not be started again.
+        compose.mainClock.advanceTimeBy(4_000)
         compose.waitForIdle()
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         compose.onAllNodesWithText(expected, substring = true).assertCountEquals(0)

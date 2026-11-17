@@ -132,6 +132,7 @@ object LyricTokens {
         const val shortMs = 150
         const val mediumMs = 200
         const val longMs = 300
+        const val ephemeralSnackbarMs = 4000L
         const val instantMs = 0
         val easeOut = CubicBezierEasing(0f, 0f, .2f, 1f)
         fun <T> short(): TweenSpec<T> = duration(shortMs)

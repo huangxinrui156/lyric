@@ -7,8 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +17,8 @@ import androidx.navigation.compose.*
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.lyric.core.BookFormats
+import com.lyric.ui.TimedSnackbarHost
+import com.lyric.ui.showTimedSnackbar
 import com.lyric.data.bookUris
 import com.lyric.data.isBookOpenIntent
 import com.lyric.ui.*
@@ -70,7 +70,7 @@ class MainActivity : ReaderActivity() {
                         batch == 0L || batch == consumedOpenWithBatch) return@LaunchedEffect
                     consumedOpenWithBatch = batch
                     try {
-                        importSnackbar.showSnackbar(text, duration = SnackbarDuration.Short)
+                        importSnackbar.showTimedSnackbar(text)
                     } finally {
                         app.repository.consumeImportMessage(batch)
                     }
@@ -136,7 +136,7 @@ class MainActivity : ReaderActivity() {
                         ReaderScreen(vm, drawerExtra = { FocusRemainingLabel(desk, id) }) { vm.pause(); nav.popBackStack() }
                     }
                 }
-                SnackbarHost(importSnackbar, Modifier.align(Alignment.BottomCenter))
+                TimedSnackbarHost(importSnackbar, Modifier.align(Alignment.BottomCenter))
                 }
             }
         }

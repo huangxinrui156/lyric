@@ -98,7 +98,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
             text == BookFormats.UNSUPPORTED_OPEN_WITH || batch == 0L || batch == consumedImportBatch) return@LaunchedEffect
         consumedImportBatch = batch
         try {
-            snackbar.showSnackbar(text, duration = SnackbarDuration.Short)
+            snackbar.showTimedSnackbar(text)
         } finally {
             vm.consumeImportMessage(batch)
         }
@@ -152,7 +152,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
             modifier = if (transition.running) Modifier.clearAndSetSemantics { } else Modifier,
             contentWindowInsets = WindowInsets.safeDrawing,
             containerColor = MaterialTheme.colorScheme.background,
-            snackbarHost = { SnackbarHost(snackbar) },
+            snackbarHost = { TimedSnackbarHost(snackbar) },
             bottomBar = {
                 val navStroke = if (deskDark()) LyricTokens.Night.stroke else MaterialTheme.colorScheme.outlineVariant
                 NavigationBar(
