@@ -5,6 +5,8 @@
 
 package com.lyric.ui
 
+import com.lyric.ui.theme.LyricTokens
+
 import android.graphics.Typeface
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,8 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lyric.core.*
 import com.lyric.data.SettingsScope
@@ -78,14 +78,14 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
         sheetState = sheet,
         containerColor = MaterialTheme.colorScheme.surface,
         shape =
-            androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            androidx.compose.foundation.shape.RoundedCornerShape(topStart = LyricTokens.Radius.card, topEnd = LyricTokens.Radius.card),
     ) {
         Column(
             Modifier.fillMaxWidth()
-                .heightIn(max = 680.dp)
+                .heightIn(max = LyricTokens.Component.settingsMaxHeight)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 22.dp)
-                .padding(bottom = 24.dp)
+                .padding(horizontal = LyricTokens.Page.margin)
+                .padding(bottom = LyricTokens.Space.xl)
                 // 0.8.3: no paper grain here — it was redrawn over the whole scroll content
                 // on every frame of the sheet's enter animation.
         ) {
@@ -95,25 +95,26 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("阅读排版", fontFamily = Serif, fontSize = 20.sp)
-                    TextButton(onClick = { vm.resetSettings(scope) }) {
-                        Text("恢复继承", fontSize = 11.sp)
+                    Text("阅读排版", fontFamily = Serif, style = LyricTokens.Type.title)
+                    TextButton(onClick = { vm.resetSettings(scope) }, shape = LyricTokens.Radius.buttonShape) {
+                        Text("恢复继承", style = LyricTokens.Type.auxiliary)
                     }
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm)) {
                     SettingsScope.entries.forEach { item ->
                         FilterChip(
                             selected = scope == item,
                             onClick = { scope = item },
-                            label = { Text(item.label, fontSize = 11.sp) },
+                            label = { Text(item.label, style = LyricTokens.Type.auxiliary) },
+                            shape = LyricTokens.Radius.pill,
                         )
                     }
                 }
                 Text(
                     "全局 → 文字书籍 → 本书，逐层覆盖",
-                    fontSize = 10.sp,
+                    style = LyricTokens.Type.auxiliary,
                     color = Stone,
-                    modifier = Modifier.padding(bottom = 10.dp),
+                    modifier = Modifier.padding(bottom = LyricTokens.Space.sm),
                 )
             }
             SettingStepper("亮度", prefs.brightness, brightnessLevels, "${kotlin.math.round(prefs.brightness * 100).toInt()}%") {
@@ -123,43 +124,41 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                 update(prefs.copy(fontSize = it))
             }
             Row(
-                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                Modifier.fillMaxWidth().padding(vertical = LyricTokens.Space.md),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("主题", color = Stone, fontSize = 12.sp)
+                Text("主题", color = Stone, style = LyricTokens.Type.auxiliary)
                 ReaderTheme.entries.take(4).forEach { theme ->
                     Box(
-                        Modifier.size(44.dp)
+                        Modifier.size(LyricTokens.Component.buttonHeight)
                             .border(
-                                if (prefs.theme == theme) 2.dp else .5.dp,
+                                if (prefs.theme == theme) LyricTokens.Component.indicatorStroke else LyricTokens.strokeWidth,
                                 if (prefs.theme == theme) Vermilion
                                 else MaterialTheme.colorScheme.outline,
                                 CircleShape,
                             )
-                            .padding(3.dp)
+                            .padding(LyricTokens.Space.xs)
                             .background(Color(theme.bg), CircleShape)
                             .clickable { update(prefs.copy(theme = theme, followSystem = false)) },
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(theme.label, color = Color(theme.ink), fontSize = 10.sp)
+                        Text(theme.label, color = Color(theme.ink), style = LyricTokens.Type.auxiliary)
                     }
                 }
             }
             ChoiceRow(
                 "字体",
-                listOf("宋体", "黑体", "等宽", if (prefs.font.startsWith('/')) "已导入" else "导入"),
-                when (prefs.font) {
-                    "serif" -> 0
-                    "sans-serif" -> 1
-                    "monospace" -> 2
-                    else -> 3
+                listOf(LyricTokens.Fonts.songLabel, LyricTokens.Fonts.heiLabel, if (prefs.font.startsWith('/')) "已导入" else "导入"),
+                when {
+                    LyricTokens.Fonts.isCustom(prefs.font) -> 2
+                    LyricTokens.Fonts.resolveKey(prefs.font) == LyricTokens.Fonts.songKey -> 0
+                    else -> 1
                 },
             ) { index ->
                 when (index) {
-                    0 -> update(prefs.copy(font = "serif"))
-                    1 -> update(prefs.copy(font = "sans-serif"))
-                    2 -> update(prefs.copy(font = "monospace"))
+                    0 -> update(prefs.copy(font = LyricTokens.Fonts.songKey))
+                    1 -> update(prefs.copy(font = LyricTokens.Fonts.heiKey))
                     else ->
                         fontPicker.launch(
                             arrayOf(
@@ -180,12 +179,12 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                 update(prefs.copy(pageMode = PageMode.entries[it]))
             }
             Row(
-                Modifier.fillMaxWidth().padding(top = 14.dp),
+                Modifier.fillMaxWidth().padding(top = LyricTokens.Space.md),
                 horizontalArrangement = Arrangement.SpaceAround,
             ) {
-                TextButton(onClick = onToc) {
-                    Icon(Icons.Outlined.FormatListBulleted, null, Modifier.size(16.dp))
-                    Text(" 目录", fontSize = 12.sp)
+                TextButton(onClick = onToc, shape = LyricTokens.Radius.buttonShape) {
+                    Icon(Icons.Outlined.FormatListBulleted, null, Modifier.size(LyricTokens.Space.lg))
+                    Text(" 目录", style = LyricTokens.Type.auxiliary)
                 }
                 TextButton(
                     onClick = {
@@ -197,18 +196,19 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                                 followSystem = false,
                             )
                         )
-                    }
+                    },
+                    shape = LyricTokens.Radius.buttonShape,
                 ) {
-                    Icon(Icons.Outlined.DarkMode, null, Modifier.size(16.dp))
-                    Text(" 夜间", fontSize = 12.sp)
+                    Icon(Icons.Outlined.DarkMode, null, Modifier.size(LyricTokens.Space.lg))
+                    Text(" 夜间", style = LyricTokens.Type.auxiliary)
                 }
-                TextButton(onClick = { advanced = !advanced }) {
-                    Icon(Icons.Outlined.Tune, null, Modifier.size(16.dp))
-                    Text(if (advanced) " 收起" else " 更多", fontSize = 12.sp)
+                TextButton(onClick = { advanced = !advanced }, shape = LyricTokens.Radius.buttonShape) {
+                    Icon(Icons.Outlined.Tune, null, Modifier.size(LyricTokens.Space.lg))
+                    Text(if (advanced) " 收起" else " 更多", style = LyricTokens.Type.auxiliary)
                 }
             }
             if (advanced) {
-                HorizontalDivider(Modifier.padding(vertical = 16.dp))
+                HorizontalDivider(Modifier.padding(vertical = LyricTokens.Space.lg))
                 SettingSlider("行距", prefs.lineHeight, 1.1f..2.5f, "%.1f".format(prefs.lineHeight)) {
                     update(prefs.copy(lineHeight = it))
                 }
@@ -231,7 +231,7 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                 SettingSlider("夜间遮光", prefs.dim, 0f..0.85f, "${(prefs.dim * 100).toInt()}%") {
                     update(prefs.copy(dim = it))
                 }
-                Text("遮光可进一步降低屏幕亮度。", fontSize = 10.sp, color = Stone)
+                Text("遮光可进一步降低屏幕亮度。", style = LyricTokens.Type.auxiliary, color = Stone)
                 ChoiceRow(
                     "深色",
                     listOf("深绿", "纯黑", "自定"),
@@ -255,13 +255,13 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                     ColorField("背景色", prefs.customBg) { update(prefs.copy(customBg = it)) }
                     ColorField("文字色", prefs.customInk) { update(prefs.copy(customInk = it)) }
                 }
-                HorizontalDivider(Modifier.padding(vertical = 16.dp))
-                Text("点击区域", fontFamily = Serif, fontSize = 17.sp)
+                HorizontalDivider(Modifier.padding(vertical = LyricTokens.Space.lg))
+                Text("点击区域", fontFamily = Serif, style = LyricTokens.Type.subtitle)
                 Text(
                     "左侧上一页 · 中央菜单 · 右侧下一页",
-                    fontSize = 11.sp,
+                    style = LyricTokens.Type.auxiliary,
                     color = Stone,
-                    modifier = Modifier.padding(vertical = 10.dp),
+                    modifier = Modifier.padding(vertical = LyricTokens.Space.sm),
                 )
                 SettingSlider(
                     "左区宽度",
@@ -282,35 +282,35 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                 SettingToggle("左右翻页互换", prefs.reverseTaps) { update(prefs.copy(reverseTaps = it)) }
                 SettingToggle("音量键翻页", prefs.volumeKeys) { update(prefs.copy(volumeKeys = it)) }
                 SettingToggle("音量键方向互换", prefs.swapVolumeKeys) { update(prefs.copy(swapVolumeKeys = it)) }
-                Text("阅读信息栏", fontFamily = Serif, fontSize = 17.sp)
+                Text("阅读信息栏", fontFamily = Serif, style = LyricTokens.Type.subtitle)
                 ReaderInfoToggles(prefs, ::update)
                 if (state.row?.extension == "epub") {
-                    HorizontalDivider(Modifier.padding(vertical = 16.dp))
+                    HorizontalDivider(Modifier.padding(vertical = LyricTokens.Space.lg))
                     SettingToggle("采用书籍样式", prefs.useBookStyle) {
                         update(prefs.copy(useBookStyle = it))
                     }
                     Text(
                         "采用书中字体、对齐、缩进及字号。图片与注音始终显示。",
-                        fontSize = 11.sp,
+                        style = LyricTokens.Type.auxiliary,
                         color = Stone,
-                        lineHeight = 20.sp,
-                    )
+                        )
                 }
                 if (state.row?.extension == "txt") {
-                    HorizontalDivider(Modifier.padding(vertical = 16.dp))
-                    Text("文本解析 · 仅本书", fontFamily = Serif, fontSize = 17.sp)
+                    HorizontalDivider(Modifier.padding(vertical = LyricTokens.Space.lg))
+                    Text("文本解析 · 仅本书", fontFamily = Serif, style = LyricTokens.Type.subtitle)
                     Text(
                         "当前编码：${state.row?.encoding}",
-                        fontSize = 11.sp,
+                        style = LyricTokens.Type.auxiliary,
                         color = Stone,
-                        modifier = Modifier.padding(vertical = 10.dp),
+                        modifier = Modifier.padding(vertical = LyricTokens.Space.sm),
                     )
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs)) {
                         Encoding.choices.forEach { encoding ->
                             FilterChip(
                                 selected = (state.row?.encodingOverride ?: "自动") == encoding,
                                 onClick = { vm.reparse(encoding, state.row?.chapterRegex) },
-                                label = { Text(encoding, fontSize = 10.sp) },
+                                label = { Text(encoding, style = LyricTokens.Type.auxiliary) },
+                                shape = LyricTokens.Radius.pill,
                             )
                         }
                     }
@@ -322,26 +322,27 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
                     OutlinedTextField(
                         value = rule,
                         onValueChange = { rule = it },
-                        label = { Text("自定义章节正则（留空恢复默认）", fontSize = 12.sp) },
+                        label = { Text("自定义章节正则（留空恢复默认）", style = LyricTokens.Type.auxiliary) },
                         isError = !valid,
                         supportingText = {
                             Text(
                                 if (valid) "按整行匹配；仅检测不超过 160 字符的行。" else "正则表达式无效",
-                                fontSize = 10.sp,
+                                style = LyricTokens.Type.auxiliary,
                             )
                         },
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = LyricTokens.Space.md),
                         minLines = 2,
                     )
                     Button(
                         onClick = { vm.reparse(state.row?.encodingOverride, rule) },
                         enabled = valid && !state.loading,
                         modifier = Modifier.fillMaxWidth(),
+                        shape = LyricTokens.Radius.buttonShape,
                     ) {
                         Text(if (state.loading) "正在重新解析…" else "应用章节规则")
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(LyricTokens.Space.md))
             }
         }
     }
@@ -350,15 +351,15 @@ fun ReaderSettingsSheet(vm: ReaderViewModel, onDismiss: () -> Unit, onToc: () ->
 /** Explicit levels; existing fractional preferences are preserved until the user taps. */
 @Composable
 internal fun SettingStepper(label: String, value: Float, levels: List<Float>, suffix: String, change: (Float) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, fontSize = 12.sp, color = Stone, modifier = Modifier.weight(1f))
+    Row(Modifier.fillMaxWidth().heightIn(min = LyricTokens.Component.touchTarget), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.weight(1f))
         IconButton(onClick = { levels.lastOrNull { it < value - .001f }?.let(change) }, enabled = value > levels.first()) {
-            Icon(Icons.Outlined.Remove, "减少$label", tint = MaterialTheme.colorScheme.primary)
+            Icon(Icons.Outlined.Remove, "减少$label", tint = MaterialTheme.colorScheme.secondary)
         }
-        Text(suffix, fontFamily = Serif, fontSize = 14.sp, modifier = Modifier.width(68.dp),
+        Text(suffix, fontFamily = Serif, style = LyricTokens.Type.body, modifier = Modifier.width(LyricTokens.Component.settingValueWidth),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         IconButton(onClick = { levels.firstOrNull { it > value + .001f }?.let(change) }, enabled = value < levels.last()) {
-            Icon(Icons.Outlined.Add, "增加$label", tint = MaterialTheme.colorScheme.primary)
+            Icon(Icons.Outlined.Add, "增加$label", tint = MaterialTheme.colorScheme.secondary)
         }
     }
 }
@@ -372,26 +373,26 @@ internal fun SettingSlider(
     change: (Float) -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        Modifier.fillMaxWidth().heightIn(min = LyricTokens.Component.touchTarget),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, fontSize = 12.sp, color = Stone, modifier = Modifier.width(58.dp))
+        Text(label, style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.width(LyricTokens.Component.settingsLabelWidth))
         Slider(
             value = value.coerceIn(range),
             onValueChange = change,
             valueRange = range,
             colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
+                thumbColor = MaterialTheme.colorScheme.secondary,
+                activeTrackColor = MaterialTheme.colorScheme.secondary,
                 inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant,
             ),
-            modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
+            modifier = Modifier.weight(1f).padding(horizontal = LyricTokens.Space.xs),
         )
         Text(
             suffix,
             fontFamily = Serif,
-            fontSize = 13.sp,
-            modifier = Modifier.widthIn(min = 30.dp),
+            style = LyricTokens.Type.body,
+            modifier = Modifier.widthIn(min = LyricTokens.Component.switchWidth),
             textAlign = androidx.compose.ui.text.style.TextAlign.End,
         )
     }
@@ -400,24 +401,25 @@ internal fun SettingSlider(
 @Composable
 internal fun ChoiceRow(label: String, options: List<String>, selected: Int, choose: (Int) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        Modifier.fillMaxWidth().padding(vertical = LyricTokens.Space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, fontSize = 12.sp, color = Stone, modifier = Modifier.width(48.dp))
+        Text(label, style = LyricTokens.Type.auxiliary, color = Stone, modifier = Modifier.width(LyricTokens.Component.touchTarget))
         FlowRow(
             modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs),
         ) {
             options.forEachIndexed { i, title ->
                 FilterChip(
                     selected = selected == i,
                     onClick = { choose(i) },
-                    label = { Text(title, fontSize = 11.sp) },
+                    label = { Text(title, style = LyricTokens.Type.auxiliary) },
                     colors =
                         FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedContainerColor = MaterialTheme.colorScheme.secondary,
                             selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
                         ),
+                    shape = LyricTokens.Radius.pill,
                 )
             }
         }
@@ -427,29 +429,29 @@ internal fun ChoiceRow(label: String, options: List<String>, selected: Int, choo
 @Composable
 internal fun SettingToggle(label: String, checked: Boolean, change: (Boolean) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        Modifier.fillMaxWidth().heightIn(min = LyricTokens.Component.touchTarget),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, fontSize = 13.sp)
+        Text(label, style = LyricTokens.Type.body)
         Switch(checked = checked, onCheckedChange = change)
     }
 }
 
 @Composable
 private fun ColorField(label: String, value: Long, change: (Long) -> Unit) {
-    var hex by remember(value) { mutableStateOf("%06X".format(value and 0xFFFFFF)) }
+    var hex by remember(value) { mutableStateOf("%06X".format(value and LyricTokens.Overlay.rgbMask)) }
     OutlinedTextField(
         value = hex,
         onValueChange = { text ->
             hex = text.take(6)
-            if (text.length == 6) text.toLongOrNull(16)?.let { change(0xFF000000 or it) }
+            if (text.length == 6) text.toLongOrNull(16)?.let { change(LyricTokens.Overlay.opaqueArgb or it) }
         },
         label = { Text("$label · 六位 HEX") },
         leadingIcon = { Text("#") },
         isError = hex.length != 6 || hex.toLongOrNull(16) == null,
         singleLine = true,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = LyricTokens.Space.xs),
     )
 }
 

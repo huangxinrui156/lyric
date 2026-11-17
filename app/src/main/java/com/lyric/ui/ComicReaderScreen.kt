@@ -1,5 +1,7 @@
 package com.lyric.ui
 
+import com.lyric.ui.theme.LyricTokens
+
 import android.app.Activity
 import android.graphics.Bitmap
 import android.view.KeyEvent
@@ -20,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,8 +47,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lyric.ReaderActivity
@@ -61,13 +62,12 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val ComicBg = Color(0xFF111111)
-private val BarBg = Color(0xE0111111)
-private val ComicInk = Color(0xFFD0CABE)
-private val ComicMeta = Color(0xFF8E897F)
-private val ComicAccent = Color(0xFFE08A6E)
-private val Track = Color(0xFF3A3A3E)
-private val Skeleton = Color(0xFF1A1A1D)
+private val BarBg = LyricTokens.Comic.bar
+private val ComicInk = LyricTokens.Comic.ink
+private val ComicMeta = LyricTokens.Comic.meta
+private val ComicAccent = LyricTokens.Night.vermilion
+private val Track = LyricTokens.Comic.track
+private val Skeleton = LyricTokens.Night.skeleton
 
 data class ComicPageRef(val chapter: Int, val page: Int, val unit: ContentUnit.ImagePage)
 
@@ -93,6 +93,11 @@ object ComicTaps {
 @Composable
 fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirstReady: (Float?) -> Unit = {}) {
     val prefs by vm.settings.collectAsStateWithLifecycle()
+    val comicNight = com.lyric.core.ThemePalette.isNight(
+        if (prefs.followSystem && isSystemInDarkTheme()) com.lyric.core.ReaderTheme.NIGHT else prefs.theme,
+        prefs.customBg,
+    )
+    val comicBg = LyricTokens.Comic.background(comicNight)
     val locator by vm.locator.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val isPdf = book.chapters.firstOrNull()?.units?.firstOrNull().let { it is com.lyric.core.ContentUnit.ImagePage && it.resource.startsWith(com.lyric.reader.PDF_PAGE_PREFIX) }
@@ -128,7 +133,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
         if (archive?.isFailure == true || (archive != null && pages.pages.isEmpty())) reportReady(null)
     }
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val largeScreen = LocalConfiguration.current.smallestScreenWidthDp >= 600
+    val largeScreen = LocalConfiguration.current.smallestScreenWidthDp >= LyricTokens.Page.tabletSmallestWidthDp
     val spreadOn = Spreads.enabled(prefs.comicSpread, largeScreen)
     val spreads = remember(pages, landscape, spreadOn, prefs.comicOffset, vertical) {
         Spreads.pair(pages.pages.size, landscape, spreadOn && !vertical, prefs.comicOffset)
@@ -189,8 +194,8 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
                 prefs.volumeKeys, prefs.swapVolumeKeys, chapters || layoutMenu)
             if (step != null && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0)
                 scope.launch {
-                    if (prefs.comicDirection == "vertical") listState.animateScrollBy(step * listState.layoutInfo.viewportSize.height * 0.85f)
-                    else pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, spreads.lastIndex), animationSpec = tween(200))
+                    if (prefs.comicDirection == "vertical") listState.animateScrollBy(step * listState.layoutInfo.viewportSize.height * 0.85f, LyricTokens.Motion.medium())
+                    else pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, spreads.lastIndex), animationSpec = LyricTokens.Motion.medium())
                 }
             step != null
         }
@@ -217,7 +222,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
         if (!hints.getBoolean(chosenKey, false)) book.readingDirection?.takeIf { it in ComicDirections.all }?.let { apply(it) }
         if (hint) hints.edit().putBoolean(hintKey, true).apply()
     }
-    LaunchedEffect(hint) { if (hint) { delay(2400); hint = false } }
+    LaunchedEffect(hint) { if (hint) { delay(LyricTokens.Comic.hintMs); hint = false } }
     LaunchedEffect(listState, vertical) {
         if (vertical) snapshotFlow { listState.firstVisibleItemIndex }.collect { i ->
             vm.readingActivity(pages.locator(i)); if (i == pages.pages.lastIndex) vm.finished()
@@ -241,7 +246,7 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
         }
     }
     Box(Modifier.fillMaxSize().onSizeChanged { viewport = it }
-        .background(if (isPdf) Color(prefs.theme.bg) else ComicBg).testTag("comic-reader")) {
+        .background(if (isPdf) Color(prefs.theme.bg) else comicBg).testTag("comic-reader")) {
         if (archive == null) {
             Box(Modifier.fillMaxSize().background(Skeleton))
         } else if (pages.pages.isEmpty() || archive.isFailure) {
@@ -273,46 +278,46 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
                                 when (val step = ComicTaps.step(x, w, rtl)) {
                                     0 -> chrome = !chrome
                                     else -> scope.launch {
-                                        pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, spreads.lastIndex), animationSpec = tween(200))
+                                        pager.animateScrollToPage((pager.currentPage + step).coerceIn(0, spreads.lastIndex), animationSpec = LyricTokens.Motion.medium())
                                     }
                                 }
                             },
-                            onSkip = { scope.launch { pager.animateScrollToPage((index + 1).coerceAtMost(spreads.lastIndex), animationSpec = tween(200)) } })
+                            onSkip = { scope.launch { pager.animateScrollToPage((index + 1).coerceAtMost(spreads.lastIndex), animationSpec = LyricTokens.Motion.medium()) } })
                     }
                 }
             }
         }
         // "Next page" zone flash with the first-time hint.
-        AnimatedVisibility(hint && !vertical, enter = fadeIn(), exit = fadeOut(tween(300)),
+        AnimatedVisibility(hint && !vertical, enter = fadeIn(LyricTokens.Motion.short()), exit = fadeOut(LyricTokens.Motion.short()),
             modifier = Modifier.fillMaxHeight().fillMaxWidth(1f / 3).align(if (rtl) Alignment.CenterStart else Alignment.CenterEnd)) {
             var flash by remember { mutableStateOf(true) }
-            LaunchedEffect(Unit) { delay(1200); flash = false }
-            Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = if (flash) .08f else 0f)))
+            LaunchedEffect(Unit) { delay(LyricTokens.Comic.hintFlashMs); flash = false }
+            Box(Modifier.fillMaxSize().background(LyricTokens.Overlay.white.copy(alpha = if (flash) .08f else 0f)))
         }
-        AnimatedVisibility(hint, enter = fadeIn(), exit = fadeOut(tween(300)),
-            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 56.dp)) {
-            Row(Modifier.height(32.dp).background(BarBg, RoundedCornerShape(16.dp)).padding(start = 14.dp, end = 4.dp)
+        AnimatedVisibility(hint, enter = fadeIn(LyricTokens.Motion.short()), exit = fadeOut(LyricTokens.Motion.short()),
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = LyricTokens.Space.xxl)) {
+            Row(Modifier.height(LyricTokens.Space.xxl).background(BarBg, LyricTokens.Radius.pill).padding(start = LyricTokens.Space.md, end = LyricTokens.Space.xs)
                 .testTag("direction-hint"), verticalAlignment = Alignment.CenterVertically) {
-                Text(ComicDirections.hint(dir), color = ComicInk, fontSize = 12.sp)
-                Spacer(Modifier.width(6.dp))
+                Text(ComicDirections.hint(dir), color = ComicInk, style = LyricTokens.Type.auxiliary)
+                Spacer(Modifier.width(LyricTokens.Component.dashLength))
                 ComicDirections.all.forEach { d ->
-                    Box(Modifier.size(32.dp).clickable { choose(d); hint = false }
+                    Box(Modifier.size(LyricTokens.Space.xxl).clickable { choose(d); hint = false }
                         .semantics { contentDescription = ComicDirections.label(d) + if (d == dir) "（当前）" else "" },
                         contentAlignment = Alignment.Center) {
-                        DirectionIcon(d, if (d == dir) ComicAccent else ComicInk, Modifier.size(20.dp))
+                        DirectionIcon(d, if (d == dir) ComicAccent else ComicInk, Modifier.size(LyricTokens.Component.mediumIcon))
                     }
                 }
             }
         }
         val current = pages.pages.getOrNull(currentIndex)
-        AnimatedVisibility(chrome, enter = fadeIn(tween(200, easing = FastOutSlowInEasing)),
-            exit = fadeOut(tween(160, easing = FastOutSlowInEasing)), modifier = Modifier.align(Alignment.TopCenter)) {
-            Row(Modifier.fillMaxWidth().background(BarBg).statusBarsPadding().height(56.dp).padding(horizontal = 4.dp),
+        AnimatedVisibility(chrome, enter = fadeIn(LyricTokens.Motion.short()),
+            exit = fadeOut(LyricTokens.Motion.short()), modifier = Modifier.align(Alignment.TopCenter)) {
+            Row(Modifier.fillMaxWidth().background(BarBg).statusBarsPadding().height(LyricTokens.Component.toolbarHeight).padding(horizontal = LyricTokens.Space.xs),
                 verticalAlignment = Alignment.CenterVertically) {
                 IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回", tint = ComicInk) }
                 Column(Modifier.weight(1f)) {
-                    Text(book.title, color = ComicInk, fontSize = 15.sp, maxLines = 1)
-                    current?.let { Text(book.chapters[it.chapter].title, color = ComicMeta, fontSize = 11.sp, maxLines = 1) }
+                    Text(book.title, color = ComicInk, style = LyricTokens.Type.body, maxLines = 1)
+                    current?.let { Text(book.chapters[it.chapter].title, color = ComicMeta, style = LyricTokens.Type.auxiliary, maxLines = 1) }
                 }
                 IconButton({ choose(ComicDirections.next(dir)) },
                     Modifier.semantics { contentDescription = "当前${ComicDirections.label(dir)}，切换为${ComicDirections.label(ComicDirections.next(dir))}" }) {
@@ -320,23 +325,23 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
                 }
             }
         }
-        AnimatedVisibility(chrome, enter = fadeIn(tween(200, easing = FastOutSlowInEasing)),
-            exit = fadeOut(tween(160, easing = FastOutSlowInEasing)), modifier = Modifier.align(Alignment.BottomCenter)) {
-            Column(Modifier.fillMaxWidth().background(BarBg).navigationBarsPadding().padding(horizontal = 20.dp, vertical = 10.dp)) {
-                Text("${currentIndex + 1} / ${pages.pages.size}", color = ComicInk, fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace, modifier = Modifier.align(Alignment.CenterHorizontally))
+        AnimatedVisibility(chrome, enter = fadeIn(LyricTokens.Motion.short()),
+            exit = fadeOut(LyricTokens.Motion.short()), modifier = Modifier.align(Alignment.BottomCenter)) {
+            Column(Modifier.fillMaxWidth().background(BarBg).navigationBarsPadding().padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.sm)) {
+                Text("${currentIndex + 1} / ${pages.pages.size}", color = ComicInk, style = LyricTokens.Type.auxiliary,
+                    fontFamily = LyricTokens.Fonts.hei, modifier = Modifier.align(Alignment.CenterHorizontally))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (rtl) "${pages.pages.size}" else "1", color = ComicMeta, fontSize = 11.sp)
+                    Text(if (rtl) "${pages.pages.size}" else "1", color = ComicMeta, style = LyricTokens.Type.auxiliary)
                     // Mirrored for right-to-left: the start of the book is on the right.
                     CompositionLocalProvider(LocalLayoutDirection provides if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                         var drag by remember { mutableStateOf<Float?>(null) }
                         Slider(drag ?: currentIndex.toFloat(), { drag = it },
                             valueRange = 0f..(pages.pages.lastIndex.coerceAtLeast(1)).toFloat(),
                             onValueChangeFinished = { drag?.let { v -> scope.launch { jumpToPage(v.toInt()) } }; drag = null },
-                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                            modifier = Modifier.weight(1f).padding(horizontal = LyricTokens.Space.sm),
                             colors = SliderDefaults.colors(thumbColor = ComicAccent, activeTrackColor = ComicAccent, inactiveTrackColor = Track))
                     }
-                    Text(if (rtl) "1" else "${pages.pages.size}", color = ComicMeta, fontSize = 11.sp)
+                    Text(if (rtl) "1" else "${pages.pages.size}", color = ComicMeta, style = LyricTokens.Type.auxiliary)
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
                     IconButton({ chapters = true }) { Icon(Icons.AutoMirrored.Outlined.List, "章节", tint = ComicInk) }
@@ -350,27 +355,27 @@ fun ComicReaderScreen(vm: ReaderViewModel, book: Book, back: () -> Unit, onFirst
             vm.updateSettings(SettingsScope.BOOK, next)
         }
         if (chapters) Dialog({ chapters = false }) {
-            Surface(color = Color(0xFF1A1A1D), shape = RoundedCornerShape(10.dp)) {
-                LazyColumn(Modifier.heightIn(max = 480.dp).padding(vertical = 8.dp)) {
+            Surface(color = LyricTokens.Comic.errorPanel, shape = RoundedCornerShape(LyricTokens.Radius.button)) {
+                LazyColumn(Modifier.heightIn(max = LyricTokens.Component.outlineMaxHeight).padding(vertical = LyricTokens.Space.sm)) {
                     if (isPdf) {
                         if (outline.isNotEmpty()) itemsIndexed(outline) { _, entry ->
                             Text("${entry.title} · ${entry.page + 1}", color = if (entry.page == currentIndex) ComicAccent else ComicInk,
-                                fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
+                                style = LyricTokens.Type.body, modifier = Modifier.fillMaxWidth().clickable {
                                     chapters = false
                                     scope.launch { jumpToPage(entry.page) }
-                                }.padding(start = (20 + entry.level.coerceAtMost(10) * 16).dp, end = 20.dp, top = 12.dp, bottom = 12.dp))
+                                }.padding(start = LyricTokens.Page.margin + LyricTokens.Space.lg * entry.level.coerceAtMost(10), end = LyricTokens.Component.mediumIcon, top = LyricTokens.Space.md, bottom = LyricTokens.Space.md))
                         } else items(pages.pages.size) { page ->
                             Text("第 ${page + 1} 页", color = ComicInk, modifier = Modifier.fillMaxWidth().clickable {
                                 chapters = false
                                 scope.launch { jumpToPage(page) }
-                            }.padding(20.dp))
+                            }.padding(LyricTokens.Space.lg))
                         }
                     } else itemsIndexed(book.chapters) { i, c ->
                         Text("${c.title} · ${c.units.size} 页", color = if (current?.chapter == i) ComicAccent else ComicInk,
-                            fontSize = 14.sp, modifier = Modifier.fillMaxWidth().clickable {
+                            style = LyricTokens.Type.body, modifier = Modifier.fillMaxWidth().clickable {
                                 chapters = false
                                 scope.launch { pages.indexOf(Locator(i, 0, 0)).let { jumpToPage(it) } }
-                            }.padding(horizontal = 20.dp, vertical = 12.dp))
+                            }.padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.md))
                     }
                 }
             }
@@ -393,7 +398,7 @@ object ComicDirections {
 
 /** design §2: 24dp grid, 1.6dp round strokes. Paged = two page frames + arrow; 条漫 = two stacked frames + down arrow. */
 @Composable
-fun DirectionIcon(dir: String, tint: Color, modifier: Modifier = Modifier.size(24.dp)) {
+fun DirectionIcon(dir: String, tint: Color, modifier: Modifier = Modifier.size(LyricTokens.Space.xl)) {
     Canvas(modifier) {
         val s = size.width / 24f
         val stroke = Stroke(1.6f * s, cap = androidx.compose.ui.graphics.StrokeCap.Round)
@@ -504,7 +509,7 @@ private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, s
                 val from = scale; val fromOffset = offset
                 val toOffset = if (target == 1f) Offset.Zero else clampOffset((Offset(size.width / 2f, size.height / 2f) - p) * (target - 1), target)
                 anim.launch {
-                    androidx.compose.animation.core.animate(0f, 1f, animationSpec = tween(250)) { t, _ ->
+                    androidx.compose.animation.core.animate(0f, 1f, animationSpec = LyricTokens.Motion.medium()) { t, _ ->
                         scale = from + (target - from) * t; offset = fromOffset + (toOffset - fromOffset) * t
                     }
                 }
@@ -543,27 +548,27 @@ private fun ComicPage(archive: com.lyric.reader.PageSource, ref: ComicPageRef, s
                 }
             }
         }
-        if (scale > 1.01f) Text("${"%.1f".format(scale)}×", color = ComicInk, fontSize = 11.sp,
-            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp)
-                .background(BarBg, RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 2.dp))
+        if (scale > 1.01f) Text("${"%.1f".format(scale)}×", color = ComicInk, style = LyricTokens.Type.auxiliary,
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(LyricTokens.Space.md)
+                .background(BarBg, RoundedCornerShape(LyricTokens.Radius.button)).padding(horizontal = LyricTokens.Space.sm, vertical = LyricTokens.Space.xs))
     }
 }
 
 @Composable
 private fun ComicError(title: String, reason: String, retry: (() -> Unit)?, skip: (() -> Unit)?) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(Modifier.padding(20.dp).fillMaxWidth().aspectRatio(1 / 1.4f, matchHeightConstraintsFirst = false)
-            .background(Skeleton, RoundedCornerShape(6.dp))
+        Column(Modifier.padding(LyricTokens.Space.lg).fillMaxWidth().aspectRatio(1 / 1.4f, matchHeightConstraintsFirst = false)
+            .background(Skeleton, RoundedCornerShape(LyricTokens.Radius.skeleton))
             .drawBehindDashed(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(Icons.Outlined.BrokenImage, null, tint = ComicMeta, modifier = Modifier.size(36.dp))
-            Spacer(Modifier.height(12.dp))
-            Text(title, color = ComicInk, fontSize = 15.sp, fontFamily = Serif)
-            Text(reason, color = ComicMeta, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 24.dp, vertical = 6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                retry?.let { OutlinedButton(it, Modifier.height(32.dp), border = BorderStroke(1.dp, ComicAccent),
-                    contentPadding = PaddingValues(horizontal = 16.dp)) { Text("重试", color = ComicAccent, fontSize = 12.sp) } }
-                skip?.let { OutlinedButton(it, Modifier.height(32.dp), border = BorderStroke(1.dp, Color(0xFF45444A)),
-                    contentPadding = PaddingValues(horizontal = 16.dp)) { Text("跳过此页", color = ComicInk, fontSize = 12.sp) } }
+            Icon(Icons.Outlined.BrokenImage, null, tint = ComicMeta, modifier = Modifier.size(LyricTokens.Component.smallControl))
+            Spacer(Modifier.height(LyricTokens.Space.md))
+            Text(title, color = ComicInk, style = LyricTokens.Type.body, fontFamily = Serif)
+            Text(reason, color = ComicMeta, style = LyricTokens.Type.auxiliary, modifier = Modifier.padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.xs))
+            Row(horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.md)) {
+                retry?.let { OutlinedButton(it, Modifier.height(LyricTokens.Space.xxl), border = BorderStroke(LyricTokens.strokeWidth, ComicAccent),
+                    contentPadding = PaddingValues(horizontal = LyricTokens.Space.lg), shape = LyricTokens.Radius.buttonShape) { Text("重试", color = ComicAccent, style = LyricTokens.Type.auxiliary) } }
+                skip?.let { OutlinedButton(it, Modifier.height(LyricTokens.Space.xxl), border = BorderStroke(LyricTokens.strokeWidth, LyricTokens.Comic.outline),
+                    contentPadding = PaddingValues(horizontal = LyricTokens.Space.lg), shape = LyricTokens.Radius.buttonShape) { Text("跳过此页", color = ComicInk, style = LyricTokens.Type.auxiliary) } }
             }
         }
     }
@@ -571,6 +576,6 @@ private fun ComicError(title: String, reason: String, retry: (() -> Unit)?, skip
 
 private fun Modifier.drawBehindDashed() = this.then(Modifier.drawWithCacheDashed())
 private fun Modifier.drawWithCacheDashed() = this.drawBehind {
-    drawRoundRect(Color(0xFF45444A), cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
-        style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx()))))
+    drawRoundRect(LyricTokens.Comic.outline, cornerRadius = androidx.compose.ui.geometry.CornerRadius(LyricTokens.Component.dashLength.toPx()),
+        style = Stroke(LyricTokens.strokeWidth.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(LyricTokens.Component.dashLength.toPx(), LyricTokens.Space.xs.toPx()))))
 }

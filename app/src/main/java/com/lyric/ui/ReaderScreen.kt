@@ -3,6 +3,8 @@
 
 package com.lyric.ui
 
+import com.lyric.ui.theme.LyricTokens
+
 import android.app.Activity
 import android.view.KeyEvent
 import com.lyric.ReaderActivity
@@ -24,6 +26,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.*
@@ -45,10 +51,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -95,7 +99,8 @@ fun ReaderScreen(vm: ReaderViewModel, drawerExtra: @Composable () -> Unit = {}, 
     val paper = Color(if (theme == ReaderTheme.CUSTOM) prefs.customBg else theme.bg)
     val comic = state.book?.contentType == ContentType.COMIC || state.row?.contentType == ContentType.COMIC.name
     val pdf = state.row?.extension == "pdf"
-    Box(Modifier.fillMaxSize().background(if (comic && !pdf) Color(0xFF111111) else paper).drawWithContent {
+    val isNight = com.lyric.core.ThemePalette.isNight(theme, if (theme == ReaderTheme.CUSTOM) prefs.customBg else theme.bg)
+    Box(Modifier.fillMaxSize().background(if (comic && !pdf) LyricTokens.Comic.background(isNight) else paper).drawWithContent {
         drawContent()
         if (com.lyric.reader.PerfLog.enabled && stage == com.lyric.reader.LoadPresentation.CONTENT && state.error == null)
             com.lyric.reader.PerfLog.stage("first_frame_drawn")
@@ -142,7 +147,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
     }
     // Comics never flash the paper colour while loading.
     if (state.book == null && state.row?.contentType == ContentType.COMIC.name) {
-        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF111111)))
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(LyricTokens.Comic.background(isSystemInDarkTheme())))
         return
     }
     val prefs by vm.settings.collectAsStateWithLifecycle()
@@ -210,7 +215,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
     val ink = Color(if (theme == ReaderTheme.CUSTOM) prefs.customInk else theme.ink)
     val meta = Color(theme.meta)
     val darkReader = bg.luminance() < .2f
-    val accent = MaterialTheme.colorScheme.primary
+    val accent = MaterialTheme.colorScheme.secondary
     MaterialTheme(colorScheme = (if (darkReader) DarkColors else LightColors).copy(primary = accent)) {
         val activity = LocalContext.current as Activity
         val controls = menu || settings || search || drawer.targetValue == DrawerValue.Open || drawer.isOpen || enlargedImage != null
@@ -285,22 +290,21 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
             ) {
                 if (!state.loading)
                     Column(
-                        Modifier.padding(32.dp),
+                        Modifier.padding(LyricTokens.Space.xxl),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Icon(
                             Icons.Outlined.LinkOff,
                             null,
                             tint = meta,
-                            modifier = Modifier.size(36.dp),
+                            modifier = Modifier.size(LyricTokens.Component.smallControl),
                         )
                         Text(
                             state.error ?: "无法打开书籍",
                             color = ink,
-                            lineHeight = 24.sp,
-                            modifier = Modifier.padding(vertical = 24.dp),
+                            modifier = Modifier.padding(vertical = LyricTokens.Space.xl),
                         )
-                        Button(onClick = back) { Text("返回书架") }
+                        Button(onClick = back, shape = LyricTokens.Radius.buttonShape) { Text("返回书架") }
                     }
             }
             return@MaterialTheme
@@ -321,25 +325,24 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                     if (drawer.isOpen && drawerTab == 0) tocScroll.scrollToItem(currentToc)
                 }
                 ModalDrawerSheet(
-                    modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * .85f).coerceAtMost(360f).dp)
+                    modifier = Modifier.width((LocalConfiguration.current.screenWidthDp * .85f).dp.coerceAtMost(LyricTokens.Component.drawerMaxWidth))
                         .fillMaxHeight(),
                     windowInsets = WindowInsets.safeDrawing,
                     drawerContainerColor = MaterialTheme.colorScheme.background,
                 ) {
-                    Column(Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
+                    Column(Modifier.padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.lg)) {
                         Text(
                             book.title,
                             fontFamily = Serif,
-                            fontSize = 23.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            style = LyricTokens.Type.title,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             if (lengthsReady) "${(book.percent(locator) * 100).toInt()}% · ${book.chapters.size} 章" else "${book.chapters.size} 章",
                             color = Stone,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(top = 8.dp),
+                            style = LyricTokens.Type.auxiliary,
+                            modifier = Modifier.padding(top = LyricTokens.Space.sm),
                         )
                         drawerExtra()
                     }
@@ -380,10 +383,10 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                         pageLayer.record { this@drawWithContent.drawContent() }
                         drawLayer(pageLayer)
                     } else drawContent()
-                }.background(bg).paperGrain()) {
+                }.background(bg).paperGrain(com.lyric.core.ThemePalette.isNight(theme, prefs.customBg))) {
                     Column(Modifier.fillMaxSize().windowInsetsPadding(
                         WindowInsets.systemBarsIgnoringVisibility.union(WindowInsets.displayCutout)
-                    ).padding(top = 8.dp, bottom = 8.dp)) {
+                    ).padding(top = LyricTokens.Space.sm, bottom = LyricTokens.Space.sm)) {
                         ReaderChapterHeading(book, prefs, meta, visibleLocator)
                         Box(Modifier.fillMaxWidth().weight(1f)) {
                             key(System.identityHashCode(book)) { AndroidView(
@@ -497,7 +500,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                                 runCatching { java.util.Base64.getDecoder().decode(book.resources[path]) }.getOrNull()
                             }
                         }
-                        Box(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding()) {
+                        Box(Modifier.fillMaxSize().background(LyricTokens.Overlay.black).safeDrawingPadding()) {
                             val request = remember(data, path) {
                                 coil.request.ImageRequest.Builder(activity).data(data).apply {
                                     if (path.endsWith(".svg", true)) decoderFactory(coil.decode.SvgDecoder.Factory())
@@ -511,7 +514,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                                     }
                                 }.graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = dx; translationY = dy })
                             IconButton(onClick = { enlargedImage = null }, Modifier.align(Alignment.TopEnd).statusBarsPadding()) {
-                                Icon(Icons.Outlined.Close, "关闭大图", tint = Color.White)
+                                Icon(Icons.Outlined.Close, "关闭大图", tint = LyricTokens.Overlay.white)
                             }
                         }
                     }
@@ -526,8 +529,9 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                             menu = false
                         }
                     })
-                AnimatedVisibility(visible = menu, modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()) {
-                    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
+                AnimatedVisibility(visible = menu, enter = fadeIn(LyricTokens.Motion.short()),
+                    exit = fadeOut(LyricTokens.Motion.short()), modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding()) {
+                    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = LyricTokens.Component.readerToolbarElevation) {
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -536,7 +540,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                             Text(
                                 book.title,
                                 fontFamily = Serif,
-                                fontSize = 17.sp,
+                                style = LyricTokens.Type.subtitle,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
@@ -552,22 +556,24 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                 }
                 AnimatedVisibility(
                     visible = menu,
+                    enter = slideInVertically(LyricTokens.Motion.long()) { it } + fadeIn(LyricTokens.Motion.short()),
+                    exit = slideOutVertically(LyricTokens.Motion.long()) { it } + fadeOut(LyricTokens.Motion.short()),
                     modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
                 ) {
                     Surface(
                         color = MaterialTheme.colorScheme.surface,
                         shape =
                             androidx.compose.foundation.shape.RoundedCornerShape(
-                                topStart = 24.dp,
-                                topEnd = 24.dp,
+                                topStart = LyricTokens.Radius.card,
+                                topEnd = LyricTokens.Radius.card,
                             ),
-                        shadowElevation = 6.dp,
+                        shadowElevation = LyricTokens.Component.readerSheetElevation,
                     ) {
                         val locator = locatorState.value
                         Column(
                             Modifier.heightIn(max = (LocalConfiguration.current.screenHeightDp * .7f).dp)
                                 .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 20.dp, vertical = 12.dp)
+                                .padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.md)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(
@@ -575,13 +581,14 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                                         vm.goTo(
                                             Locator((locator.chapterIndex - 1).coerceAtLeast(0))
                                         )
-                                    }
+                                    },
+                                    shape = LyricTokens.Radius.buttonShape,
                                 ) {
-                                    Text("上一章", fontSize = 12.sp)
+                                    Text("上一章", style = LyricTokens.Type.auxiliary)
                                 }
                                 Text(
                                     "${locator.chapterIndex + 1} / ${book.chapters.size}",
-                                    fontSize = 12.sp,
+                                    style = LyricTokens.Type.auxiliary,
                                     color = Stone,
                                     modifier = Modifier.weight(1f),
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -595,9 +602,10 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                                                 )
                                             )
                                         )
-                                    }
+                                    },
+                                    shape = LyricTokens.Radius.buttonShape,
                                 ) {
-                                    Text("下一章", fontSize = 12.sp)
+                                    Text("下一章", style = LyricTokens.Type.auxiliary)
                                 }
                             }
                             var slider by
@@ -658,7 +666,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                 if (prefs.dim > 0f)
                     Box(
                         Modifier.fillMaxSize()
-                            .background(Color.Black.copy(alpha = prefs.dim.coerceIn(0f, .85f)))
+                            .background(LyricTokens.Overlay.black.copy(alpha = prefs.dim.coerceIn(0f, .85f)))
                     )
             }
         }
@@ -684,9 +692,9 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
 private fun ReaderChapterHeading(book: Book, prefs: ReaderSettings, meta: Color, visible: State<Locator>) {
     if (prefs.showChapter) Text(
         book.chapters[visible.value.chapterIndex.coerceIn(book.chapters.indices)].title,
-        color = meta, fontFamily = Serif, fontSize = (prefs.fontSize * .7f).sp,
+        color = meta, fontFamily = Serif, style = LyricTokens.Type.auxiliary,
         maxLines = 1, overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.padding(horizontal = prefs.margin.dp).padding(bottom = 8.dp),
+        modifier = Modifier.padding(horizontal = prefs.margin.dp).padding(bottom = LyricTokens.Space.sm),
     )
 }
 
@@ -694,15 +702,15 @@ private fun ReaderChapterHeading(book: Book, prefs: ReaderSettings, meta: Color,
 private fun ReaderFooter(book: Book, prefs: ReaderSettings, meta: Color,
                          pageInfo: State<String>, visible: State<Locator>) {
     val lengthsReady = book.deferred?.lengthsReady?.collectAsStateWithLifecycle()?.value ?: true
-    Row(Modifier.fillMaxWidth().padding(horizontal = prefs.margin.dp).padding(top = 12.dp),
+    Row(Modifier.fillMaxWidth().padding(horizontal = prefs.margin.dp).padding(top = LyricTokens.Space.md),
         horizontalArrangement = Arrangement.SpaceBetween) {
-        val infoSize = (prefs.fontSize * .7f).sp
-        if (prefs.showPage) Text(pageInfo.value, color = meta, fontSize = infoSize)
-        if (prefs.showPercent && lengthsReady) Text(readingPercentLabel(book.percent(visible.value)), color = meta, fontSize = infoSize)
+        val infoStyle = LyricTokens.Type.auxiliary
+        if (prefs.showPage) Text(pageInfo.value, color = meta, style = infoStyle)
+        if (prefs.showPercent && lengthsReady) Text(readingPercentLabel(book.percent(visible.value)), color = meta, style = infoStyle)
         if (prefs.showTime || prefs.showBattery) {
             val (clock, battery) = readerClockAndBattery()
-            if (prefs.showTime) Text(clock, color = meta, fontSize = infoSize)
-            if (prefs.showBattery) Text(battery, color = meta, fontSize = infoSize)
+            if (prefs.showTime) Text(clock, color = meta, style = infoStyle)
+            if (prefs.showBattery) Text(battery, color = meta, style = infoStyle)
         }
     }
 }
@@ -714,11 +722,11 @@ private fun ReaderTool(
     click: () -> Unit,
 ) {
     Column(
-        Modifier.clickable(onClick = click).padding(horizontal = 16.dp, vertical = 10.dp),
+        Modifier.clickable(onClick = click).padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.sm),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(icon, label, Modifier.size(22.dp))
-        Text(label, fontSize = 11.sp, modifier = Modifier.padding(top = 5.dp))
+        Icon(icon, label, Modifier.size(LyricTokens.Component.toolbarIcon))
+        Text(label, style = LyricTokens.Type.auxiliary, modifier = Modifier.padding(top = LyricTokens.Space.xs))
     }
 }
 
@@ -736,7 +744,7 @@ private fun SearchDialog(vm: ReaderViewModel, dismiss: () -> Unit) {
             Column(Modifier.safeDrawingPadding().imePadding()) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = LyricTokens.Space.sm, vertical = LyricTokens.Space.md),
                 ) {
                     IconButton(onClick = dismiss) { Icon(Icons.Outlined.ArrowBack, "返回阅读") }
                     OutlinedTextField(
@@ -765,9 +773,9 @@ private fun SearchDialog(vm: ReaderViewModel, dismiss: () -> Unit) {
                 Text(
                     if (query.isBlank()) "输入关键词，在字句之间寻找。"
                     else "找到 ${hits.size} 处${if (searching) " · 搜索中" else ""}",
-                    fontSize = 12.sp,
+                    style = LyricTokens.Type.auxiliary,
                     color = Stone,
-                    modifier = Modifier.padding(20.dp),
+                    modifier = Modifier.padding(LyricTokens.Space.lg),
                 )
                 LazyColumn {
                     items(hits, key = { "${it.chapterIndex}:${it.charOffset}" }) { hit ->
@@ -779,9 +787,9 @@ private fun SearchDialog(vm: ReaderViewModel, dismiss: () -> Unit) {
                                     vm.goTo(Locator(hit.chapterIndex, hit.charOffset))
                                     dismiss()
                                 }
-                                .padding(horizontal = 24.dp, vertical = 16.dp)
+                                .padding(horizontal = LyricTokens.Page.margin, vertical = LyricTokens.Space.lg)
                         ) {
-                            Text(hit.chapterTitle, fontSize = 11.sp, color = Stone)
+                            Text(hit.chapterTitle, style = LyricTokens.Type.auxiliary, color = Stone)
                             val context =
                                 androidx.compose.ui.text.buildAnnotatedString {
                                     append(hit.context)
@@ -800,13 +808,12 @@ private fun SearchDialog(vm: ReaderViewModel, dismiss: () -> Unit) {
                             Text(
                                 context,
                                 fontFamily = Serif,
-                                fontSize = 15.sp,
-                                lineHeight = 25.sp,
-                                modifier = Modifier.padding(top = 4.dp),
+                                style = LyricTokens.Type.body,
+                                modifier = Modifier.padding(top = LyricTokens.Space.xs),
                             )
                         }
                         HorizontalDivider(
-                            Modifier.padding(horizontal = 24.dp),
+                            Modifier.padding(horizontal = LyricTokens.Page.margin),
                             color = MaterialTheme.colorScheme.outlineVariant,
                         )
                     }

@@ -80,17 +80,17 @@ class StorageAndSettingsTest {
             store.update(SettingsScope.BOOK, "a", defaults, defaults.copy(fontSize = 30f))
             store.update(SettingsScope.BOOK, "b", defaults, defaults.copy(margin = 40f))
             assertEquals(22f, store.global.first().fontSize)
-            assertEquals(1.9f, store.global.first().lineHeight)
+            assertEquals(1.7f, store.global.first().lineHeight)
             assertEquals(30f, store.settings("a").first().fontSize)
             assertEquals(2, store.ownBookCount.first())
             store.resetBookInheritance()
             assertEquals(0, store.ownBookCount.first())
             assertEquals(22f, store.settings("a").first().fontSize)
             assertEquals(2.1f, store.settings("a").first().lineHeight)
-            assertEquals(20f, store.settings("b").first().margin)
+            assertEquals(24f, store.settings("b").first().margin)
         } finally { scope.cancel() }
     }
-    @Test fun v031DefaultsApplyOnlyToUnsetFieldsAndPreserveExplicitOldPreferences() = runBlocking {
+    @Test fun v10DefaultsApplyOnlyToUnsetFieldsAndPreserveExplicitOldPreferences() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Application>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val store = SettingsStore(context, PreferenceDataStoreFactory.create(scope = scope) {
@@ -98,14 +98,17 @@ class StorageAndSettingsTest {
         })
         try {
             val fresh = store.settings("new").first()
-            assertEquals(17f, fresh.fontSize)
-            assertEquals(20f, fresh.margin)
-            assertEquals(.3f, fresh.paragraphSpace)
+            assertEquals(18f, fresh.fontSize)
+            assertEquals(1.7f, fresh.lineHeight)
+            assertEquals(24f, fresh.margin)
+            assertEquals(.5f, fresh.paragraphSpace)
             assertTrue(fresh.volumeKeys)
             store.restore(SettingsSnapshot(strings = mapOf("global" to
-                """{"fontSize":18.0,"margin":28.0,"paragraphSpace":0.6,"volumeKeys":false}""")))
+                """{"fontSize":17.0,"lineHeight":1.9,"margin":28.0,"paragraphSpace":0.6,"volumeKeys":false,"font":"/fonts/custom.ttf"}""")))
             val old = store.settings("old").first()
-            assertEquals(18f, old.fontSize)
+            assertEquals(17f, old.fontSize)
+            assertEquals(1.9f, old.lineHeight)
+            assertEquals("/fonts/custom.ttf", old.font)
             assertEquals(28f, old.margin)
             assertEquals(.6f, old.paragraphSpace)
             assertFalse(old.volumeKeys)
