@@ -38,6 +38,8 @@ private class FileSource(override val file: File, override val displayName: Stri
     override fun open() = file.inputStream()
 }
 
+internal data class ImportOneResult(val added: Boolean, val id: String)
+
 data class ImportStatus(
     val running: Boolean = false,
     val done: Int = 0,
@@ -57,6 +59,8 @@ data class ImportStatus(
     val source: String = "",
     /** Files not started when the batch was stopped; duplicates keep their original meaning. */
     val skipped: Int = 0,
+    /** When a single-file import added or matched one book, the shelf opens it so first read stays within 3 steps. */
+    val openBookId: String? = null,
 ) {
     val summary: String get() = "导入 $added · 跳过 ${duplicates + skipped} · 失败 $failures"
     internal fun completed(): ImportStatus = copy(running = false, detail = "", detailFraction = 0f,
@@ -187,6 +191,7 @@ class LibraryRepository(
     @Volatile private var importJob: kotlinx.coroutines.Job? = null
     fun cancelImport() { importJob?.cancel(CancellationException("导入已取消")) }
     fun dismissScanned(id: String) { imports.value = imports.value.copy(scannedPdfs = imports.value.scannedPdfs.filterNot { it.first == id }) }
+    fun consumeOpenBook() { if (imports.value.openBookId != null) imports.value = imports.value.copy(openBookId = null) }
 
     suspend fun importUris(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null) =
         withContext(Dispatchers.IO) {
@@ -258,6 +263,8 @@ class LibraryRepository(
                     }
                     var status = imports.value.copy(total = files.size + comicFolders.size)
                     imports.value = status
+                    var lastBookId: String? = null
+                    var lastBookCount = 0
                     comicFolders.forEach { (title, images) ->
                         currentCoroutineContext().ensureActive()
                         activeFile = title
@@ -271,10 +278,11 @@ class LibraryRepository(
                             Log.e(ImportTrace.TAG, "$title：${it.importReason()}", it)
                         }
                         status = imports.value.copy(done = status.done + 1,
-                            added = status.added + if (result.getOrNull() == true) 1 else 0,
-                            duplicates = status.duplicates + if (result.getOrNull() == false) 1 else 0,
+                            added = status.added + if (result.getOrNull()?.added == true) 1 else 0,
+                            duplicates = status.duplicates + if (result.getOrNull()?.added == false) 1 else 0,
                             failures = status.failures + if (result.isFailure) 1 else 0,
                             errors = status.errors + listOfNotNull(result.exceptionOrNull()?.let { "$title：${it.importReason()}" }))
+                        result.getOrNull()?.let { lastBookId = it.id; lastBookCount += 1 }
                         imports.value = status
                         activeFile = null
                     }
@@ -292,17 +300,22 @@ class LibraryRepository(
                         status =
                             imports.value.copy(
                                 done = status.done + 1,
-                                added = status.added + if (result.getOrNull() == true) 1 else 0,
+                                added = status.added + if (result.getOrNull()?.added == true) 1 else 0,
                                 duplicates =
-                                    status.duplicates + if (result.getOrNull() == false) 1 else 0,
+                                    status.duplicates + if (result.getOrNull()?.added == false) 1 else 0,
                                 failures = status.failures + if (result.isFailure) 1 else 0,
                                 message = result.exceptionOrNull()?.importReason() ?: name,
                                 errors = status.errors + listOfNotNull(result.exceptionOrNull()?.let { "$name：${it.importReason()}" }),
                             )
+                        result.getOrNull()?.let { lastBookId = it.id; lastBookCount += 1 }
                         imports.value = status
                         activeFile = null
                     }
-                    imports.value = status.completed()
+                    val openBookId = lastBookId.takeIf {
+                        !folder && files.size == 1 && comicFolders.isEmpty() &&
+                            status.failures == 0 && lastBookCount == 1 && status.scannedPdfs.isEmpty()
+                    }
+                    imports.value = status.completed().copy(openBookId = openBookId)
                 } catch (e: CancellationException) {
                     val status = imports.value
                     val interrupted = if (activeFile != null) 1 else 0
@@ -323,7 +336,7 @@ class LibraryRepository(
             }
         }
 
-    private suspend fun importOne(uri: Uri, name: String, retainSource: Boolean = false): Boolean {
+    private suspend fun importOne(uri: Uri, name: String, retainSource: Boolean = false): ImportOneResult {
         val temp = ImportTrace.stage("创建导入缓存") { File.createTempFile("import-", ".tmp", context.cacheDir) }
         try {
             val digest = MessageDigest.getInstance("SHA-256")
@@ -383,7 +396,7 @@ class LibraryRepository(
                 ImportTrace.stage("Room/更新重复书籍") {
                     dao.update(old.copy(uri = uri.toString(), name = name, extension = extension, invalid = false))
                 }
-                return false
+                return ImportOneResult(added = false, id = id)
             }
             val job = currentCoroutineContext()[kotlinx.coroutines.Job]
             var lastEmit = 0L
@@ -462,7 +475,7 @@ class LibraryRepository(
             if (extension == "pdf" && com.lyric.reader.PdfPageSource.looksScanned(File(sources, id)))
                 imports.value = imports.value.copy(scannedPdfs = imports.value.scannedPdfs + (id to parsed.title))
             Log.i(ImportTrace.TAG, "导入完成 id=$id chapters=${parsed.chapters.size} chars=${parsed.totalChars}")
-            return true
+            return ImportOneResult(added = true, id = id)
         } finally {
             temp.delete()
         }

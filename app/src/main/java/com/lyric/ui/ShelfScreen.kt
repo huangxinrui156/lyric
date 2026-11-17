@@ -89,6 +89,13 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
     LaunchedEffect(status.running, status.message) {
         if (!status.running && status.message.isNotBlank() && !status.folder) snackbar.showSnackbar(status.message)
     }
+    LaunchedEffect(status.running, status.batchId, status.openBookId) {
+        val id = status.openBookId
+        if (!status.running && id != null) {
+            vm.consumeOpenBook()
+            open(id)
+        }
+    }
     val clipboard = LocalClipboardManager.current
     var dismissedErrorBatch by remember { mutableLongStateOf(-1L) }
     if (!transition.running && !status.running && status.errors.isNotEmpty() && status.batchId != dismissedErrorBatch) {
@@ -176,6 +183,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
                                 else open(id)
                             } },
                             import = { if (!transition.running) { prepareImport(); importer = true } },
+                            importFiles = { if (!transition.running) { prepareImport(); filePicker.launch(importFilter) } },
                             actions = { if (!transition.running) actions = it })
                     }
                     1 -> desk()
@@ -261,7 +269,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
 private fun ShelfContent(
     vm: ShelfViewModel, allBooks: List<ShelfBook>, section: ShelfSection, grid: Boolean,
     status: ImportStatus, switch: (ShelfSection) -> Unit,
-    open: (String) -> Unit, import: () -> Unit, actions: (ShelfBook) -> Unit,
+    open: (String) -> Unit, import: () -> Unit, importFiles: () -> Unit, actions: (ShelfBook) -> Unit,
 ) {
     val sortMode by (if (section == ShelfSection.COMIC) vm.comicSortMode else vm.sortMode).collectAsStateWithLifecycle()
     val books = remember(allBooks, section) { allBooks.filter { it.section == section.name } }
@@ -278,6 +286,7 @@ private fun ShelfContent(
                 }
             sortShelf(filterShelf(list, query), sortMode)
         }
+    val empty = books.isEmpty()
     val continuing =
         books.firstOrNull { it.lastRead > 0 && !it.invalid } ?: books.firstOrNull { !it.invalid }
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -306,9 +315,14 @@ private fun ShelfContent(
                         Spacer(Modifier.weight(1f))
                         ShelfSectionSwitch(section, switch)
                         IconButton(onClick = import, modifier = Modifier.size(LyricTokens.Component.searchHeight)) {
-                            Icon(Icons.Outlined.Add, "导入书籍")
+                            Icon(Icons.Outlined.Add, LyricTokens.Shelf.addLabel)
                         }
                     }
+                    if (empty) {
+                        val copy = if (section == ShelfSection.COMIC) LyricTokens.Shelf.emptyComicCopy else LyricTokens.Shelf.emptyCopy
+                        val label = if (section == ShelfSection.COMIC) LyricTokens.Shelf.emptyComicImportLabel else LyricTokens.Shelf.emptyImportLabel
+                        EmptyShelf(emptyAnchor, copy, label, importFiles)
+                    } else {
                     Text(
                         if (section == ShelfSection.COMIC) "本地珍藏 ${books.size} 部 · 一格一格画" else "本地珍藏 ${books.size} 本 · 一页一行诗",
                         style = LyricTokens.Type.auxiliary,
@@ -318,7 +332,6 @@ private fun ShelfContent(
                     Spacer(Modifier.height(LyricTokens.Component.toolbarIcon))
                     if (continuing != null)
                         ContinueCard(continuing, section, vm.repository) { open(continuing.id) }
-                    else EmptyShelf(emptyAnchor, import)
                     Spacer(Modifier.height(LyricTokens.Space.lg))
                     Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                         filterLabels(section).forEachIndexed { index, label
@@ -375,6 +388,7 @@ private fun ShelfContent(
                         )
                     }
                     if (status.running) ImportProgress(status) { vm.cancelImport() }
+                    }
                 }
             }
             items(
@@ -385,7 +399,7 @@ private fun ShelfContent(
                 if (grid) BookTile(book, { open(book.id) }, { actions(book) })
                 else BookListRow(book, { open(book.id) }, { actions(book) })
             }
-            item(contentType = "import") {
+            if (!empty) item(contentType = "import") {
                 if (grid)
                     Column(Modifier.clickable { import() }) {
                         Box(
@@ -612,7 +626,7 @@ private fun BookListRow(book: ShelfBook, open: () -> Unit, remove: () -> Unit) {
 }
 
 @Composable
-internal fun EmptyShelf(anchor: Dp, import: () -> Unit) {
+internal fun EmptyShelf(anchor: Dp, copy: String = LyricTokens.Shelf.emptyCopy, label: String = LyricTokens.Shelf.emptyImportLabel, import: () -> Unit) {
     val density = LocalDensity.current
     var top by remember { mutableFloatStateOf(0f) }
     val inset = (anchor - with(density) { top.toDp() }).coerceAtLeast(0.dp)
@@ -620,9 +634,9 @@ internal fun EmptyShelf(anchor: Dp, import: () -> Unit) {
         Modifier.fillMaxWidth().onGloballyPositioned { top = it.positionInParent().y }.padding(top = inset),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("书架还空着", style = LyricTokens.Type.body, color = Stone)
+        Text(copy, style = LyricTokens.Type.body, color = Stone)
         Spacer(Modifier.height(LyricTokens.Space.lg))
-        Button(onClick = import, shape = RoundedCornerShape(LyricTokens.Radius.button)) { Text("导入书籍") }
+        Button(onClick = import, shape = RoundedCornerShape(LyricTokens.Radius.button)) { Text(label) }
     }
 }
 
@@ -743,7 +757,8 @@ private fun FolderImportSheet(status: ImportStatus, dismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = dismiss, containerColor = MaterialTheme.colorScheme.background, shape = LyricTokens.Radius.cardShape) {
         Column(Modifier.padding(horizontal = LyricTokens.Space.xl).padding(bottom = LyricTokens.Space.xl)) {
             Text("导入完成", fontFamily = Serif, style = LyricTokens.Type.subtitle)
-            Text("新增 ${status.added} 本", style = LyricTokens.Type.body, modifier = Modifier.padding(top = LyricTokens.Space.md))
+            Text(status.summary, style = LyricTokens.Type.body, modifier = Modifier.padding(top = LyricTokens.Space.md))
+            Text("新增 ${status.added} 本", style = LyricTokens.Type.body, modifier = Modifier.padding(top = LyricTokens.Space.xs))
             Text(androidx.compose.ui.text.buildAnnotatedString {
                 append("跳过重复 ")
                 pushStyle(androidx.compose.ui.text.SpanStyle(color = Vermilion)); append("${status.duplicates}"); pop()

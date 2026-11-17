@@ -61,6 +61,10 @@ class ShelfViewModel(private val app: LyricApp) : ViewModel() {
         app.applicationScope.launch { repository.importUris(uris, folder, grantFlags) }
     }
 
+    fun consumeOpenBook() {
+        repository.consumeOpenBook()
+    }
+
     fun remove(id: String) {
         viewModelScope.launch { repository.remove(id) }
     }

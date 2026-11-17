@@ -36,9 +36,9 @@ class TokenVisualTest {
             }
         }
         val viewport = compose.onNodeWithTag("viewport").getUnclippedBoundsInRoot()
-        val copy = compose.onNodeWithText("书架还空着").getUnclippedBoundsInRoot()
+        val copy = compose.onNodeWithText(LyricTokens.Shelf.emptyCopy).getUnclippedBoundsInRoot()
         assertEquals(256f, (copy.top - viewport.top).value, 1f)
-        compose.onNodeWithText("导入书籍").performClick()
+        compose.onNodeWithText(LyricTokens.Shelf.emptyImportLabel).performClick()
         assertEquals(1, imports)
     }
 

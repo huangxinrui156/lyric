@@ -1,6 +1,6 @@
 # Lyric · 抒情诗
 
-一个安静、离线的 Android TXT / EPUB 阅读器。Kotlin + Jetpack Compose / Material 3，界面为简体中文。没有网络权限、账号、广告或在线书源。首次启动提供三本明确标注的原创示例，可长按移出。
+一个安静、离线的 Android TXT / EPUB 阅读器。Kotlin + Jetpack Compose / Material 3，界面为简体中文。没有网络权限、账号、广告或在线书源。首次打开是空书架：一句「书架还空着」和一个「导入书籍」按钮，选一本即可开始读。
 
 视觉依据 [design/design-spec.md](design/design-spec.md) v1.1 与 `design/src/`：和纸背景、苔绿控件、朱红进度、宋体正文、三列竖排封面、20dp 卡片、24dp 底部面板。书架显示实际藏书数量，不虚构阅读统计；设计稿“发现”改为本地导入。正文与书架标题内置思源宋体 Noto Serif CJK SC，UI 使用系统黑体；可另行导入 TTF/OTF。字体遵循 SIL OFL，授权见 `third_party/NotoSerif-OFL.txt`。提供由原图标重绘的自适应 launcher icon（含单色层）。
 
