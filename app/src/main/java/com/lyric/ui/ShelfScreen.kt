@@ -337,6 +337,7 @@ private fun ShelfContent(
                             Icon(Icons.Outlined.Add, LyricTokens.Shelf.addLabel)
                         }
                     }
+                    if (status.running) ImportProgress(status) { vm.cancelImport() }
                     if (empty) {
                         val copy = if (section == ShelfSection.COMIC) LyricTokens.Shelf.emptyComicCopy else LyricTokens.Shelf.emptyCopy
                         val label = if (section == ShelfSection.COMIC) LyricTokens.Shelf.emptyComicImportLabel else LyricTokens.Shelf.emptyImportLabel
@@ -429,7 +430,6 @@ private fun ShelfContent(
                         }
                     }
                     if (conditions.isActive) ActiveFilterChips(conditions) { vm.filter(section, it) }
-                    if (status.running) ImportProgress(status) { vm.cancelImport() }
                     if (filteredEmpty) EmptyShelf(
                         viewportHeight,
                         LyricTokens.Shelf.filterEmptyCopy,
@@ -772,7 +772,7 @@ private fun ImportProgress(status: ImportStatus, cancel: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = LyricTokens.Space.md)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (status.running) "正在导入 ${status.done} / ${status.total}" else "导入完成",
+                if (status.running) LyricTokens.Shelf.importingCopy(status.total) else "导入完成",
                 style = LyricTokens.Type.body, modifier = Modifier.weight(1f),
             )
             if (status.running) TextButton(onClick = cancel, shape = LyricTokens.Radius.buttonShape) { Text("取消", style = LyricTokens.Type.body) }

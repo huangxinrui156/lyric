@@ -123,6 +123,8 @@ object LyricTokens {
         const val emptyComicImportLabel = "导入漫画"
         const val addLabel = "添加"
         const val standardColumns = 2
+        const val importing = "正在导入…"
+        fun importingCopy(total: Int) = if (total > 0) "正在导入 $total 本…" else importing
     }
     object Reading {
         data class Preset(val fontSizeSp: Float, val lineHeight: Float, val marginDp: Float, val paragraphEm: Float) {

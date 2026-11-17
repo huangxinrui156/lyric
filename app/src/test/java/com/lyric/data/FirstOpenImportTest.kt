@@ -71,6 +71,17 @@ class FirstOpenImportTest {
     }
 
     @Test
+    fun inAppImportWhileAlreadyRunningIsIgnored() = env { repo ->
+        val app = ApplicationProvider.getApplicationContext<Application>()
+        repo.imports.value = ImportStatus(running = true, total = 2, message = "正在扫描本地文件…", batchId = 99L)
+        repo.importUris(listOf(Uri.fromFile(txt(app, "ignored.txt"))))
+        assertEquals(99L, repo.imports.value.batchId)
+        assertTrue(repo.imports.value.running)
+        assertEquals(0, repo.imports.value.added)
+        assertTrue(repo.books.first().isEmpty())
+    }
+
+    @Test
     fun twoFileImportDoesNotAutoOpen() = env { repo ->
         val app = ApplicationProvider.getApplicationContext<Application>()
         repo.importUris(listOf(Uri.fromFile(txt(app, "a.txt")), Uri.fromFile(txt(app, "b.txt"))))

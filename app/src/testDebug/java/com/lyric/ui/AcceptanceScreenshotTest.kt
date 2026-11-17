@@ -23,7 +23,9 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import com.lyric.LyricApp
+import com.lyric.ui.theme.LyricTokens
 import com.lyric.core.ReaderSettings
+import com.lyric.data.ImportStatus
 import com.lyric.data.ImportedWithin
 import com.lyric.data.ReadingStatusFilter
 import com.lyric.data.ShelfBook
@@ -68,6 +70,28 @@ class AcceptanceScreenshotTest {
             app.repository.settings.shelfCompact(ShelfSection.BOOK, false)
             app.repository.settings.shelfFilter(ShelfSection.BOOK, ShelfFilter())
         }
+        for (dark in listOf(false, true)) {
+            showShelf(app, dark)
+            // Standard 2-col composes fewer tiles; default sort is 最近阅读, so 可见书01 may be below the fold.
+            waitFor("16 本书")
+            waitFor("样本书16")
+            capture(if (dark) "standard-shelf-night.png" else "standard-shelf-day.png", out)
+        }
+
+        runBlocking(Dispatchers.IO) { app.repository.books.first().forEach { app.repository.remove(it.id) } }
+        compose.runOnUiThread {
+            app.repository.imports.value = ImportStatus(
+                running = true, done = 0, total = 3, message = "正在扫描本地文件…", batchId = 1L,
+            )
+        }
+        for (dark in listOf(false, true)) {
+            showShelf(app, dark)
+            waitFor(LyricTokens.Shelf.importingCopy(3))
+            capture(if (dark) "importing-shelf-night.png" else "importing-shelf-day.png", out)
+        }
+        compose.runOnUiThread { app.repository.imports.value = ImportStatus() }
+        plantBooks(app, count = 16)
+
         openFilterSheet(app, dark = false)
         capture("filter-sheet-day.png", out)
         openFilterSheet(app, dark = true)

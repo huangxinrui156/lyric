@@ -101,6 +101,22 @@ class EmptyShelfUiTest {
         assertEquals(1, runBlocking { app.repository.books.first().size })
     }
 
+    @Test fun emptyShelfShowsImportingProgressWhileRunning() {
+        val (app, _) = openEmptyShelf()
+        compose.runOnUiThread {
+            app.repository.imports.value = ImportStatus(
+                running = true, done = 0, total = 3, message = "正在扫描本地文件…", batchId = 7L,
+            )
+        }
+        val label = LyricTokens.Shelf.importingCopy(3)
+        compose.waitUntil(10_000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText(label).assertIsDisplayed()
+        compose.onNodeWithText(LyricTokens.Shelf.emptyCopy).assertIsDisplayed()
+    }
+
     @Test fun inAppImportCompletionOnMeDoesNotOpenOrLeaveTheTab() {
         val opened = mutableListOf<String>()
         val (app, _) = openEmptyShelf { opened += it }

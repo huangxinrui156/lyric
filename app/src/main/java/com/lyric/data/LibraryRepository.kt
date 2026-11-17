@@ -207,7 +207,11 @@ class LibraryRepository(
 
     suspend fun importUris(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null, openWith: Boolean = false) =
         withContext(Dispatchers.IO) {
+            // In-app: ignore a second start while one batch is already running (same-file double tap).
+            // Open-with may still queue behind the current batch.
+            if (!openWith && imports.value.running) return@withContext
             importLock.withLock {
+                if (!openWith && imports.value.running) return@withLock
                 importJob = currentCoroutineContext()[kotlinx.coroutines.Job]
                 val batchId = System.nanoTime()
                 imports.value = ImportStatus(running = true, message = "正在扫描本地文件…", batchId = batchId, folder = folder,
