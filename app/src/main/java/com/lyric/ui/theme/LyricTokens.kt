@@ -122,6 +122,7 @@ object LyricTokens {
         const val emptyComicCopy = "画架还空着"
         const val emptyComicImportLabel = "导入漫画"
         const val addLabel = "添加"
+        const val standardColumns = 2
     }
     object Reading {
         data class Preset(val fontSizeSp: Float, val lineHeight: Float, val marginDp: Float, val paragraphEm: Float) {

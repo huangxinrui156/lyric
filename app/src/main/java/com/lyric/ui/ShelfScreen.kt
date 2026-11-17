@@ -935,7 +935,7 @@ internal fun comicPageLabel(book: Book, progress: ProgressRow?): String {
 internal fun shelfGridCells(grid: Boolean, compact: Boolean = false): GridCells = when {
     !grid -> GridCells.Fixed(1)
     compact -> GridCells.Adaptive(LyricTokens.Shelf.compactMinColumnWidth)
-    else -> GridCells.Adaptive(LyricTokens.Shelf.minColumnWidth)
+    else -> GridCells.Fixed(LyricTokens.Shelf.standardColumns)
 }
 
 /** 在读：已打开且未读完。 */
