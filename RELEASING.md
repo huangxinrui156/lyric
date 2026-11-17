@@ -104,6 +104,14 @@ $ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs <release.apk>
 
 正式签名包与 debug 包同包名但签名不同，**不能覆盖安装**。用户需先在应用内备份，卸载旧包后再装正式版。benchmark 包名不同，可与正式包并存。
 
+
+## 安全
+
+- 仓库 ruleset：`main` 禁止删除与 force-push，更新须走 PR（不要求 Approve，所有者可合并自己的 PR）。`v*` 标签的创建、更新、删除与非快进更新仅仓库管理员可做，避免误改已发布标签。
+- 签名发版 job 只在 `main` 上的 `workflow_dispatch`，或推送 `v*` 标签时运行；标签对应提交必须已是 `main` 的祖先（`git merge-base --is-ancestor`），否则失败。只有 tag 才会发布 GitHub Release。
+- 第三方 Actions 按完整 commit SHA 固定（注释中标明版本），不要改回浮动的主版本标签。
+- Secrets 只放在仓库 Settings，不要打印或写入日志、文档与聊天。
+
 ## 发版（标签与 GitHub Release）
 
 1. 升版本的 PR 经所有者批准并合并进 `main`（见上文）。
@@ -123,6 +131,6 @@ git push origin vX.Y.Z
 - `LYRIC_KEY_ALIAS`
 - `LYRIC_KEY_PASSWORD`
 
-工作流在 runner 临时目录解码 keystore、写入 `keystore.properties`，并设置 `LYRIC_KEYSTORE_PROPERTIES`，走现有的可选签名配置。`workflow_dispatch` 可在分支上试构建并校验证书，**只有 tag 推送才会发布 Release**。
+工作流在 runner 临时目录解码 keystore、写入 `keystore.properties`，并设置 `LYRIC_KEYSTORE_PROPERTIES`，走现有的可选签名配置。`workflow_dispatch` 仅在 `main` 上试构建并校验证书，**只有推送已落在 `main` 历史上的 `v*` 标签才会签名并发布 Release**。
 
 本机手动签名（见上一节）仍可用于对照，或在 Actions 不可用时使用。Release 说明用简体中文，写清自上一版以来的用户可见变更，并附 APK 的 sha256。**推荐下载正式签名的 release APK**；若同时附 debug / benchmark，需注明签名与包名差异，以及不能覆盖安装正式包。
