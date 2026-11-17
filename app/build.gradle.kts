@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -7,13 +9,13 @@ plugins {
 }
 
 /** Optional release signing. Set LYRIC_KEYSTORE_PROPERTIES or -Plyric.keystore.properties to a properties file. Absent or unreadable file leaves release unsigned. */
-fun loadOptionalReleaseSigning(): java.util.Properties? {
+fun loadOptionalReleaseSigning(): Properties? {
     val path = System.getenv("LYRIC_KEYSTORE_PROPERTIES")
         ?: (findProperty("lyric.keystore.properties") as String?)
         ?: return null
-    val file = java.io.File(path)
-    if (!file.isFile) return null
-    return java.util.Properties().apply { file.reader(Charsets.UTF_8).use { load(it) } }
+    val propsFile = rootProject.file(path)
+    if (!propsFile.isFile) return null
+    return Properties().apply { propsFile.reader(Charsets.UTF_8).use { load(it) } }
 }
 
 android {
