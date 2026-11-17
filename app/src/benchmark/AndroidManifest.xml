@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application>
+    <!-- Benchmark-only fallback for devices whose SELinux blocks /data/local/tmp reads. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <application android:requestLegacyExternalStorage="true">
         <profileable android:shell="true" />
         <activity android:name="com.lyric.BenchmarkActivity" android:exported="true" />
     </application>
