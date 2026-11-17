@@ -91,11 +91,14 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
     val status by vm.imports.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val onShelfTab = tab == 0
     var consumedImportBatch by rememberSaveable { mutableLongStateOf(-1L) }
-    LaunchedEffect(status.running, status.batchId, status.message) {
+    LaunchedEffect(onShelfTab, status.running, status.batchId, status.message) {
         val text = status.message
         val batch = status.batchId
-        if (status.running || text.isBlank() || status.folder ||
+        // Leave the message unconsumed until the user is on the shelf tab so it can show once on return.
+        if (!onShelfTab || status.running || text.isBlank() || status.folder ||
             text == BookFormats.UNSUPPORTED_OPEN_WITH || batch == 0L || batch == consumedImportBatch) return@LaunchedEffect
         consumedImportBatch = batch
         try {
@@ -105,12 +108,13 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
         }
     }
     LaunchedEffect(status.running, status.batchId, status.openBookId) {
+        // openBookId is only set for open-with; in-app completion must not change the current screen.
         if (status.running) return@LaunchedEffect
         vm.consumeOpenBook()?.let(open)
     }
     val clipboard = LocalClipboardManager.current
     var dismissedErrorBatch by remember { mutableLongStateOf(-1L) }
-    if (!transition.running && !status.running && status.errors.isNotEmpty() && status.batchId != dismissedErrorBatch) {
+    if (onShelfTab && !transition.running && !status.running && status.errors.isNotEmpty() && status.batchId != dismissedErrorBatch) {
         AlertDialog(
             onDismissRequest = { dismissedErrorBatch = status.batchId },
             title = { Text("导入失败") },
@@ -123,9 +127,8 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
     }
     val grid by vm.grid.collectAsStateWithLifecycle()
     var summaryShown by rememberSaveable { mutableLongStateOf(-1L) }
-    if (!transition.running && !status.running && status.folder && status.batchId != 0L && status.batchId != summaryShown && status.errors.isEmpty())
+    if (onShelfTab && !transition.running && !status.running && status.folder && status.batchId != 0L && status.batchId != summaryShown && status.errors.isEmpty())
         FolderImportSheet(status) { summaryShown = status.batchId }
-    var tab by rememberSaveable { mutableIntStateOf(0) }
     val tabState = rememberSaveableStateHolder()
     var importer by remember { mutableStateOf(false) }
     var importFilter by rememberSaveable { mutableStateOf(ImportFilter.ALL) }
@@ -251,7 +254,7 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
             }
         }
     }
-    status.scannedPdfs.firstOrNull()?.takeIf { !status.running }?.let { (id, title) ->
+    status.scannedPdfs.firstOrNull()?.takeIf { onShelfTab && !status.running }?.let { (id, title) ->
         AlertDialog(
             onDismissRequest = { vm.scannedToComic(id, false) },
             title = { Text("像是扫描版 PDF") },

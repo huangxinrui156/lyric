@@ -59,7 +59,7 @@ data class ImportStatus(
     val source: String = "",
     /** Files not started when the batch was stopped; duplicates keep their original meaning. */
     val skipped: Int = 0,
-    /** When a single-file import added or matched one book, the shelf opens it so first read stays within 3 steps. */
+    /** Set only for a successful open-with single-file import, so the reader can open that book. */
     val openBookId: String? = null,
 ) {
     val summary: String get() = "导入 $added · 跳过 ${duplicates + skipped} · 失败 $failures"
@@ -324,7 +324,7 @@ class LibraryRepository(
                         activeFile = null
                     }
                     val openBookId = lastBookId.takeIf {
-                        !folder && files.size == 1 && comicFolders.isEmpty() &&
+                        openWith && !folder && files.size == 1 && comicFolders.isEmpty() &&
                             status.failures == 0 && lastBookCount == 1 && status.scannedPdfs.isEmpty()
                     }
                     val done = status.completed().copy(openBookId = openBookId)
