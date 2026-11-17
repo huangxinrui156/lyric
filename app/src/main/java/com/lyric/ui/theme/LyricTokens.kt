@@ -107,6 +107,15 @@ object LyricTokens {
         val densityIcon = 24.dp
         const val coverAspect = 2f / 3f
         const val compactTitleMaxLines = 2
+        val filterIcon = 16.dp
+        val filterDismiss = 16.dp
+        const val filterLabel = "筛选"
+        const val filterEmptyCopy = "没有符合条件的书"
+        const val clearFilterLabel = "清除筛选"
+        const val filterStatusTitle = "阅读状态"
+        const val filterImportedTitle = "导入时间"
+        const val filterReset = "重置"
+        const val filterDone = "完成"
         const val emptyCopy = "书架还空着"
         const val emptyImportLabel = "导入书籍"
         const val emptyComicCopy = "画架还空着"

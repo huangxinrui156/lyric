@@ -289,11 +289,13 @@ private fun ShelfContent(
 ) {
     val sortMode by (if (section == ShelfSection.COMIC) vm.comicSortMode else vm.sortMode).collectAsStateWithLifecycle()
     val compact by (if (section == ShelfSection.COMIC) vm.comicCompact else vm.compact).collectAsStateWithLifecycle()
+    val conditions by (if (section == ShelfSection.COMIC) vm.comicFilter else vm.shelfFilter).collectAsStateWithLifecycle()
     val books = remember(allBooks, section) { allBooks.filter { it.section == section.name } }
     var query by rememberSaveable { mutableStateOf("") }
     var filter by rememberSaveable { mutableIntStateOf(0) }
+    var showFilter by rememberSaveable { mutableStateOf(false) }
     val visible =
-        remember(books, sortMode, filter, query) {
+        remember(books, sortMode, filter, query, conditions) {
             val list =
                 when (val label = filterLabels(section).getOrNull(filter)) {
                     null, "全部" -> books
@@ -301,9 +303,10 @@ private fun ShelfContent(
                     "MOBI" -> books.filter { it.extension == "mobi" || it.extension == "azw3" }
                     else -> books.filter { it.extension == label.lowercase() }
                 }
-            sortShelf(filterShelf(list, query), sortMode)
+            sortShelf(applyShelfFilter(filterShelf(list, query), conditions), sortMode)
         }
     val empty = books.isEmpty()
+    val filteredEmpty = !empty && visible.isEmpty() && conditions.isActive
     val continuing =
         continueReadingBook(books)
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -342,7 +345,7 @@ private fun ShelfContent(
                     if (empty) {
                         val copy = if (section == ShelfSection.COMIC) LyricTokens.Shelf.emptyComicCopy else LyricTokens.Shelf.emptyCopy
                         val label = if (section == ShelfSection.COMIC) LyricTokens.Shelf.emptyComicImportLabel else LyricTokens.Shelf.emptyImportLabel
-                        EmptyShelf(emptyAnchor, copy, label, importFiles)
+                        EmptyShelf(emptyAnchor, copy, label, import = importFiles)
                     } else {
                     Text(
                         if (section == ShelfSection.COMIC) "本地珍藏 ${books.size} 部 · 一格一格画" else "本地珍藏 ${books.size} 本 · 一页一行诗",
@@ -418,13 +421,21 @@ private fun ShelfContent(
                         verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs),
                     ) {
                         ShelfSortChips(sortMode) { vm.sort(it, section) }
+                        FilterEntryChip(conditions) { showFilter = true }
                         Text(
                             if (section == ShelfSection.COMIC) "${visible.size} 部漫画" else "${visible.size} 本书",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = LyricTokens.Type.auxiliary,
                         )
                     }
+                    if (conditions.isActive) ActiveFilterChips(conditions) { vm.filter(section, it) }
                     if (status.running) ImportProgress(status) { vm.cancelImport() }
+                    if (filteredEmpty) EmptyShelf(
+                        emptyAnchor,
+                        LyricTokens.Shelf.filterEmptyCopy,
+                        LyricTokens.Shelf.clearFilterLabel,
+                        textButton = true,
+                    ) { vm.filter(section, ShelfFilter()) }
                     }
                 }
             }
@@ -483,6 +494,11 @@ private fun ShelfContent(
         }
         }
     }
+    if (showFilter) FilterSheet(
+        current = conditions,
+        onDismiss = { showFilter = false },
+        onApply = { vm.filter(section, it); showFilter = false },
+    )
 }
 
 @Composable
@@ -698,7 +714,13 @@ private fun BookListRow(book: ShelfBook, open: () -> Unit, remove: () -> Unit) {
 }
 
 @Composable
-internal fun EmptyShelf(anchor: Dp, copy: String = LyricTokens.Shelf.emptyCopy, label: String = LyricTokens.Shelf.emptyImportLabel, import: () -> Unit) {
+internal fun EmptyShelf(
+    anchor: Dp,
+    copy: String = LyricTokens.Shelf.emptyCopy,
+    label: String = LyricTokens.Shelf.emptyImportLabel,
+    textButton: Boolean = false,
+    import: () -> Unit,
+) {
     val density = LocalDensity.current
     var top by remember { mutableFloatStateOf(0f) }
     val inset = (anchor - with(density) { top.toDp() }).coerceAtLeast(0.dp)
@@ -708,7 +730,11 @@ internal fun EmptyShelf(anchor: Dp, copy: String = LyricTokens.Shelf.emptyCopy, 
     ) {
         Text(copy, style = LyricTokens.Type.body, color = Stone)
         Spacer(Modifier.height(LyricTokens.Space.lg))
-        Button(onClick = import, shape = RoundedCornerShape(LyricTokens.Radius.button)) { Text(label) }
+        if (textButton) TextButton(onClick = import, shape = LyricTokens.Radius.buttonShape) {
+            Text(label, style = LyricTokens.Type.body)
+        } else {
+            Button(onClick = import, shape = RoundedCornerShape(LyricTokens.Radius.button)) { Text(label) }
+        }
     }
 }
 
@@ -916,3 +942,118 @@ internal fun shelfGridCells(grid: Boolean, compact: Boolean = false): GridCells 
 
 /** 在读：已打开且未读完。 */
 internal fun ShelfBook.isInProgress(): Boolean = lastRead > 0L && percent < .99f
+
+@Composable
+private fun FilterEntryChip(filter: ShelfFilter, onClick: () -> Unit) {
+    val active = filter.isActive
+    val label = if (active) "${LyricTokens.Shelf.filterLabel} · ${filter.activeCount}" else LyricTokens.Shelf.filterLabel
+    val content = if (active) Vermilion else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        Modifier.heightIn(min = LyricTokens.Component.smallCoverWidth)
+            .background(MaterialTheme.colorScheme.surfaceVariant, LyricTokens.Radius.pill)
+            .then(if (active) Modifier.border(LyricTokens.strokeWidth, Vermilion, LyricTokens.Radius.pill) else Modifier)
+            .clickable(onClick = onClick)
+            .padding(horizontal = LyricTokens.Space.md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs),
+    ) {
+        Icon(Icons.Outlined.FilterAlt, label, Modifier.size(LyricTokens.Shelf.filterIcon), tint = content)
+        Text(label, style = LyricTokens.Type.auxiliary, color = content)
+    }
+}
+
+@Composable
+private fun ActiveFilterChips(filter: ShelfFilter, onChange: (ShelfFilter) -> Unit) {
+    Row(
+        Modifier.padding(top = LyricTokens.Space.sm).horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        filter.chips().forEach { (label, next) ->
+            Row(
+                Modifier.heightIn(min = LyricTokens.Component.smallCoverWidth)
+                    .background(MaterialTheme.colorScheme.surface, LyricTokens.Radius.pill)
+                    .border(LyricTokens.strokeWidth, MaterialTheme.colorScheme.outlineVariant, LyricTokens.Radius.pill)
+                    .clickable { onChange(next) }
+                    .padding(start = LyricTokens.Space.md, end = LyricTokens.Space.sm),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs),
+            ) {
+                Text(label, style = LyricTokens.Type.auxiliary)
+                Icon(Icons.Outlined.Close, "移除$label", Modifier.size(LyricTokens.Shelf.filterDismiss), tint = Stone)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterSheet(current: ShelfFilter, onDismiss: () -> Unit, onApply: (ShelfFilter) -> Unit) {
+    var draft by remember { mutableStateOf(current) }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = LyricTokens.Radius.card, topEnd = LyricTokens.Radius.card),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(LyricTokens.Space.xl)) {
+            FilterGroup(LyricTokens.Shelf.filterStatusTitle, first = true) {
+                ReadingStatusFilter.entries.forEach { status ->
+                    val on = status in draft.statuses
+                    FilterOptionChip(status.label, on) {
+                        draft = draft.copy(statuses = if (on) draft.statuses - status else draft.statuses + status)
+                    }
+                }
+            }
+            FilterGroup(LyricTokens.Shelf.filterImportedTitle, first = false) {
+                ImportedWithin.entries.forEach { option ->
+                    FilterOptionChip(option.label, draft.imported == option) {
+                        draft = draft.copy(imported = option)
+                    }
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(top = LyricTokens.Space.xl),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = { draft = ShelfFilter() },
+                    modifier = Modifier.height(LyricTokens.Component.buttonHeight),
+                    shape = LyricTokens.Radius.buttonShape,
+                ) {
+                    Text(LyricTokens.Shelf.filterReset, style = LyricTokens.Type.body, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(Modifier.weight(1f))
+                Button(
+                    onClick = { onApply(draft) },
+                    modifier = Modifier.height(LyricTokens.Component.buttonHeight),
+                    shape = LyricTokens.Radius.buttonShape,
+                ) { Text(LyricTokens.Shelf.filterDone) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterGroup(title: String, first: Boolean, content: @Composable () -> Unit) {
+    Column(Modifier.padding(top = if (first) 0.dp else LyricTokens.Space.xl)) {
+        Text(title, style = LyricTokens.Type.auxiliary, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(LyricTokens.Space.sm))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm),
+            verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm),
+        ) { content() }
+    }
+}
+
+@Composable
+private fun FilterOptionChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val fill = if (selected) Moss else MaterialTheme.colorScheme.surface
+    val text = if (selected) Paper else MaterialTheme.colorScheme.onBackground
+    Box(
+        Modifier.heightIn(min = LyricTokens.Component.smallCoverWidth)
+            .background(fill, LyricTokens.Radius.pill)
+            .then(if (selected) Modifier else Modifier.border(LyricTokens.strokeWidth, MaterialTheme.colorScheme.outlineVariant, LyricTokens.Radius.pill))
+            .clickable(onClick = onClick)
+            .padding(horizontal = LyricTokens.Space.md),
+        contentAlignment = Alignment.Center,
+    ) { Text(label, style = LyricTokens.Type.auxiliary, color = text) }
+}

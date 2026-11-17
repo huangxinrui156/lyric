@@ -191,4 +191,28 @@ class StorageAndSettingsTest {
         assertEquals(45, second.focusPlannedMin.first())
         secondJob.cancelAndJoin()
     }
+
+    @Test fun shelfFilterIsRememberedSeparatelyAndSurvivesRecreate() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val file = File(context.filesDir, "filter-${System.nanoTime()}.preferences_pb")
+        val firstJob = SupervisorJob()
+        val first = SettingsStore(context, PreferenceDataStoreFactory.create(scope = CoroutineScope(firstJob + Dispatchers.IO)) { file })
+        val bookFilter = ShelfFilter(statuses = setOf(ReadingStatusFilter.UNREAD), imported = ImportedWithin.DAYS_7)
+        val comicFilter = ShelfFilter(statuses = setOf(ReadingStatusFilter.FINISHED))
+        first.shelfFilter(ShelfSection.BOOK, bookFilter)
+        first.shelfFilter(ShelfSection.COMIC, comicFilter)
+        assertEquals(bookFilter, first.shelfFilter(ShelfSection.BOOK).first())
+        assertEquals(comicFilter, first.shelfFilter(ShelfSection.COMIC).first())
+        val snapshot = first.snapshot()
+        first.validate(snapshot)
+        firstJob.cancelAndJoin()
+        val secondJob = SupervisorJob()
+        val second = SettingsStore(context, PreferenceDataStoreFactory.create(scope = CoroutineScope(secondJob + Dispatchers.IO)) { file })
+        assertEquals(bookFilter, second.shelfFilter(ShelfSection.BOOK).first())
+        assertEquals(comicFilter, second.shelfFilter(ShelfSection.COMIC).first())
+        second.shelfFilter(ShelfSection.BOOK, ShelfFilter())
+        assertEquals(ShelfFilter(), second.shelfFilter(ShelfSection.BOOK).first())
+        assertEquals(comicFilter, second.shelfFilter(ShelfSection.COMIC).first())
+        secondJob.cancelAndJoin()
+    }
 }
