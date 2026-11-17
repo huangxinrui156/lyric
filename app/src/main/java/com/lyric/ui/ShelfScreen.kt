@@ -422,11 +422,16 @@ private fun ShelfContent(
                     ) {
                         ShelfSortChips(sortMode) { vm.sort(it, section) }
                         FilterEntryChip(conditions) { showFilter = true }
-                        Text(
-                            if (section == ShelfSection.COMIC) "${visible.size} 部漫画" else "${visible.size} 本书",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = LyricTokens.Type.auxiliary,
-                        )
+                        Box(
+                            Modifier.heightIn(min = LyricTokens.Component.smallCoverWidth),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Text(
+                                if (section == ShelfSection.COMIC) "${visible.size} 部漫画" else "${visible.size} 本书",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = LyricTokens.Type.auxiliary,
+                            )
+                        }
                     }
                     if (conditions.isActive) ActiveFilterChips(conditions) { vm.filter(section, it) }
                     if (status.running) ImportProgress(status) { vm.cancelImport() }
