@@ -136,7 +136,9 @@ private fun AboutContent() {
     var taps by remember { mutableIntStateOf(0) }
     var selfTest by remember { mutableStateOf(false) }
     Text("版本 ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.clickable { if (BuildConfig.DEBUG && ++taps >= 7) { taps = 0; selfTest = true } })
+        modifier = Modifier.clickable {
+            if (aboutVersionSevenTapsOpenSelfTest(BuildConfig.DEBUG, ++taps)) { taps = 0; selfTest = true }
+        })
     if (selfTest) SelfTestDialog { selfTest = false }
     Text("隐私声明", fontFamily = Serif, style = LyricTokens.Type.title, modifier = Modifier.padding(top = LyricTokens.Space.lg))
     Hint("不采集、不上传任何数据。所有书籍、进度、摘录、阅读统计与设置仅存本机。没有账号、广告、分析 SDK 或遥测。应用未声明 INTERNET 网络权限，不访问网络；本地文件仅使用系统文件选择器授予的权限读取。仅在你主动导出时，将备份或摘录写到你选择的位置。卸载应用将删除私有数据。")
@@ -160,3 +162,6 @@ private fun AboutContent() {
         dismissButton = { TextButton(onClick = dismiss, shape = LyricTokens.Radius.buttonShape) { Text("取消") } }, confirmButton = { TextButton(onClick = confirm, shape = LyricTokens.Radius.buttonShape) { Text("确认") } })
 }
 private fun Modifier.semanticsLabel(label: String) = this.then(Modifier.semantics { contentDescription = label })
+
+/** Debug-only: seven taps on the about version line open the self-test. Release/benchmark stay inert. */
+internal fun aboutVersionSevenTapsOpenSelfTest(debug: Boolean, taps: Int) = debug && taps >= 7

@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -61,9 +62,17 @@ class MainActivity : ReaderActivity() {
                     openReader("reader/$id/-1/0/0") { launchSingleTop = true }
                 }
                 val importSnackbar = remember { SnackbarHostState() }
+                var consumedOpenWithBatch by remember { mutableLongStateOf(-1L) }
                 LaunchedEffect(imports.running, imports.batchId, imports.message) {
-                    if (!imports.running && imports.message == BookFormats.UNSUPPORTED_OPEN_WITH) {
-                        importSnackbar.showSnackbar(imports.message)
+                    val text = imports.message
+                    val batch = imports.batchId
+                    if (imports.running || text != BookFormats.UNSUPPORTED_OPEN_WITH ||
+                        batch == 0L || batch == consumedOpenWithBatch) return@LaunchedEffect
+                    consumedOpenWithBatch = batch
+                    try {
+                        importSnackbar.showSnackbar(text, duration = SnackbarDuration.Short)
+                    } finally {
+                        app.repository.consumeImportMessage(batch)
                     }
                 }
                 Box(Modifier.fillMaxSize()) {

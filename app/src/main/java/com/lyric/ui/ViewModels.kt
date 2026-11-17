@@ -62,6 +62,7 @@ class ShelfViewModel(private val app: LyricApp) : ViewModel() {
     }
 
     fun consumeOpenBook(): String? = repository.consumeOpenBook()
+    fun consumeImportMessage(batchId: Long) = repository.consumeImportMessage(batchId)
 
     fun remove(id: String) {
         viewModelScope.launch { repository.remove(id) }

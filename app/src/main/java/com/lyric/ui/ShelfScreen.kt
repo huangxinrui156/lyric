@@ -90,9 +90,18 @@ fun ShelfScreen(vm: ShelfViewModel, me: @Composable () -> Unit, desk: @Composabl
     val status by vm.imports.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(status.running, status.message) {
-        if (!status.running && status.message.isNotBlank() && !status.folder &&
-            status.message != BookFormats.UNSUPPORTED_OPEN_WITH) snackbar.showSnackbar(status.message)
+    var consumedImportBatch by rememberSaveable { mutableLongStateOf(-1L) }
+    LaunchedEffect(status.running, status.batchId, status.message) {
+        val text = status.message
+        val batch = status.batchId
+        if (status.running || text.isBlank() || status.folder ||
+            text == BookFormats.UNSUPPORTED_OPEN_WITH || batch == 0L || batch == consumedImportBatch) return@LaunchedEffect
+        consumedImportBatch = batch
+        try {
+            snackbar.showSnackbar(text, duration = SnackbarDuration.Short)
+        } finally {
+            vm.consumeImportMessage(batch)
+        }
     }
     LaunchedEffect(status.running, status.batchId, status.openBookId) {
         if (status.running) return@LaunchedEffect

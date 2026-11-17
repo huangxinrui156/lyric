@@ -197,6 +197,14 @@ class LibraryRepository(
         return id
     }
 
+    /** Clear a completed batch's user-facing message so the snackbar is shown only once. */
+    @Synchronized fun consumeImportMessage(batchId: Long) {
+        val current = imports.value
+        if (!current.running && current.batchId == batchId && current.message.isNotBlank()) {
+            imports.value = current.copy(message = "")
+        }
+    }
+
     suspend fun importUris(uris: List<Uri>, folder: Boolean = false, grantFlags: Int? = null, openWith: Boolean = false) =
         withContext(Dispatchers.IO) {
             importLock.withLock {
