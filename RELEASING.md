@@ -104,15 +104,25 @@ $ANDROID_HOME/build-tools/35.0.0/apksigner verify --print-certs <release.apk>
 
 正式签名包与 debug 包同包名但签名不同，**不能覆盖安装**。用户需先在应用内备份，卸载旧包后再装正式版。benchmark 包名不同，可与正式包并存。
 
-## 标签与 GitHub Release
+## 发版（标签与 GitHub Release）
 
-在已合并到 `main`、检查已通过、版本号已更新的那次提交上操作。**不要移动已发布的标签**（例如不要把已有的 `v1.0.0` 改指到别的提交）。
+1. 升版本的 PR 经所有者批准并合并进 `main`（见上文）。
+2. 在该提交上打 **annotated** 标签并 push（不要 force，也不要移动已发布的标签，例如不要改 `v1.0.0` 的指向）：
 
 ```bash
 git tag -a vX.Y.Z <commit> -m "Lyric X.Y.Z"
-git push origin vX.Y.Z   # 不要 force
-gh release create vX.Y.Z --title "vX.Y.Z" --notes-file notes.md \
-  lyric-<versionName>-vc<versionCode>-release.apk
+git push origin vX.Y.Z
 ```
 
-Release 说明用简体中文，写清自上一版以来的用户可见变更，附 APK 的 sha256。**推荐下载正式签名的 release APK**；若同时附 debug / benchmark，需注明签名与包名差异，以及不能覆盖安装正式包。
+3. 推送 `v*` 标签后，GitHub Actions（`.github/workflows/release.yml`）会自动跑测试与检查、用仓库 Secrets 签名 `assembleRelease`、校验证书指纹，并创建或更新该标签的 GitHub Release，附上 `lyric-<versionName>-vc<versionCode>-release.apk`。
+
+仓库中只应保存 Secret **名称**，不要把值写入 git、文档或聊天：
+
+- `LYRIC_KEYSTORE_BASE64`（release keystore 的 base64，无换行）
+- `LYRIC_STORE_PASSWORD`
+- `LYRIC_KEY_ALIAS`
+- `LYRIC_KEY_PASSWORD`
+
+工作流在 runner 临时目录解码 keystore、写入 `keystore.properties`，并设置 `LYRIC_KEYSTORE_PROPERTIES`，走现有的可选签名配置。`workflow_dispatch` 可在分支上试构建并校验证书，**只有 tag 推送才会发布 Release**。
+
+本机手动签名（见上一节）仍可用于对照，或在 Actions 不可用时使用。Release 说明用简体中文，写清自上一版以来的用户可见变更，并附 APK 的 sha256。**推荐下载正式签名的 release APK**；若同时附 debug / benchmark，需注明签名与包名差异，以及不能覆盖安装正式包。
