@@ -482,7 +482,7 @@ private fun ReaderContent(vm: ReaderViewModel, drawerExtra: @Composable () -> Un
                             },
                         ) }
                     }
-                    ReaderFooter(book, prefs, meta, pageInfo, visibleLocator)
+                    ReaderFooter(book, prefs, meta, darkReader, pageInfo, visibleLocator)
                 }
                 }
                 curlFrame?.let { frame ->
@@ -703,14 +703,25 @@ private fun ReaderChapterHeading(book: Book, prefs: ReaderSettings, meta: Color,
 }
 
 @Composable
-private fun ReaderFooter(book: Book, prefs: ReaderSettings, meta: Color,
+private fun ReaderFooter(book: Book, prefs: ReaderSettings, meta: Color, night: Boolean,
                          pageInfo: State<String>, visible: State<Locator>) {
     val lengthsReady = book.deferred?.lengthsReady?.collectAsStateWithLifecycle()?.value ?: true
     Row(Modifier.fillMaxWidth().padding(horizontal = prefs.margin.dp).padding(top = LyricTokens.Space.md),
         horizontalArrangement = Arrangement.SpaceBetween) {
         val infoStyle = LyricTokens.Type.auxiliary
         if (prefs.showPage) Text(pageInfo.value, color = meta, style = infoStyle)
-        if (prefs.showPercent && lengthsReady) Text(readingPercentLabel(book.percent(visible.value)), color = meta, style = infoStyle)
+        if (prefs.showPercent) {
+            val at = visible.value
+            ReaderProgressLabel(
+                lengthsReady = lengthsReady,
+                chapterIndex = at.chapterIndex,
+                fraction = if (lengthsReady) book.percent(at) else 0f,
+                night = night,
+                percentColor = meta,
+                style = infoStyle,
+                chapterCount = book.chapters.size,
+            )
+        }
         if (prefs.showTime || prefs.showBattery) {
             val (clock, battery) = readerClockAndBattery()
             if (prefs.showTime) Text(clock, color = meta, style = infoStyle)

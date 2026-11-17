@@ -4,13 +4,17 @@ import com.lyric.ui.theme.LyricTokens
 
 import android.content.*
 import android.os.BatteryManager
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.luminance
 import java.text.SimpleDateFormat
@@ -65,4 +69,46 @@ internal fun readingPercentLabel(fraction: Float): String {
         kotlin.math.ceil(-kotlin.math.log10(percent) - 1e-6).toInt().coerceIn(2, 8)
     else 1
     return String.format(Locale.getDefault(), "%.${decimals}f%%", percent)
+}
+
+/** 1-based chapter label shown while whole-book length is still being filled. */
+internal fun readingChapterPlaceholder(chapterIndex: Int, chapterCount: Int = Int.MAX_VALUE): String {
+    val last = (chapterCount - 1).coerceAtLeast(0)
+    return "第 ${chapterIndex.coerceIn(0, last) + 1} 章"
+}
+
+internal fun readingProgressText(
+    lengthsReady: Boolean,
+    chapterIndex: Int,
+    fraction: Float,
+    chapterCount: Int = Int.MAX_VALUE,
+): String = if (lengthsReady) readingPercentLabel(fraction) else readingChapterPlaceholder(chapterIndex, chapterCount)
+
+/** Unknown progress uses the UI-palette secondary ink; the computed percent keeps the reading-theme meta color. */
+internal fun readingProgressColor(lengthsReady: Boolean, night: Boolean, percentColor: Color): Color =
+    if (lengthsReady) percentColor else LyricTokens.colors(night).secondary
+
+@Composable
+internal fun ReaderProgressLabel(
+    lengthsReady: Boolean,
+    chapterIndex: Int,
+    fraction: Float,
+    night: Boolean,
+    percentColor: Color,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    chapterCount: Int = Int.MAX_VALUE,
+) {
+    Crossfade(
+        targetState = lengthsReady,
+        animationSpec = LyricTokens.Motion.short(),
+        label = "reading-progress",
+        modifier = modifier.testTag("reading-progress"),
+    ) { ready ->
+        Text(
+            readingProgressText(ready, chapterIndex, fraction, chapterCount),
+            color = readingProgressColor(ready, night, percentColor),
+            style = style,
+        )
+    }
 }
