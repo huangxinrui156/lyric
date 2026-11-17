@@ -19,8 +19,9 @@ class FocusDurationTest {
     }
 
     @Test fun customChipUsesMinuteLabel() {
-        assertEquals("25", LyricTokens.Focus.chipLabel(25, custom = false))
-        assertEquals("45", LyricTokens.Focus.chipLabel(45, custom = false))
+        assertEquals("25 分钟", LyricTokens.Focus.chipLabel(25, custom = false))
+        assertEquals("45 分钟", LyricTokens.Focus.chipLabel(45, custom = false))
+        assertEquals("自定义", LyricTokens.Focus.customLabel)
         assertEquals("30 分钟", LyricTokens.Focus.chipLabel(30, custom = true))
         assertEquals("25 分钟", LyricTokens.Focus.chipLabel(25, custom = true))
         assertTrue(LyricTokens.Focus.isPreset(25, custom = false))

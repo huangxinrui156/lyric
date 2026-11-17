@@ -158,7 +158,7 @@ object LyricTokens {
             return stepped.coerceIn(minMinutes, maxMinutes)
         }
         fun isPreset(min: Int, custom: Boolean) = !custom && min in presets
-        fun chipLabel(min: Int, custom: Boolean) = if (custom) "$min 分钟" else if (min in presets) "$min" else "$min 分钟"
+        fun chipLabel(min: Int, custom: Boolean = false) = "$min 分钟"
     }
     object Motion {
         const val shortMs = 150

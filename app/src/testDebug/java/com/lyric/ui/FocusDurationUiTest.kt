@@ -42,14 +42,14 @@ class FocusDurationUiTest {
             idle()
             compose.onAllNodesWithText("自定义").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText("25").assertIsDisplayed()
-        compose.onNodeWithText("45").assertIsDisplayed()
+        compose.onNodeWithText("25 分钟").assertIsDisplayed()
+        compose.onNodeWithText("45 分钟").assertIsDisplayed()
         compose.onNodeWithText("自定义").performClick()
         compose.waitUntil(10_000) {
             idle()
             vm.customPlanned.value && compose.onAllNodesWithContentDescription("自定义时长 25 分钟").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText("25 分钟").assertIsDisplayed()
+        assertTrue(compose.onAllNodesWithText("25 分钟").fetchSemanticsNodes().isNotEmpty())
         repeat(1) { compose.onNodeWithText("+").performClick() }
         compose.waitUntil(10_000) {
             idle()
@@ -58,7 +58,7 @@ class FocusDurationUiTest {
         compose.onNodeWithText("30 分钟").assertIsDisplayed()
         assertEquals(30, runBlocking { app.repository.settings.focusPlannedMin.first() })
         assertTrue(runBlocking { app.repository.settings.focusCustom.first() })
-        compose.onNodeWithText("45").performClick()
+        compose.onNodeWithText("45 分钟").performClick()
         compose.waitUntil(10_000) {
             idle()
             !vm.customPlanned.value && vm.plannedMin.value == 45 &&
