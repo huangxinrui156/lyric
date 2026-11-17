@@ -58,7 +58,9 @@ bash tools/check-licenses.sh
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-测试报告：`app/build/reports/tests/testDebugUnitTest/index.html`。Lint：`app/build/reports/lint-results-debug.html`。更完整的设备验证步骤见 [docs/validation.md](docs/validation.md)。
+测试报告：`app/build/reports/tests/testDebugUnitTest/index.html`。Lint：`app/build/reports/lint-results-debug.html`。更完整的设备验证步骤见 [docs/validation.md](docs/validation.md)。发版、升版本、签名与打标签见 [RELEASING.md](RELEASING.md)。
+
+Build reports: `app/build/reports/tests/testDebugUnitTest/index.html`. For versioning, release signing, and tags, see [RELEASING.md](RELEASING.md).
 
 ## 隐私 / Privacy
 
@@ -81,7 +83,7 @@ Lyric is released under the [Apache License 2.0](LICENSE). Copyright 2026 黄新
 | juniversalchardet | MPL-1.1 |
 | Noto Serif CJK SC | SIL Open Font License 1.1 |
 
-变更记录见 [CHANGELOG.md](CHANGELOG.md)。问题与建议请用 [Issue 模板](.github/ISSUE_TEMPLATE)。
+变更记录见 [CHANGELOG.md](CHANGELOG.md)。发版流程见 [RELEASING.md](RELEASING.md)。问题与建议请用 [Issue 模板](.github/ISSUE_TEMPLATE)。
 
 ---
 
