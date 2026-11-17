@@ -25,19 +25,23 @@ import org.robolectric.annotation.GraphicsMode
 class TokenVisualTest {
     @get:Rule val compose = createAndroidComposeRule<androidx.activity.ComponentActivity>()
 
-    @Test fun emptyShelfAnchorsAtFortyPercentAndRetainsImportAction() {
+    @Test fun emptyShelfAnchorsAtFortyPercentOfRemainingAndRetainsImportAction() {
         var imports = 0
         compose.setContent {
             LyricTheme {
                 Column(Modifier.fillMaxWidth().height(640.dp).testTag("viewport")) {
                     Spacer(Modifier.height(64.dp)) // Existing shelf header, before the visual empty state.
-                    EmptyShelf(640.dp * .4f) { imports++ }
+                    EmptyShelf(640.dp) { imports++ }
                 }
             }
         }
         val viewport = compose.onNodeWithTag("viewport").getUnclippedBoundsInRoot()
         val copy = compose.onNodeWithText(LyricTokens.Shelf.emptyCopy).getUnclippedBoundsInRoot()
-        assertEquals(256f, (copy.top - viewport.top).value, 1f)
+        val action = compose.onNodeWithText(LyricTokens.Shelf.emptyImportLabel).getUnclippedBoundsInRoot()
+        // 40% of the remaining 576.dp under the header lands the copy at 294.4.dp.
+        assertEquals(294.4f, (copy.top - viewport.top).value, 1f)
+        // Button padding sits around the label, so the visible text is a little more than the 16.dp spacer.
+        assertTrue((action.top - copy.bottom).value >= LyricTokens.Shelf.emptyActionGap.value - 1f)
         compose.onNodeWithText(LyricTokens.Shelf.emptyImportLabel).performClick()
         assertEquals(1, imports)
     }

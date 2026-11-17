@@ -310,7 +310,7 @@ private fun ShelfContent(
     val continuing =
         continueReadingBook(books)
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val emptyAnchor = maxHeight * LyricTokens.emptyShelfHeightFraction
+        val viewportHeight = maxHeight
         Crossfade(
             targetState = grid to compact,
             animationSpec = LyricTokens.Motion.medium(),
@@ -345,7 +345,7 @@ private fun ShelfContent(
                     if (empty) {
                         val copy = if (section == ShelfSection.COMIC) LyricTokens.Shelf.emptyComicCopy else LyricTokens.Shelf.emptyCopy
                         val label = if (section == ShelfSection.COMIC) LyricTokens.Shelf.emptyComicImportLabel else LyricTokens.Shelf.emptyImportLabel
-                        EmptyShelf(emptyAnchor, copy, label, import = importFiles)
+                        EmptyShelf(viewportHeight, copy, label, import = importFiles)
                     } else {
                     Text(
                         if (section == ShelfSection.COMIC) "本地珍藏 ${books.size} 部 · 一格一格画" else "本地珍藏 ${books.size} 本 · 一页一行诗",
@@ -431,7 +431,7 @@ private fun ShelfContent(
                     if (conditions.isActive) ActiveFilterChips(conditions) { vm.filter(section, it) }
                     if (status.running) ImportProgress(status) { vm.cancelImport() }
                     if (filteredEmpty) EmptyShelf(
-                        emptyAnchor,
+                        viewportHeight,
                         LyricTokens.Shelf.filterEmptyCopy,
                         LyricTokens.Shelf.clearFilterLabel,
                         textButton = true,
@@ -447,7 +447,7 @@ private fun ShelfContent(
                 if (gridMode) BookTile(book, { open(book.id) }, { actions(book) }, compact = compactMode)
                 else BookListRow(book, { open(book.id) }, { actions(book) })
             }
-            if (!empty) item(contentType = "import") {
+            if (!empty && !filteredEmpty) item(contentType = "import") {
                 if (gridMode)
                     Column(Modifier.clickable { import() }) {
                         Box(
@@ -715,7 +715,7 @@ private fun BookListRow(book: ShelfBook, open: () -> Unit, remove: () -> Unit) {
 
 @Composable
 internal fun EmptyShelf(
-    anchor: Dp,
+    viewportHeight: Dp,
     copy: String = LyricTokens.Shelf.emptyCopy,
     label: String = LyricTokens.Shelf.emptyImportLabel,
     textButton: Boolean = false,
@@ -723,13 +723,14 @@ internal fun EmptyShelf(
 ) {
     val density = LocalDensity.current
     var top by remember { mutableFloatStateOf(0f) }
-    val inset = (anchor - with(density) { top.toDp() }).coerceAtLeast(0.dp)
+    val remaining = (viewportHeight - with(density) { top.toDp() }).coerceAtLeast(0.dp)
+    val inset = remaining * LyricTokens.emptyShelfHeightFraction
     Column(
         Modifier.fillMaxWidth().onGloballyPositioned { top = it.positionInParent().y }.padding(top = inset),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(copy, style = LyricTokens.Type.body, color = Stone)
-        Spacer(Modifier.height(LyricTokens.Space.lg))
+        Spacer(Modifier.height(LyricTokens.Shelf.emptyActionGap))
         if (textButton) TextButton(onClick = import, shape = LyricTokens.Radius.buttonShape) {
             Text(label, style = LyricTokens.Type.body)
         } else {

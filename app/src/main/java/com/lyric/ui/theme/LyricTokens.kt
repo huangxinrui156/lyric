@@ -112,6 +112,7 @@ object LyricTokens {
         const val filterLabel = "筛选"
         const val filterEmptyCopy = "没有符合条件的书"
         const val clearFilterLabel = "清除筛选"
+        val emptyActionGap = Space.lg
         const val filterStatusTitle = "阅读状态"
         const val filterImportedTitle = "导入时间"
         const val filterReset = "重置"

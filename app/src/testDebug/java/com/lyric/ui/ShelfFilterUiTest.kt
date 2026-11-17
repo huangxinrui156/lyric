@@ -1,7 +1,7 @@
 package com.lyric.ui
 
 import android.net.Uri
-import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -55,6 +55,8 @@ class ShelfFilterUiTest {
         compose.onNodeWithText("筛选 · 1").assertIsDisplayed()
         compose.onNodeWithText("未读").assertIsDisplayed()
         compose.onNodeWithText("没有符合条件的书").assertIsDisplayed()
+        compose.onNodeWithText("TXT / EPUB / PDF / DOCX / MOBI / AZW3").assertDoesNotExist()
+        compose.onNodeWithContentDescription("导入").assertDoesNotExist()
         compose.onNodeWithText("清除筛选").performClick()
         compose.waitUntil(10_000) {
             idle()
