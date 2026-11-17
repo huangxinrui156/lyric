@@ -116,10 +116,12 @@ jobs:
           fi
           echo "Certificate SHA-256 matches."
           BADGING="$("${BT}/aapt" dump badging "$APK")"
-          echo "$BADGING" | awk '/^package:/{print}'
-          NAME="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")"
-          CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")"
-          PKG="$(printf '%s\n' "$BADGING" | sed -n "s/.*name='\([^']*\)'.*/\1/p" | head -1)"
+          PACKAGE_LINE="$(printf '%s\n' "$BADGING" | awk '/^package:/{print; exit}')"
+          echo "$PACKAGE_LINE"
+          # Anchor to the package: line — a greedy name= would match compileSdkVersionCodename='15'.
+          PKG="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          CODE="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/.*[[:space:]]versionCode='\([^']*\)'.*/\1/p")"
+          NAME="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/.*[[:space:]]versionName='\([^']*\)'.*/\1/p")"
           if [ "$PKG" != "com.lyric.reader" ] || [ -z "$NAME" ] || [ -z "$CODE" ]; then
             echo "Unexpected package or version in APK"
             exit 1
