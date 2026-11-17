@@ -1,6 +1,7 @@
 package com.lyric.reader
 
 import android.content.Context
+import com.lyric.BuildConfig
 import android.os.Debug
 import android.os.Handler
 import android.os.HandlerThread
@@ -16,6 +17,9 @@ import kotlinx.coroutines.withContext
 object PerfLog {
     @Volatile var enabled = false
         private set
+    /** Release builds never record. Tests may override to exercise that path. */
+    @Volatile internal var recordingAllowedOverride: Boolean? = null
+    internal fun recordingAllowed(): Boolean = recordingAllowedOverride ?: BuildConfig.DEBUG
     private var context: Context? = null
     private val thread by lazy { HandlerThread("LyricPerf", android.os.Process.THREAD_PRIORITY_BACKGROUND).apply { start() } }
     private val handler by lazy { Handler(thread.looper) }
@@ -62,17 +66,19 @@ object PerfLog {
         }
     }
     suspend fun initialize(app: Context) = withContext(Dispatchers.IO) {
-        context = app.applicationContext
-        enabled = app.getSharedPreferences("perf_log", 0).getBoolean("enabled", false)
+        enabled = recordingAllowed() && app.getSharedPreferences("perf_log", 0).getBoolean("enabled", false)
     }
     suspend fun setEnabled(app: Context, value: Boolean) = withContext(Dispatchers.IO) {
+        val next = recordingAllowed() && value
         synchronized(this@PerfLog) {
-            if (!value) finishLocked("switch_off")
-            enabled = value
+            if (enabled && !next) finishLocked("switch_off")
+            enabled = next
             context = app.applicationContext
         }
-        app.getSharedPreferences("perf_log", 0).edit().putBoolean("enabled", value).apply()
-        if (!value) android.os.Handler(android.os.Looper.getMainLooper()).post {
+        if (recordingAllowed()) {
+            app.getSharedPreferences("perf_log", 0).edit().putBoolean("enabled", next).apply()
+        }
+        if (!next) android.os.Handler(android.os.Looper.getMainLooper()).post {
             synchronized(this@PerfLog) { if (!enabled) removeListener() }
         }
     }

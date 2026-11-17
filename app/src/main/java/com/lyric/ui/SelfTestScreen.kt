@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.lyric.BuildConfig
 import com.lyric.LyricApp
 import com.lyric.reader.KillCheck
 import com.lyric.reader.SelfTest
@@ -41,20 +42,22 @@ fun SelfTestDialog(dismiss: () -> Unit) {
                 Text("性能自测", fontFamily = Serif, style = LyricTokens.Type.title)
                 Text(SelfTest.deviceLine(context), style = LyricTokens.Type.auxiliary, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(LyricTokens.Space.lg))
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Switch(perfEnabled, { value ->
-                        scope.launch { com.lyric.reader.PerfLog.setEnabled(context, value); perfEnabled = value }
-                    })
-                    Spacer(Modifier.width(LyricTokens.Space.sm))
-                    Text("性能记录")
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = {
-                        scope.launch {
-                            runCatching {
-                                com.lyric.export.NoteExport.share(context, com.lyric.reader.PerfLog.export(context), "text/plain", "导出性能记录")
-                            }.onFailure { progress = "导出失败：${it.localizedMessage}" }
-                        }
-                    }, shape = LyricTokens.Radius.buttonShape) { Text("导出性能记录") }
+                if (BuildConfig.DEBUG) {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Switch(perfEnabled, { value ->
+                            scope.launch { com.lyric.reader.PerfLog.setEnabled(context, value); perfEnabled = value }
+                        })
+                        Spacer(Modifier.width(LyricTokens.Space.sm))
+                        Text("性能记录")
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = {
+                            scope.launch {
+                                runCatching {
+                                    com.lyric.export.NoteExport.share(context, com.lyric.reader.PerfLog.export(context), "text/plain", "导出性能记录")
+                                }.onFailure { progress = "导出失败：${it.localizedMessage}" }
+                            }
+                        }, shape = LyricTokens.Radius.buttonShape) { Text("导出性能记录") }
+                    }
                 }
                 Text("一、性能基准", fontFamily = Serif, style = LyricTokens.Type.subtitle)
                 Text("在本机内运行：10MB TXT 冷打开、首屏、翻页绘制 P95、搜索首条、漫画大图解码。约 10–40 秒，期间请勿离开。",

@@ -30,7 +30,6 @@ data class FocusUi(
     val plannedMin: Int = 25,
     val remainSec: Long = 25 * 60,
     val elapsedSec: Long = 0,
-    val muteNotifications: Boolean = false,
 )
 
 class DeskViewModel(private val app: LyricApp) : ViewModel() {
@@ -135,7 +134,6 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
         focus.value = FocusUi(
             running = true, paused = false, bookId = book.id, bookTitle = book.title,
             plannedMin = plan, remainSec = plan * 60L, elapsedSec = 0,
-            muteNotifications = focus.value.muteNotifications,
         )
         viewModelScope.launch {
             dao.upsertFocus(
@@ -209,8 +207,7 @@ class DeskViewModel(private val app: LyricApp) : ViewModel() {
         } else 0L
         val duration = if (completed) f.plannedMin * 60L else elapsed
         if (completed) focusPulse.tryEmit(Unit)
-        focus.value = FocusUi(plannedMin = plannedMin.value, remainSec = plannedMin.value * 60L,
-            muteNotifications = f.muteNotifications)
+        focus.value = FocusUi(plannedMin = plannedMin.value, remainSec = plannedMin.value * 60L)
         focusId = null
         if (id == null) return
         viewModelScope.launch {
