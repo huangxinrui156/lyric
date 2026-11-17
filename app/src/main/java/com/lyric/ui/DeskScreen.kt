@@ -91,17 +91,7 @@ fun DeskScreen(
             text = "",
             modifier = Modifier.padding(start = LyricTokens.Page.margin, top = LyricTokens.Space.xl, end = LyricTokens.Page.margin),
         )
-        Row(Modifier.padding(horizontal = LyricTokens.Page.margin), verticalAlignment = Alignment.Bottom) {
-            Text(
-                "lyric",
-                style = LyricTokens.Type.wordmark,
-            )
-            Text(
-                " · 案头",
-                fontFamily = Serif,
-                style = LyricTokens.Type.title,
-            )
-        }
+        LyricWordmarkTitle("案头", Modifier.padding(horizontal = LyricTokens.Page.margin))
         Text(
             "今天读了 ${summary.minutes} 分钟 · ${summary.pages} 页 · ${summary.notes} 条笔记",
             style = LyricTokens.Type.body,

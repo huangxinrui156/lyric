@@ -1,9 +1,13 @@
 package com.lyric.ui
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
@@ -12,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.lyric.core.ReaderSettings
 import com.lyric.ui.theme.LyricTokens
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,6 +29,11 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class TokenVisualTest {
     @get:Rule val compose = createAndroidComposeRule<androidx.activity.ComponentActivity>()
+
+    @Before fun nativeGraphics() {
+        org.robolectric.shadows.ShadowBuild.setFingerprint("lyric-native-curl-test")
+    }
+
 
     @Test fun emptyShelfAnchorsAtFortyPercentOfRemainingAndRetainsImportAction() {
         var imports = 0
@@ -67,6 +77,53 @@ class TokenVisualTest {
             }
         }
         compose.waitForIdle()
+    }
+
+    @Test fun nightPageTitlesUseBodyInk() {
+        org.robolectric.shadows.ShadowBuild.setFingerprint("lyric-native-curl-test")
+        compose.setContent {
+            LyricTheme(ReaderSettings(appTheme = "dark")) {
+                Column(Modifier.background(LyricTokens.Night.background).padding(LyricTokens.Space.lg)) {
+                    LyricWordmarkTitle("案头")
+                    LyricWordmarkTitle("书架")
+                    LyricWordmarkTitle("画架")
+                    Text("我的", fontFamily = Serif, style = LyricTokens.Type.title, color = Ink)
+                }
+            }
+        }
+        listOf(" · 案头", " · 书架", " · 画架", "我的").forEach { label ->
+            compose.onNodeWithText(label).assertExists()
+        }
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        compose.waitForIdle()
+        val bitmap = runCatching { compose.onRoot().captureToImage().asAndroidBitmap() }.getOrElse {
+            val decor = compose.activity.window.decorView
+            var drawn: Bitmap? = null
+            compose.runOnUiThread {
+                val created = Bitmap.createBitmap(decor.width.coerceAtLeast(1), decor.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+                decor.draw(android.graphics.Canvas(created))
+                drawn = created
+            }
+            drawn!!
+        }
+        assertTrue("Night tab titles should be painted with body ink, not black", paintedWith(bitmap, LyricTokens.Night.ink.toArgb()))
+    }
+
+    private fun paintedWith(bitmap: Bitmap, target: Int): Boolean {
+        val tr = android.graphics.Color.red(target)
+        val tg = android.graphics.Color.green(target)
+        val tb = android.graphics.Color.blue(target)
+        var closest = Int.MAX_VALUE
+        for (y in 0 until bitmap.height) {
+            for (x in 0 until bitmap.width) {
+                val p = bitmap.getPixel(x, y)
+                val d = kotlin.math.abs(android.graphics.Color.red(p) - tr) +
+                    kotlin.math.abs(android.graphics.Color.green(p) - tg) +
+                    kotlin.math.abs(android.graphics.Color.blue(p) - tb)
+                if (d < closest) closest = d
+            }
+        }
+        return closest <= 30
     }
 
     @Test fun marginsUseSmallestWidthBreakpoint() {

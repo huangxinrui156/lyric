@@ -327,15 +327,7 @@ private fun ShelfContent(
                 Column {
                     Spacer(Modifier.height(LyricTokens.Space.sm))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "lyric",
-                            style = LyricTokens.Type.wordmark,
-                        )
-                        Text(
-                            " · ${section.label}",
-                            fontFamily = Serif,
-                            style = LyricTokens.Type.title,
-                        )
+                        LyricWordmarkTitle(section.label)
                         Spacer(Modifier.weight(1f))
                         ShelfSectionSwitch(section, switch)
                         IconButton(onClick = import, modifier = Modifier.size(LyricTokens.Component.searchHeight)) {

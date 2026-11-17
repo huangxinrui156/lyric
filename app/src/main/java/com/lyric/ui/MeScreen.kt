@@ -36,7 +36,7 @@ fun MeScreen(vm: MeViewModel, navigate: (String) -> Unit) {
     val todaySeconds = days.firstOrNull { it.day == today.toString() }?.durationSec ?: 0
     val weekSeconds = days.filter { it.day >= ReadingStats.weekStart(today).toString() && it.day <= today.toString() }.sumOf { it.durationSec }
     LazyColumn(contentPadding = PaddingValues(LyricTokens.Page.margin), verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.lg)) {
-        item { Text("我的", fontFamily = Serif, style = LyricTokens.Type.title) }
+        item { Text("我的", fontFamily = Serif, style = LyricTokens.Type.title, color = Ink) }
         item {
             Card(onClick = { navigate("stats") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(LyricTokens.Radius.card),
                 border = BorderStroke(LyricTokens.strokeWidth, Linen)) {
