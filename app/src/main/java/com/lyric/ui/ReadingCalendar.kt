@@ -31,7 +31,6 @@ private val weekdays = listOf("一", "二", "三", "四", "五", "六", "日")
 private val heatmapAlpha = floatArrayOf(0f, .22f, .42f, .68f, 1f)
 private val dayShape = RoundedCornerShape(LyricTokens.Radius.skeleton)
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ReadingCalendar(days: List<DailyStat>, today: LocalDate, select: (LocalDate) -> Unit) {
     var annual by rememberSaveable { mutableStateOf(false) }
@@ -44,11 +43,8 @@ internal fun ReadingCalendar(days: List<DailyStat>, today: LocalDate, select: (L
     Column(verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("时光留痕", fontFamily = Serif, style = LyricTokens.Type.subtitle, modifier = Modifier.weight(1f))
-            SingleChoiceSegmentedButtonRow {
-                SegmentedButton(selected = !annual, onClick = { annual = false },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)) { Text("月") }
-                SegmentedButton(selected = annual, onClick = { annual = true },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)) { Text("年") }
+            OutlinedButton(onClick = { annual = !annual }, shape = LyricTokens.Radius.buttonShape) {
+                Text(if (annual) "按月查看" else "按年查看")
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
