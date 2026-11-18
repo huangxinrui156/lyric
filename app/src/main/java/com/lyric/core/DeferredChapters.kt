@@ -3,10 +3,12 @@ package com.lyric.core
 import java.io.File
 import java.util.concurrent.atomic.AtomicReferenceArray
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 /** No Compose state per fill. A chapter is atomically published exactly once, after its cache write. */
@@ -43,16 +45,15 @@ class DeferredChapters(
         val old = get(index)
         if (!old.pending) return@synchronized old
         val file = File(directory, "chapter-$index.json")
+        val knownLength = offsets?.let { it[index + 1] - it[index] }
         val cached = runCatching { json.decodeFromString(Chapter.serializer(), file.readText()) }
             .getOrNull()?.takeIf { !it.pending && it.index == index && it.href == old.href &&
-                (offsets == null || it.text.length.toLong() == offsets!![index + 1] - offsets!![index]) }
+                (knownLength == null || it.text.length.toLong() == knownLength) }
         val chapter = cached ?: parse(index).also { c ->
-            val tmp = File.createTempFile("chapter-$index-", ".tmp", directory)
-            tmp.writeText(json.encodeToString(Chapter.serializer(), c))
-            check(tmp.renameTo(file))
-        }
-        require(offsets == null || chapter.text.length.toLong() == offsets!![index + 1] - offsets!![index]) {
-            "EPUB canonical chapter length mismatch"
+            require(knownLength == null || c.text.length.toLong() == knownLength) {
+                "EPUB canonical chapter length mismatch"
+            }
+            EpubChapterCache.atomic(file, json.encodeToString(Chapter.serializer(), c))
         }
         // Legacy maps are only needed by the full-parser migration path.
         chapter.legacyOffsets = emptyList()
@@ -60,14 +61,21 @@ class DeferredChapters(
         chapter
     }
 
-    suspend fun ensure(index: Int): Chapter = withContext(Dispatchers.Default) { load(index) }
+    suspend fun ensure(index: Int): Chapter {
+        currentCoroutineContext().ensureActive()
+        val chapter = get(index)
+        return if (chapter.pending) withContext(Dispatchers.IO) { load(index) } else chapter
+    }
 
     suspend fun complete(paced: Boolean = true) = withContext(Dispatchers.Default) {
         for (i in indices) { val pending = get(i).pending; ensure(i); if (pending && paced) delay(16) }
         val stable = LongArray(size + 1)
         for (i in indices) stable[i + 1] = stable[i] + get(i).text.length
-        check(offsets == null || offsets!!.contentEquals(stable)) { "EPUB canonical lengths changed" }
-        EpubChapterCache.atomic(File(directory, "lengths.txt"), joinToString(",") { it.text.length.toString() })
+        val knownOffsets = offsets
+        check(knownOffsets == null || knownOffsets.contentEquals(stable)) { "EPUB canonical lengths changed" }
+        if (knownOffsets == null) withContext(Dispatchers.IO) {
+            EpubChapterCache.atomic(File(directory, "lengths.txt"), joinToString(",") { it.text.length.toString() })
+        }
         offsets = stable
         lengthsReady.value = true
     }

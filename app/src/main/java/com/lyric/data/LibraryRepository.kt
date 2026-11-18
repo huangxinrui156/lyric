@@ -601,9 +601,8 @@ class LibraryRepository(
                     com.lyric.reader.PerfLog.stage("parse_toc_start")
                 }
                 val oldProgress = dao.progress(id)
-                val oldMarks = if (row.extension == "epub") dao.bookmarks(id).first() else emptyList()
                 val upgrade = row.extension == "epub" && (row.contentRevision < 3 ||
-                    (oldProgress != null && oldProgress.contentRevision < 3) || oldMarks.any { it.contentRevision < 3 })
+                    (oldProgress != null && oldProgress.contentRevision < 3) || dao.hasBookmarksBeforeRevision(id, 3))
                 try {
                     // Even with a parsed cache, check the source so revoked/missing files are
                     // explicit.
