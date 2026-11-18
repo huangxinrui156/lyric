@@ -2,6 +2,7 @@ package com.lyric.data
 
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.temporal.TemporalAdjusters
 
 /** One O(days) pass, reused by both the footprint and the calendar. */
@@ -25,13 +26,20 @@ object ReadingStats {
         else -> 4
     }
 
-    fun calendar(days: List<DailyStat>, today: LocalDate, weeks: Int = 26): List<CalendarDay> {
-        val values = days.associateBy { it.day }
-        val start = weekStart(today).minusWeeks(weeks.toLong() - 1)
-        return List(weeks * 7) { index ->
-            val date = start.plusDays(index.toLong())
-            val seconds = values[date.toString()]?.durationSec ?: 0
-            CalendarDay(date, seconds, level(seconds))
+    /** Monday-first rows, with empty slots outside this calendar month. */
+    fun calendarMonth(daysByDate: Map<String, DailyStat>, month: YearMonth): List<List<CalendarDay?>> {
+        val leading = month.atDay(1).dayOfWeek.value - 1
+        val daysInMonth = month.lengthOfMonth()
+        val weeks = (leading + daysInMonth + 6) / 7
+        return List(weeks) { week ->
+            List(7) { weekday ->
+                val day = week * 7 + weekday - leading + 1
+                if (day !in 1..daysInMonth) null else {
+                    val date = month.atDay(day)
+                    val seconds = daysByDate[date.toString()]?.durationSec ?: 0
+                    CalendarDay(date, seconds, level(seconds))
+                }
+            }
         }
     }
 }

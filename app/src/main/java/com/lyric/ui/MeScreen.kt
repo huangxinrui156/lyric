@@ -18,9 +18,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lyric.core.Locator
 import com.lyric.data.*
@@ -33,8 +30,16 @@ fun MeScreen(vm: MeViewModel, navigate: (String) -> Unit) {
     val today by vm.today.collectAsStateWithLifecycle()
     val prefs by vm.preferences.collectAsStateWithLifecycle()
     val marks by vm.bookmarks.collectAsStateWithLifecycle()
-    val todaySeconds = days.firstOrNull { it.day == today.toString() }?.durationSec ?: 0
-    val weekSeconds = days.filter { it.day >= ReadingStats.weekStart(today).toString() && it.day <= today.toString() }.sumOf { it.durationSec }
+    val todaySeconds = remember(days, today) {
+        val date = today.toString()
+        days.firstOrNull { it.day == date }?.durationSec ?: 0L
+    }
+    val weekSeconds = remember(days, today) {
+        val week = ReadingStats.weekStart(today).toString()..today.toString()
+        days.sumOf { if (it.day in week) it.durationSec else 0L }
+    }
+    val streak = remember(days, today) { ReadingStats.streak(days, today) }
+    val selectDay: (LocalDate) -> Unit = remember(vm) { vm::selectDay }
     LazyColumn(contentPadding = PaddingValues(LyricTokens.Page.margin), verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.lg)) {
         item { Text("我的", fontFamily = Serif, style = LyricTokens.Type.title, color = Ink) }
         item {
@@ -45,18 +50,16 @@ fun MeScreen(vm: MeViewModel, navigate: (String) -> Unit) {
                     Row(Modifier.fillMaxWidth().padding(top = LyricTokens.Space.xl), horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.sm)) {
                         Footprint("${todaySeconds / 60} 分", "今日 · 本周 ${weekSeconds / 60} 分", Modifier.weight(1f))
                         Footprint("${totals.finished} 本", "累计读完", Modifier.weight(1f))
-                        Footprint("${ReadingStats.streak(days, today)} 天", "连续阅读", Modifier.weight(1f))
+                        Footprint("$streak 天", "连续阅读", Modifier.weight(1f))
                     }
                     Text("共读 ${totals.durationSec / 60} 分钟  ›", color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = LyricTokens.Type.auxiliary, modifier = Modifier.padding(top = LyricTokens.Space.lg))
                 }
             }
         }
-        item {
+        item(key = "reading-calendar") {
             Column {
-                Text("时光留痕 · 近 26 周", fontFamily = Serif, style = LyricTokens.Type.subtitle)
-                Spacer(Modifier.height(LyricTokens.Space.md))
-                Heatmap(days, today, vm::selectDay)
+                ReadingCalendar(days, today, selectDay)
                 TextButton(onClick = { navigate("stats") }, shape = LyricTokens.Radius.buttonShape) { Text("查看阅读日历", style = LyricTokens.Type.auxiliary) }
             }
         }
@@ -168,40 +171,16 @@ fun BookmarksScreen(vm: MeViewModel, back: () -> Unit, open: (String, Locator, L
 }
 
 @Composable
-internal fun Heatmap(days: List<DailyStat>, today: LocalDate, select: (LocalDate) -> Unit) {
-    val calendar = remember(days, today) { ReadingStats.calendar(days, today) }
-    val color = MaterialTheme.colorScheme.secondary
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs)) {
-        calendar.chunked(7).forEach { week ->
-            Column(verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs)) {
-                week.forEach { day ->
-                    val future = day.date > today
-                    val bg = if (day.level == 0 || future) Color.Transparent else color.copy(alpha = listOf(0f, .22f, .42f, .68f, 1f)[day.level])
-                    Box(Modifier.size(LyricTokens.Component.heatmapCell).background(bg, RoundedCornerShape(LyricTokens.Radius.skeleton))
-                        .border(LyricTokens.strokeWidth, if (future) Color.Transparent else MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(LyricTokens.Radius.skeleton))
-                        .semantics { contentDescription = "${day.date} 阅读 ${day.seconds / 60} 分钟" }
-                        .clickable(enabled = !future) { select(day.date) })
-                }
-            }
-        }
-    }
-    Row(Modifier.padding(top = LyricTokens.Space.md), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(LyricTokens.Space.xs)) {
-        Text("少", style = LyricTokens.Type.auxiliary)
-        listOf(.22f, .42f, .68f, 1f).forEach { alpha -> Box(Modifier.size(LyricTokens.Component.heatmapCell).background(color.copy(alpha = alpha))) }
-        Text("多 · 15 / 30 / 60 分", style = LyricTokens.Type.auxiliary)
-    }
-}
-
-@Composable
 fun StatsScreen(vm: MeViewModel, back: () -> Unit) {
     val days by vm.days.collectAsStateWithLifecycle()
     val today by vm.today.collectAsStateWithLifecycle()
     val totals by vm.totals.collectAsStateWithLifecycle()
+    val selectDay: (LocalDate) -> Unit = remember(vm) { vm::selectDay }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { it?.let(vm::exportStats) }
     MePage("阅读足迹", back) { padding ->
         LazyColumn(contentPadding = padding, verticalArrangement = Arrangement.spacedBy(LyricTokens.Space.lg)) {
             item { Text("累计 ${totals.durationSec / 60} 分钟 · 读完 ${totals.finished} 本", fontFamily = Serif, style = LyricTokens.Type.title) }
-            item { Text("近 26 周", style = LyricTokens.Type.body); Spacer(Modifier.height(LyricTokens.Space.lg)); Heatmap(days, today, vm::selectDay) }
+            item(key = "reading-calendar") { ReadingCalendar(days, today, selectDay) }
             item { Text("只有前台翻页或滚动才开始计时；30 秒未操作暂停，少于 10 秒不计。", style = LyricTokens.Type.auxiliary, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             item { OutlinedButton(onClick = { export.launch("lyric-stats-$today.csv") }, shape = LyricTokens.Radius.buttonShape) { Text("导出统计 CSV") } }
             items(days.asReversed(), key = { it.day }) { day ->
