@@ -11,13 +11,16 @@ class ProgressWriter<T>(scope: CoroutineScope, dispatcher: CoroutineDispatcher =
     private data class Request<T>(val sequence: Long, val value: T)
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private var sequence = 0L
-    private var latest: Request<T>? = null
+    private var pending: Request<T>? = null
+    private var closed = false
     private data class Completion(val sequence: Long, val failure: Throwable? = null)
     private val completed = MutableStateFlow(Completion(0L))
     init {
         scope.launch(dispatcher) {
             for (signal in wake) {
-                val request = synchronized(this@ProgressWriter) { latest } ?: continue
+                val request = synchronized(this@ProgressWriter) {
+                    pending.also { pending = null }
+                } ?: continue
                 val failure = try { write(request.value); null } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     e
@@ -27,12 +30,16 @@ class ProgressWriter<T>(scope: CoroutineScope, dispatcher: CoroutineDispatcher =
         }
     }
     @Synchronized fun submit(value: T): Long {
+        check(!closed) { "Progress writer is closed" }
         val request = Request(++sequence, value)
-        latest = request
+        pending = request
         check(wake.trySend(Unit).isSuccess)
         return request.sequence
     }
-    fun close() { wake.close() }
+    @Synchronized fun close() {
+        closed = true
+        wake.close()
+    }
     suspend fun flush(value: T) {
         await(submit(value))
     }

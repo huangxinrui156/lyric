@@ -365,7 +365,10 @@ class ReaderViewModel(private val app: LyricApp, val id: String, initialLocator:
                 delay(180)
                 val found = mutableListOf<SearchHit>()
                 var lastFlush = 0L
-                repository.search(book, query).collect { hit ->
+                repository.search(book, query).catch { error ->
+                    if (error is CancellationException) throw error
+                    notice.value = "搜索失败：${error.localizedMessage ?: "章节读取失败"}"
+                }.take(2000).collect { hit ->
                     found += hit
                     val now = System.nanoTime()
                     if (found.size == 1 || now - lastFlush > 50_000_000) {
@@ -373,15 +376,10 @@ class ReaderViewModel(private val app: LyricApp, val id: String, initialLocator:
                         lastFlush = now
                         yield()
                     }
-                    if (found.size >= 2000) {
-                        hits.value = found.toList()
-                        searching.value = false
-                        notice.value = "显示前 2000 处匹配，请缩小关键词"
-                        cancel()
-                    }
                 }
                 hits.value = found.toList()
                 searching.value = false
+                if (found.size == 2000) notice.value = "显示前 2000 处匹配，请缩小关键词"
             }
     }
 

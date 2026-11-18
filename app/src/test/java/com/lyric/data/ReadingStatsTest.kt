@@ -1,18 +1,25 @@
 package com.lyric.data
 
 import java.time.LocalDate
+import java.time.YearMonth
 import org.junit.Assert.*
 import org.junit.Test
 
 class ReadingStatsTest {
     @Test fun fourLevelsAndBlankDays() {
         assertEquals(listOf(0, 1, 2, 3, 4), listOf(0L, 1, 900, 1800, 3600).map(ReadingStats::level))
-        val today = LocalDate.of(2026, 10, 30)
-        val days = listOf(DailyStat(today.toString(), 900, 100))
-        val grid = ReadingStats.calendar(days, today)
-        assertEquals(182, grid.size)
-        assertEquals(2, grid.single { it.date == today }.level)
-        assertEquals(181, grid.count { it.level == 0 })
+        val leapFebruary = YearMonth.of(2024, 2)
+        val leapDay = leapFebruary.atEndOfMonth()
+        val days = listOf(DailyStat(leapDay.toString(), 900, 100)).associateBy { it.day }
+        val grid = ReadingStats.calendarMonth(days, leapFebruary)
+        val dates = grid.flatten().filterNotNull()
+        assertEquals(5, grid.size)
+        assertEquals(List(3) { null }, grid.first().take(3))
+        assertEquals(leapFebruary.atDay(1), grid.first()[3]?.date)
+        assertEquals(29, dates.size)
+        assertEquals(CalendarDay(leapDay, 900, 2), dates.last())
+        assertEquals(28, dates.count { it.level == 0 })
+        assertNull(grid.last().last())
     }
     @Test fun streakAllowsTodayToBeUnfinishedButNotYesterday() {
         val today = LocalDate.of(2026, 10, 30)
@@ -31,12 +38,16 @@ class ReadingStatsTest {
     }
 
     @Test fun aYearOfCalendarPreparationStaysBelowHundredMilliseconds() {
-        val today = LocalDate.of(2026, 10, 30)
-        val days = (0L..365L).map { DailyStat(today.minusDays(it).toString(), it * 60, 10) }
-        repeat(10) { ReadingStats.calendar(days, today, 53) }
+        val january = YearMonth.of(2026, 1)
+        val start = january.atDay(1)
+        val days = (0L..364L).map { DailyStat(start.plusDays(it).toString(), it * 60, 10) }.associateBy { it.day }
+        val months = (0L..11L).map(january::plusMonths)
+        repeat(10) { months.forEach { ReadingStats.calendarMonth(days, it) } }
         val began = System.nanoTime()
-        val result = ReadingStats.calendar(days, today, 53)
-        assertEquals(371, result.size)
+        val result = months.flatMap { ReadingStats.calendarMonth(days, it).flatten().filterNotNull() }
+        assertEquals(365, result.size)
+        assertEquals(start, result.first().date)
+        assertEquals(start.plusDays(364), result.last().date)
         assertTrue("Calendar preparation must be <100ms", System.nanoTime() - began < 100_000_000)
     }
 }

@@ -165,6 +165,25 @@ class IncrementalEpubTest {
             assertTrue(chapters.lengthsReady.value)
         } finally { root.deleteRecursively() }
     }
+    @Test fun mismatchedChapterIsNotCachedAndCanBeRetried() = runBlocking {
+        val root = kotlin.io.path.createTempDirectory("chapter-retry").toFile()
+        try {
+            File(root, "lengths.txt").writeText("4")
+            var text = "wrong length"
+            val chapters = DeferredChapters(listOf(Chapter(0, "chapter", pending = true)), root) {
+                Chapter(0, "chapter", text)
+            }
+
+            val failed = runCatching { chapters.ensure(0) }
+            assertTrue(failed.exceptionOrNull() is IllegalArgumentException)
+            assertTrue(chapters[0].pending)
+            assertFalse(File(root, "chapter-0.json").exists())
+
+            text = "book"
+            assertEquals("book", chapters.ensure(0).text)
+            assertTrue(File(root, "chapter-0.json").isFile)
+        } finally { root.deleteRecursively() }
+    }
     @Test fun seededCacheUsesOnlyRequestedChaptersWithoutReadingArchiveAndRepairsCorruption() = runBlocking {
         sample { _, cache, source ->
             val full = withContext(Dispatchers.Default) { EpubParser().parse(source) }

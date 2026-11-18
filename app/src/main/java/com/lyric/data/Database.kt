@@ -177,6 +177,9 @@ interface LibraryDao {
     @Query("SELECT * FROM bookmarks WHERE bookId = :id ORDER BY createdAt DESC")
     fun bookmarks(id: String): Flow<List<BookmarkRow>>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM bookmarks WHERE bookId = :id AND contentRevision < :revision)")
+    suspend fun hasBookmarksBeforeRevision(id: String, revision: Int): Boolean
+
     @Insert suspend fun addBookmark(bookmark: BookmarkRow)
     @Update suspend fun updateBookmark(bookmark: BookmarkRow)
     @Query("SELECT * FROM bookmarks WHERE id = :id") suspend fun bookmark(id: Long): BookmarkRow?

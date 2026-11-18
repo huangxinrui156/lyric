@@ -92,4 +92,19 @@ class ReadingExperienceTest {
         writer.close(); application.cancel()
     }
 
+    @Test fun queuedSignalsDoNotWriteTheSameProgressTwice() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val saved = mutableListOf<Int>()
+        val writer = ProgressWriter<Int>(backgroundScope, dispatcher) { saved += it }
+
+        runCurrent() // Park the writer in receive before submitting both locations.
+        writer.submit(1)
+        val latest = writer.submit(2)
+        writer.close()
+        assertThrows(IllegalStateException::class.java) { writer.submit(3) }
+        runCurrent()
+
+        writer.await(latest)
+        assertEquals(listOf(2), saved)
+    }
 }

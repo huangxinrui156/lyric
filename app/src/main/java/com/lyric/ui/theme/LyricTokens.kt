@@ -292,6 +292,8 @@ object LyricTokens {
         val statusDot = 5.dp
         val dashLength = 6.dp
         val heatmapCell = 9.dp
+        val annualHeatmapCell = 14.dp
+        val calendarDayHeight = 40.dp
         val sliderThumb = 14.dp
         val comicSliderThumb = 16.dp
         val smallIcon = 18.dp
