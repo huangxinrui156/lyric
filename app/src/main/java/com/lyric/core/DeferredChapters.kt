@@ -67,13 +67,13 @@ class DeferredChapters(
         return if (chapter.pending) withContext(Dispatchers.IO) { load(index) } else chapter
     }
 
-    suspend fun complete(paced: Boolean = true) = withContext(Dispatchers.Default) {
+    suspend fun complete(paced: Boolean = true) = withContext(Dispatchers.IO) {
         for (i in indices) { val pending = get(i).pending; ensure(i); if (pending && paced) delay(16) }
         val stable = LongArray(size + 1)
         for (i in indices) stable[i + 1] = stable[i] + get(i).text.length
         val knownOffsets = offsets
         check(knownOffsets == null || knownOffsets.contentEquals(stable)) { "EPUB canonical lengths changed" }
-        if (knownOffsets == null) withContext(Dispatchers.IO) {
+        if (knownOffsets == null) {
             EpubChapterCache.atomic(File(directory, "lengths.txt"), joinToString(",") { it.text.length.toString() })
         }
         offsets = stable
